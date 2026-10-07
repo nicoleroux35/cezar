@@ -64,8 +64,10 @@ export const TURN_IDLE_GRACE_MS = 5_000;
  * id is not implemented.
  *
  * Auth = the host's opencode config/logins. The agent runs autonomously
- * (auto-approved permissions); OpenCode has no per-tool allowlist, so
- * `spec.allowedTools` is ignored. `spec.model` is `provider/model`.
+ * (auto-approved permissions). OpenCode has no per-tool allowlist API, so
+ * `spec.allowedTools` enables post-execution warnings only: disallowed tool
+ * calls that already executed are detected and logged, providing visibility
+ * without blocking. `spec.model` is `provider/model`.
  */
 export class OpencodeServerRunner implements AgentRunner {
   readonly backend = 'opencode' as const;
@@ -129,6 +131,8 @@ class OpencodeSession implements AgentSession {
   /** messageID → role. Parts carry no role; only assistant parts are surfaced
    *  (the user's own message also streams as parts over the same SSE feed). */
   private readonly msgRole = new Map<string, string>();
+  /** Track tools that triggered warnings to avoid duplicate messages. */
+  private readonly toolWarnings = new Set<string>();
   private tokensUsed = 0;
   private lastCost: number | undefined;
   private turnInFlight = false;
@@ -593,6 +597,10 @@ class OpencodeSession implements AgentSession {
       const status = stringField(state, 'status');
       const name = stringField(part, 'tool') ?? stringField(part, 'name') ?? 'tool';
       const callId = id || `${name}-${this.toolsSeen.size}`;
+      
+      // Check if tool is allowed (post-execution warning)
+      this.checkToolAllowed(name);
+      
       if (!this.toolsSeen.has(callId)) {
         this.toolsSeen.add(callId);
         this.toolCalls.push({ id: callId, name, input: state.input ?? state });
@@ -661,6 +669,48 @@ class OpencodeSession implements AgentSession {
 
   private emit(event: AgentEvent): void {
     this.onEvent?.(event);
+  }
+
+  /**
+   * Check if a tool is allowed per spec.allowedTools. OpenCode has no API-level
+   * permission system, so this provides post-execution visibility: tools that
+   * already executed are detected and logged as warnings.
+   */
+  private checkToolAllowed(toolName: string): void {
+    const allowed = this.spec.allowedTools;
+    if (!allowed || allowed.length === 0) return; // No restrictions
+    
+    const normalized = this.normalizeOpenCodeToolName(toolName);
+    const isAllowed = allowed.includes(normalized);
+
+    if (!isAllowed && !this.toolWarnings.has(toolName)) {
+      this.toolWarnings.add(toolName);
+      this.emit({
+        type: 'note',
+        message: `Tool restriction: '${normalized}' (${toolName}) was used but not in allowedTools`,
+      });
+    }
+  }
+
+  /**
+   * Map OpenCode tool names to cezar's standard tool names.
+   * OpenCode uses different naming conventions than the standard set.
+   */
+  private normalizeOpenCodeToolName(opencodeToolName: string): string {
+    // Common OpenCode tool name mappings
+    const mapping: Record<string, string> = {
+      'read_file': 'Read',
+      'write_file': 'Write',
+      'edit_file': 'Edit',
+      'execute_command': 'Bash',
+      'list_files': 'Glob',
+      'list_directory': 'Glob',
+      'search_files': 'Grep',
+      'search_content': 'Grep',
+      'ask_user': 'Ask',
+    };
+    
+    return mapping[opencodeToolName] ?? opencodeToolName;
   }
 
   /** The mapper never throws, but a defect in it must still never disturb

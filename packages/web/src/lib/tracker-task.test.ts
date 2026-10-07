@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { extractTaskRefs } from '../../../cezar/src/runs/task-refs'
 
-import type { TrackerItem } from '@open-mercato/cezar-api-client'
+import type { TrackerItem } from '@open-mercato/maestro-api-client'
 
 import { TRACKER_TASK_LIMIT, trackerRunBody, trackerTaskPrompt } from './tracker-task'
 

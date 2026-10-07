@@ -14,6 +14,7 @@ import {
   LinkIcon,
   MemoryStickIcon,
   PencilIcon,
+  PlayIcon,
   PlusIcon,
   ScaleIcon,
   SearchIcon,
@@ -26,7 +27,7 @@ import { Link, useNavigate } from '@/lib/project-router'
 import { archiveFinished, markAllRunsSeen, patchRun } from '@/api/client'
 import { useRunUsage } from '@/api/global-events'
 import { queryKeys, useHealth, usePinRun, useReferenceProjectId, useRuns, writePatchedRunToCaches } from '@/api/queries'
-import type { RunRecord } from '@open-mercato/cezar-api-client'
+import type { RunRecord } from '@open-mercato/maestro-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { DiffStatLabel } from '@/components/diff-stat'
 import { DirectionalUsage } from '@/components/directional-usage'
@@ -605,7 +606,7 @@ function TableRow({
               colSpan={2}
               className={cn(TD_BASE, 'text-right font-mono text-[11.5px] text-soft-foreground')}
             >
-              #{queuePosition} in queue
+              {run.paused ? 'paused' : `#${queuePosition} in queue`}
             </td>
           ) : (
             <UsageTds
@@ -680,12 +681,24 @@ function TaskTableCell({
     case 'status':
       return (
         <td data-column-id={column.id} className={TD_BASE}>
-          {/* A scheduled run wears its appointment in the pill, the way a queued one wears its
-              queue position — the row's whole answer to "what is this waiting for?". */}
-          <Pill dot={attention.tone} pulse={attention.pulse} title={scheduled?.title}>
-            {attention.label}
-            {scheduled ? <span className="tabular-nums">{scheduled.label}</span> : null}
-          </Pill>
+          {/* A paused task shows a Start button instead of just the status pill */}
+          {run.status === 'queued' && run.paused ? (
+            <div className="flex items-center gap-2">
+              <Pill dot="muted" pulse={false} title="Paused in queue">
+                Paused
+              </Pill>
+              <StartPausedButton runId={run.id} />
+            </div>
+          ) : (
+            <>
+              {/* A scheduled run wears its appointment in the pill, the way a queued one wears its
+                  queue position — the row's whole answer to "what is this waiting for?". */}
+              <Pill dot={attention.tone} pulse={attention.pulse} title={scheduled?.title}>
+                {attention.label}
+                {scheduled ? <span className="tabular-nums">{scheduled.label}</span> : null}
+              </Pill>
+            </>
+          )}
         </td>
       )
     case 'task':
@@ -1197,5 +1210,40 @@ export function TasksOverviewRoute() {
         columnsPending={taskTableColumns.isPending}
       />
     </ReferenceStatusProvider>
+  )
+}
+
+/**
+ * Start button for paused tasks — shown inline in the status column.
+ */
+function StartPausedButton({ runId }: { runId: string }) {
+  const queryClient = useQueryClient()
+  const start = useMutation({
+    mutationFn: async () => {
+      const { startQueuedRun } = await import('@/api/client')
+      return startQueuedRun(runId)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
+      toast('Task started', { tone: 'success' })
+    },
+    onError: (error: Error) => {
+      toast(error.message, { tone: 'danger' })
+    },
+  })
+
+  return (
+    <Button
+      size="sm"
+      variant="default"
+      onClick={(e) => {
+        e.stopPropagation()
+        start.mutate()
+      }}
+      disabled={start.isPending}
+      className="h-6 px-2 text-xs"
+    >
+      {start.isPending ? 'Starting…' : 'Start'}
+    </Button>
   )
 }

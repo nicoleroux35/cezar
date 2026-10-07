@@ -6,6 +6,7 @@ import {
   FolderGit2Icon,
   FoldersIcon,
   GaugeIcon,
+  GitBranchIcon,
   IdCardIcon,
   PackageCheckIcon,
   KeyboardIcon,
@@ -15,13 +16,14 @@ import {
 } from 'lucide-react'
 import type { ComponentType, SVGProps } from 'react'
 
-import type { Capabilities } from '@open-mercato/cezar-api-client'
+import type { Capabilities } from '@open-mercato/maestro-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { AccountsSection } from './accounts-section'
 import { AgentConfigSection } from './agent-config-section'
 import { AgentsSection } from './agents-section'
 import { AppearanceSection } from './appearance'
 import { BookmarkletsSection } from './bookmarklets-section'
+import { ForgesSection } from './forges-section'
 import { NotificationsSection } from './notifications-section'
 import { ProjectsSection } from './projects-section'
 import { PromptTemplatesSection } from './prompt-templates-section'
@@ -52,6 +54,7 @@ export type SettingsSectionId =
   | 'accounts'
   | 'agents'
   | 'agent-config'
+  | 'forges'
   | 'resources'
   | 'worktrees'
   | 'projects'
@@ -181,6 +184,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     description: 'Second logins, and the agent and models a project uses when it has chosen none.',
     icon: IdCardIcon,
     component: AccountsSection,
+    scope: 'global',
+  },
+  {
+    id: 'forges',
+    title: 'Forges',
+    description: 'GitHub, GitLab, Gitea, and Forgejo.',
+    icon: GitBranchIcon,
+    component: ForgesSection,
     scope: 'global',
   },
   {

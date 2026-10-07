@@ -19,7 +19,7 @@ const packageManifest = join(repoRoot, 'packages', 'cezar', 'package.json');
  * The `cezar-cli` alias must import this package through a specifier its `exports` map
  * actually exposes.
  *
- * 0.9.3 shipped an alias whose `bin.js` did `import('@open-mercato/cezar/dist/index.js')`
+ * 0.9.3 shipped an alias whose `bin.js` did `import('@open-mercato/maestro/dist/index.js')`
  * while this manifest exported only `.`, `./app-type` and `./package.json`. Once a package
  * declares `exports`, Node serves ONLY the listed subpaths and hard-blocks the rest — so
  * every `npx cezar-cli` died with ERR_PACKAGE_PATH_NOT_EXPORTED against a file that was
@@ -37,7 +37,7 @@ const packageManifest = join(repoRoot, 'packages', 'cezar', 'package.json');
  * checkout with no `dist/`.
  */
 
-/** Every `@open-mercato/cezar` specifier the alias entry point imports. */
+/** Every `@open-mercato/maestro` specifier the alias entry point imports. */
 async function aliasSpecifiers(aliasBin: string): Promise<string[]> {
   const source = await readFile(aliasBin, 'utf8');
   const pattern = /['"](@open-mercato\/cezar(?:\/[^'"]*)?)['"]/g;
@@ -49,7 +49,7 @@ async function assertAliasResolves(aliasBin: string): Promise<void> {
   // A computed specifier would slip past the regex; fail loudly rather than vacuously pass.
   assert.ok(
     specifiers.length > 0,
-    `${aliasBin} names no literal @open-mercato/cezar specifier — this guard can no longer see what the alias imports`,
+    `${aliasBin} names no literal @open-mercato/maestro specifier — this guard can no longer see what the alias imports`,
   );
 
   const root = await mkdtemp(join(tmpdir(), 'cezar-alias-exports-'));
@@ -68,7 +68,7 @@ async function assertAliasResolves(aliasBin: string): Promise<void> {
         { cwd: root },
       ).catch((error: Error & { stderr?: string }) => {
         assert.fail(
-          `the alias imports '${specifier}', which the @open-mercato/cezar exports map does not expose — ` +
+          `the alias imports '${specifier}', which the @open-mercato/maestro exports map does not expose — ` +
             `npx of this alias would fail for every user (#851): ${error.stderr?.trim() ?? error.message}`,
         );
       });

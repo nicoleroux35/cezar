@@ -8,7 +8,7 @@ import {
   type CreateAutomationInput,
   type Runner,
   type ScheduleEvery,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 
 import type { CliDefinition } from '@/lib/automation-cli'
 import { QUICK_TASK, type TaskSource } from '@/lib/task-source'

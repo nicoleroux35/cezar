@@ -1,4 +1,4 @@
-import type { RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
+import type { RunRecord, RunStatus } from '@open-mercato/maestro-api-client'
 
 /**
  * The star ask's pure half: how the count is written, when the one-time toast may fire, and the

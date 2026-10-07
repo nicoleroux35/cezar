@@ -1,5 +1,5 @@
 /**
- * Bundle `@open-mercato/cezar-contract` into `dist` after `tsc`.
+ * Bundle `@open-mercato/maestro-contract` into `dist` after `tsc`.
  *
  * The contract and the api-client are PRIVATE and ship no build of their own — they are linked as
  * workspace packages and consumed as TypeScript source, which is what every other consumer wants:

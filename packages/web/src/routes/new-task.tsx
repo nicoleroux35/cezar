@@ -33,7 +33,7 @@ import type {
   ProjectListEntry,
   RepoResponse,
   Runner,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 import { TwinkleBackdrop } from '@/components/centered-state'
 import { Composer, type ComposerHandle } from '@/components/composer/composer'
 import { DispatchToggle } from '@/components/dispatch-toggle'
@@ -506,6 +506,7 @@ export function NewTaskRoute() {
         // generation for THIS task must not stop the entry it came from being marked started.
         todoId: deepLink.todo,
         dispatch,
+        queueOnly: draft.queueOnly,
       }),
     )
     // Remember what was actually run so the next visit preselects it (legacy
@@ -532,7 +533,13 @@ export function NewTaskRoute() {
       .catch(() => {})
     clearStartedDraft(draftProjectId)
     void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
-    navigate(startedRunPath(created))
+    
+    // Queue-only mode: stay on /new instead of navigating to the task thread
+    if (draft.queueOnly) {
+      toast('Task added to queue — start it manually from the task list', { tone: 'success' })
+    } else {
+      navigate(startedRunPath(created))
+    }
   }
 
   /** ▶ Start on the reviewed plan: the (possibly edited) steps go INLINE, with the composer's
@@ -632,7 +639,7 @@ export function NewTaskRoute() {
           autoFocus
           placeholder="Describe a task for the agent — / for skills…"
           ariaLabel="Describe a task for the agent"
-          sendAriaLabel={draft.planFirst ? 'Plan task' : 'Start task'}
+          sendAriaLabel={draft.queueOnly ? 'Add to queue' : draft.planFirst ? 'Plan task' : 'Start task'}
           disabled={!providersReady || starting}
           disabledReason={
             providers.isPending
@@ -810,8 +817,13 @@ export function NewTaskRoute() {
               ) : null}
               <ModeSegment
                 planFirst={draft.planFirst}
+                queueOnly={draft.queueOnly}
                 planning={planning}
-                onModeChange={(planFirst) => update({ planFirst })}
+                onModeChange={(mode) => {
+                  if (mode === 'start') update({ planFirst: false, queueOnly: false })
+                  else if (mode === 'plan') update({ planFirst: true, queueOnly: false })
+                  else if (mode === 'queue') update({ planFirst: false, queueOnly: true })
+                }}
               />
               <kbd
                 aria-hidden="true"
@@ -1153,13 +1165,17 @@ function BaseBranchPill({ repo }: { repo: RepoResponse }) {
  *  active plan segment doubles as the busy indicator while `POST /api/plan` is in flight. */
 function ModeSegment({
   planFirst,
+  queueOnly,
   planning,
   onModeChange,
 }: {
   planFirst: boolean
+  queueOnly: boolean
   planning: boolean
-  onModeChange: (planFirst: boolean) => void
+  onModeChange: (mode: 'start' | 'plan' | 'queue') => void
 }) {
+  const mode = queueOnly ? 'queue' : planFirst ? 'plan' : 'start'
+  
   return (
     <div
       data-slot="mode-seg"
@@ -1170,11 +1186,11 @@ function ModeSegment({
       <button
         type="button"
         role="radio"
-        aria-checked={!planFirst}
-        onClick={() => onModeChange(false)}
+        aria-checked={mode === 'start'}
+        onClick={() => onModeChange('start')}
         className={cn(
           'h-6 rounded-md px-2 text-xs transition-colors',
-          !planFirst
+          mode === 'start'
             ? 'bg-card font-semibold text-foreground shadow-xs'
             : 'font-medium text-muted-foreground hover:text-foreground',
         )}
@@ -1184,19 +1200,34 @@ function ModeSegment({
       <button
         type="button"
         role="radio"
-        aria-checked={planFirst}
+        aria-checked={mode === 'plan'}
         aria-busy={planning || undefined}
         data-slot="mode-plan"
-        onClick={() => onModeChange(true)}
+        onClick={() => onModeChange('plan')}
         className={cn(
           'h-6 rounded-md px-2 text-xs transition-colors',
-          planFirst
+          mode === 'plan'
             ? 'bg-contrast font-semibold text-contrast-foreground ring-2 ring-ring/55'
             : 'font-medium text-muted-foreground hover:text-foreground',
           planning && 'animate-pulse',
         )}
       >
         {planning ? 'Planning…' : 'Plan first'}
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={mode === 'queue'}
+        data-slot="mode-queue"
+        onClick={() => onModeChange('queue')}
+        className={cn(
+          'h-6 rounded-md px-2 text-xs transition-colors',
+          mode === 'queue'
+            ? 'bg-card font-semibold text-foreground shadow-xs'
+            : 'font-medium text-muted-foreground hover:text-foreground',
+        )}
+      >
+        Add to queue
       </button>
     </div>
   )

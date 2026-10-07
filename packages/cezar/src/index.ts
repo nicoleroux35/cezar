@@ -779,9 +779,9 @@ function readOwnName(): string {
   try {
     const here = dirname(fileURLToPath(import.meta.url));
     const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as { name?: string };
-    return pkg.name ?? '@open-mercato/cezar';
+    return pkg.name ?? '@open-mercato/maestro';
   } catch {
-    return '@open-mercato/cezar';
+    return '@open-mercato/maestro';
   }
 }
 

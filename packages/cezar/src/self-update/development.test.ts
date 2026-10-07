@@ -79,7 +79,7 @@ describe('development channel', () => {
   afterEach(() => rmSync(home, { recursive: true, force: true }));
 
   const registry = () =>
-    new RegistryCache('@open-mercato/cezar', (async () =>
+    new RegistryCache('@open-mercato/maestro', (async () =>
       Response.json({
         'dist-tags': { latest: '0.14.0', nightly: '0.14.1-nightly.20260929.1', 'pr-11': '0.13.0-pr11.500', 'pr-3': '0.9.0-pr3.10' },
         versions: { '0.14.0': {}, '0.13.0': {}, '0.13.0-pr11.500': {}, '0.9.0-pr3.10': {} },
@@ -88,7 +88,7 @@ describe('development channel', () => {
 
   const service = () =>
     new SelfUpdateService({
-      pkgName: '@open-mercato/cezar',
+      pkgName: '@open-mercato/maestro',
       version: '0.13.0',
       entry: join(home, 'versions', 'current', 'node_modules', '@open-mercato', 'cezar', 'dist', 'index.js'),
       restart: () => {},
@@ -116,7 +116,7 @@ describe('development channel', () => {
 
   it('lists no worktrees in hosted mode', async () => {
     const svc = new SelfUpdateService({
-      pkgName: '@open-mercato/cezar',
+      pkgName: '@open-mercato/maestro',
       version: '0.13.0',
       entry: '/x/dist/index.js',
       restart: () => {},

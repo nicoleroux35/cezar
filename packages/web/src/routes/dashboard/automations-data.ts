@@ -4,7 +4,7 @@ import {
   dashboardAutomationsSchema,
   type DashboardAutomation,
   type DashboardAutomations,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 import { cez, unwrap } from '@/api/client'
 import { useProjects, workspaceQueryKeys } from '@/api/queries'
 import { onWorkspaceEvent } from '@/api/global-events'

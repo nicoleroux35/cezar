@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { availableParallelism, cpus, freemem, loadavg, totalmem } from 'node:os';
-import type { HostUsage, HostUsageContainer } from '@open-mercato/cezar-contract';
+import type { HostUsage, HostUsageContainer } from '@open-mercato/maestro-contract';
 
 import {
   createCgroupProbe,

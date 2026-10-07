@@ -29,7 +29,7 @@ import {
   type ProviderId,
   type Runner,
   type SetWorkspaceConfigInput,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 import { CenteredState } from '@/components/centered-state'
 import {
   AlertDialog,
@@ -97,6 +97,9 @@ const PROVIDER_LABEL: Record<ProviderId, string> = {
   cursor: 'Cursor',
   pi: 'pi',
   copilot: 'GitHub Copilot CLI',
+  kilo: 'Kilo',
+  gemini: 'Gemini',
+  antigravity: 'Antigravity',
 }
 
 /** The vendor's own install/login instruction, shown when the CLI is not on this machine. */
@@ -108,6 +111,9 @@ const PROVIDER_INSTALL: Record<ProviderId, string> = {
   cursor: 'curl https://cursor.com/install -fsS | bash',
   pi: 'https://github.com/badlogic/pi-mono',
   copilot: 'npm i -g @github/copilot',
+  kilo: 'https://kilo.ai',
+  gemini: 'npm i -g @google/gemini-cli',
+  antigravity: 'https://antigravity.dev',
 }
 
 /** Same vocabulary the Providers card uses — one wording for "is this logged in?". */

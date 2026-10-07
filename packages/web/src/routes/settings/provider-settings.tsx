@@ -8,7 +8,7 @@ import {
   useRetryProviderAuth,
   workspaceQueryKeys,
 } from '@/api/queries'
-import type { ProviderId, ProviderStatusResponse } from '@open-mercato/cezar-api-client'
+import type { ProviderId, ProviderStatusResponse } from '@open-mercato/maestro-api-client'
 import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -25,6 +25,9 @@ export const PROVIDERS = [
   { id: 'cursor', label: 'Cursor', login: 'agent login' },
   { id: 'pi', label: 'pi', login: 'pi /login' },
   { id: 'copilot', label: 'GitHub Copilot CLI', login: 'copilot login' },
+  { id: 'kilo', label: 'Kilo', login: 'kilo login' },
+  { id: 'gemini', label: 'Gemini', login: 'gemini' },
+  { id: 'antigravity', label: 'Antigravity', login: 'agy' },
 ] as const
 
 const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
@@ -35,6 +38,9 @@ const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
   cursor: value,
   pi: value,
   copilot: value,
+  kilo: value,
+  gemini: value,
+  antigravity: value,
 })
 
 const STATUS_PRESENTATION = {

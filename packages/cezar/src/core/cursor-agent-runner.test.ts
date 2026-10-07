@@ -36,8 +36,8 @@ describe('mapCursorStreamEvent', () => {
 });
 
 describe('createRunner(cursor)', () => {
-  it('returns CursorAgentRunner', () => {
-    const runner = createRunner('cursor');
+  it('returns CursorAgentRunner', async () => {
+    const runner = await createRunner('cursor');
     expect(runner.backend).toBe('cursor');
   });
 });

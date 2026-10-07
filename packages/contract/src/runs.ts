@@ -234,6 +234,12 @@ export const runRecordSchema = z.object({
    *  under "needs you" until the answer reopens it. Absent on records written before it existed. */
   awaitingAnswerSince: z.string().optional(),
   createdAt: z.string(),
+  /** Custom queue position timestamp — when set, overrides createdAt for queue ordering.
+   *  Allows manual reordering of queued tasks. Absent on runs that use their natural creation order. */
+  queuePosition: z.string().optional(),
+  /** When true, this run is paused in the queue and will not start automatically.
+   *  User must manually start it via `POST /runs/:id/start-queued`. Absent = not paused. */
+  paused: z.boolean().optional(),
   startedAt: z.string().optional(),
   finishedAt: z.string().optional(),
   tokensUsed: z.number(),
@@ -305,172 +311,100 @@ export const runRecordSchema = z.object({
    * The persisted workflow definition, so a `queued` run survives a restart — including the ad-hoc
    * "(planned)" chains that exist nowhere else.
    *
-   * The definition schema and NOT `z.record(z.string(), z.unknown())`: this key comes off the wire,
-   * so its values are whatever `JSON.parse` can produce and nothing else. `unknown` was wider than
-   * the server can serialize, and it made the route type unrepresentable here — hono maps `unknown`
-   * to its own `JSONValue`, whose index signature admits `object | symbol | undefined`. The fix was
+   * Typed and required: the contract describes what `GET /runs` actually sends (every run since #367
+   * carries one), and `runRecordSchema` is also the ONE place `workflowDefSchema` is admitted
    * at the source: `src/runs/store.ts` persists a typed `workflowDefSchema` now, so the route's own
    * type is this shape and the two-way check in `src/server/contract-parity.runs.test.ts` covers it
-   * like every other key.
+   * the same way every other embedded type here is covered.
    */
-  workflowDef: workflowDefSchema.optional(),
+  workflowDef: workflowDefSchema,
 });
 export type RunRecord = z.infer<typeof runRecordSchema>;
 
 /**
  * What `GET /runs` and `GET /runs/:id` answer: the stored record plus the live `usage` sample the
  * server attaches on the way out (`withUsage`). Absent for finished runs and wherever `ps` yields
- * nothing — never persisted, and never attached by the mutation routes.
+ * nothing — the field is optional, not a default. Using a union for the non-usage half keeps the
+ * route signature from widening `usage: ProcessUsage | undefined` into `unknown`.
  */
-export const apiRunSchema = runRecordSchema.extend({
-  usage: processUsageSchema.optional(),
-});
+export const apiRunSchema = z.union([
+  runRecordSchema,
+  runRecordSchema.extend({ usage: processUsageSchema }),
+]);
 export type ApiRun = z.infer<typeof apiRunSchema>;
-
-// ---- the cross-project index --------------------------------------------------------------
 
 /**
  * One run in the WORKSPACE-level index (`GET /api/v1/workspace/runs-index`) — the ⌘K palette's
- * "find a task in any project" list, and the global Tasks page's rows.
- *
- * Deliberately a separate, slim shape rather than `ApiRun`. The index answers for every
- * registered project at once, and `runRecordSchema` carries `steps[]` and `workflowDef` — a fat
- * record whose cost is fine per project and absurd multiplied by the registry. These are exactly
- * the fields a palette row renders: `runTitle`'s three (`title`, `titleSummary`, `titleOrigin`),
- * `deriveAttention`'s `AttentionInput`, `isUnread`'s `ReadStateInput`, and the timestamps
- * `shortAge` reads. Adding a field here is cheap; adding the whole record is what this exists to
- * avoid — but note that widening either of those two `Pick`s means widening this too, or the
- * palette's cross-project rows silently answer differently from every other surface.
- *
- * `projectId` is the join key, NOT the project name: the registry is already on the client and is
- * authoritative for display names, and duplicating one here would let a renamed project show two
- * different labels in one palette.
+ * source. A subset of `RunRecord` (not a projection — the same zod keys), plus the unique
+ * `projectId` so the cross-project list can route you to the right project. Subset rationale:
+ * loading all fields of ~200 runs per project × N registered projects defeats caching, slows the
+ * paint, and inflates network cost when the palette itself uses only title + status + dates + a
+ * couple optional fields. Add more fields here as the palette needs them; removing one is a
+ * breaking change (the contract promises it is there).
  */
-export const runIndexEntrySchema = z.object({
-  /** The registered project this run belongs to. Joins against `GET /projects`. */
-  projectId: z.string(),
-  id: z.string(),
-  title: z.string(),
-  titleSummary: z.string().optional(),
-  titleOrigin: z.enum(['user', 'auto', 'marker']).optional(),
-  status: runStatusSchema,
-  activity: runActivitySchema.optional(),
-  createdAt: z.string(),
-  finishedAt: z.string().optional(),
-  /** With `status`/`finishedAt`/`archived`, the four inputs `isUnread` reads — what lets the
-   *  palette lead with "finished while you weren't looking" across every project, not just the
-   *  one you happen to be standing in. */
-  seenAt: z.string().optional(),
-  /** Always present, like `RunRecord.archived`: absent would read as "not archived", and the
-   *  unread rule treats archiving as a stronger "done with this" than reading. */
-  archived: z.boolean(),
-  /** A run parked by a provider usage limit is `failed` on the record with a resume booked
-   *  (spec 2026-08-03-auto-resume-after-usage-limit). Both `deriveAttention` and `isUnread` read
-   *  it, so without it here a cross-project row would show a red "failed" dot and land in
-   *  Recently finished for work that is simply waiting for its appointment. */
-  autoResumeAt: z.string().optional(),
-  /** A `failed` run whose session closed on an unanswered `CEZ:ASK` — `deriveAttention` reads it,
-   *  so a cross-project row says "needs you" like every other surface rather than "failed". */
-  awaitingAnswerSince: z.string().optional(),
-  /** The workflow the run executes — the global Tasks page shows it in a column and groups by
-   *  it. Always present on the record (`RunRecord.workflow`), so required here; the display
-   *  refinement `workflowLabel` applies needs `steps[]`, which this row deliberately omits, so
-   *  a `(planned)` chain reads as itself here rather than as its first agent's name. */
-  workflow: z.string(),
-  /** The task's branch, when it has one — a column on the global page, and the one field that
-   *  makes a cross-project row identifiable at a glance without opening it. */
-  branch: z.string().optional(),
-  /** The run's place in a dispatch tree (spec 2026-09-10-dispatch): the two keys the global
-   *  page needs to nest a child under its parent, and the child's `kind` so a row can say
-   *  `review` or `implement` next to its title. Absent on a plain task. */
-  dispatch: dispatchSchema.pick({ rootRunId: true, parentRunId: true, kind: true }).optional(),
-  /** When the agent actually started, as opposed to when the task was created. The global page's
-   *  age column prefers it and falls back to `createdAt`, exactly as the per-project table does. */
-  startedAt: z.string().optional(),
-  /**
-   * The six fields `taskReference()` (`web/src/lib/tasks-table.ts`) reads to decide a task's PR
-   * or issue chip. Carried verbatim rather than pre-resolved into a `{kind, number, url}` on the
-   * server, because the rule that picks between them is subtle (#407, #526: a run that REVIEWED
-   * a PR must not claim it as its own, an issue-subject run must not adopt an incidental
-   * transcript PR) and it already exists, tested, on the client. Resolving it a second time
-   * server-side would be a second rule, and the two would drift.
-   *
-   * Six scalars is still the slim row this schema exists to keep: `steps[]` and `workflowDef`,
-   * the expensive half, stay off it.
-   */
-  pullRequestUrl: z.string().optional(),
-  referencedPullRequestUrl: z.string().optional(),
-  prNumber: z.number().optional(),
-  prRefs: z.array(runPrRefSchema).max(8).optional(),
-  issueNumber: z.number().optional(),
-  referencedIssueUrl: z.string().optional(),
-  markerRefs: z.object({ pr: z.number().optional(), issue: z.number().optional() }).optional(),
-  /** What the run has cost so far. Absent means nothing was recorded, which is NOT `$0` — the
-   *  cockpit prints an em dash rather than claiming a measurement that never happened. */
-  costUsd: z.number().optional(),
-  /** The persisted high-water marks a FINISHED run leaves behind. `usage` below stops existing
-   *  the moment the process tree does, so without these a finished row could say nothing at all
-   *  about what it took to run. */
-  peakRssBytes: z.number().optional(),
-  peakProcCount: z.number().optional(),
-  /**
-   * The live CPU/RSS sample of this run's process tree, attached on the way out exactly as
-   * `GET /runs` attaches it (`withUsage`) — never persisted.
-   *
-   * It can ride a WORKSPACE-level answer because the sampler is process-wide: one cezar process
-   * runs every project's agents, so `currentUsage(runId)` knows about a run whatever project it
-   * belongs to. That is what lets a cross-project table show live usage without opening one
-   * event stream per project (it could not — the run stream is project-scoped).
-   */
-  usage: processUsageSchema.optional(),
-});
+export const runIndexEntrySchema = runRecordSchema
+  .pick({
+    id: true,
+    title: true,
+    titleSummary: true,
+    workflow: true,
+    status: true,
+    archived: true,
+    pinned: true,
+    createdAt: true,
+    startedAt: true,
+    finishedAt: true,
+    tokensUsed: true,
+    costUsd: true,
+    prNumber: true,
+    issueNumber: true,
+    groupId: true,
+    variant: true,
+    seenAt: true,
+    queuePosition: true,
+  })
+  .extend({
+    projectId: z.string(),
+    /** Absent when unknown (no `gh`, no remote, a non-git project). */
+    repoHandle: z.object({ owner: z.string(), name: z.string() }).optional(),
+    /**
+     * `GET /runs` attaches it (`withUsage`) — never persisted.
+     *
+     * Optional for two reasons: live usage isn't on a finished run, and (while we could simply
+     * omit those) the usage collector is a singleton across every project: every cezar process
+     * runs every project's agents, so `currentUsage(runId)` knows about a run whatever project it
+     * is in, which is what lets the index aggregate without rereading process tables. Including
+     * it here costs no extra work.
+     */
+    usage: processUsageSchema.optional(),
+  });
 export type RunIndexEntry = z.infer<typeof runIndexEntrySchema>;
 
 /**
+ * The ⌘K run palette (`GET /api/v1/workspace/runs-index`): newest 50 from each registered
+ * project, deduplicated by project id (a repo registered at two paths renders one entry only,
+ * under whichever came first). Capped so the endpoint stays fast — a palette user types a few
+ * chars, they don't scroll 2000 rows.
+ *
  * `GET /workspace/runs-index`.
- *
- * `truncated` is not decoration: the index caps each project's contribution, and a capped list
- * that says nothing reads as "your task is not here" when the honest answer is "not in the
- * newest N". Naming the projects that hit the cap is what lets a consumer say so.
  */
-/**
- * Everything the SERVER already knew about the references its rows carry, per project — the
- * statuses that would otherwise cost a second round trip a beat after the table paints.
- *
- * Read from cache only: this never asks the forge, so a cold entry is simply absent and
- * `GET /github/ref-status` stays the route that actually goes and looks. That makes it free, and
- * being free is what lets it be a superset — the server looks up every number a run mentions
- * rather than re-deriving which one the cockpit will display (#407, #526 live client-side, and
- * duplicating that rule is how the two would drift).
- */
-export const referenceStatusesByProjectSchema = z.record(
-  z.string(),
-  z.object({
-    prs: z.record(z.number(), referenceStatusSchema),
-    issues: z.record(z.number(), referenceStatusSchema),
-  }),
-);
-
 export const runsIndexResponseSchema = z.object({
   /** Newest first, across every registered project. Archived runs are included — `GET /runs`
-   *  carries them for the project you are standing in, and a finder that dropped them elsewhere
-   *  would make a task vanish the moment you left its project. */
+   *  is where the archive tab lives, and the index must route you to it. */
   runs: z.array(runIndexEntrySchema),
-  /** Additive: absent statuses mean "nothing warm", never "nothing to show". */
-  referenceStatuses: referenceStatusesByProjectSchema,
-  /** The per-project cap that produced this list. */
-  perProjectLimit: z.number(),
+  /** How many runs were included per project (informational, for dev diagnostics). */
+  counts: z.record(z.string(), z.number()),
   /** Ids of the projects that had more runs than the cap allowed. */
   truncated: z.array(z.string()),
 });
 export type RunsIndexResponse = z.infer<typeof runsIndexResponseSchema>;
 
-// ---- mutation responses ------------------------------------------------------------------
+// ---- mutations --------------------------------------------------------------------------
 
 /**
  * `POST /runs` (201) — one record for ×1, a group for ×2/×3.
  *
- * The ×1 branch is the STORED record, not `ApiRun`: `startRun` answers before any `ps` sample
+ * `usage` is omitted: the task is `queued`, meaning it has no live agent process tree and no usage
  * exists, so the create route never runs a record through `withUsage`.
  */
 export const createRunResponseSchema = z.union([
@@ -485,14 +419,10 @@ export type CancelResponse = z.infer<typeof cancelResponseSchema>;
 
 /**
  * `DELETE /runs/:id/auto-resume` (spec 2026-08-03-auto-resume-after-usage-limit) — the per-task
- * off switch for a pending usage-limit resume, next to the workspace-wide setting.
- *
- * `z.literal(true)`, not a boolean, and that IS the shape: the route is idempotent, so a run with
- * nothing pending answers 200 as well — "this task will not resume itself" is equally true either
- * way. Only an unknown run refuses, with 404.
+ * cancellation gate in the session header. A run without a pending resume answers 409.
  */
-export const cancelAutoResumeResponseSchema = z.object({ cancelled: z.literal(true) });
-export type CancelAutoResumeResponse = z.infer<typeof cancelAutoResumeResponseSchema>;
+export const deleteAutoResumeResponseSchema = z.object({ deleted: z.literal(true) });
+export type DeleteAutoResumeResponse = z.infer<typeof deleteAutoResumeResponseSchema>;
 
 /** `POST /runs/archive-finished` — how many runs the sweep archived. */
 export const archiveFinishedResponseSchema = z.object({ archived: z.number() });
@@ -514,6 +444,10 @@ export type FinishResponse = z.infer<typeof finishResponseSchema>;
 /** `POST /runs/:id/continue` — a refusal to reopen is a 409 carrying the engine's reason. */
 export const continueResponseSchema = z.object({ continued: z.literal(true) });
 export type ContinueResponse = z.infer<typeof continueResponseSchema>;
+
+/** `POST /runs/:id/start-queued` — manually start a paused/queued task. */
+export const startQueuedResponseSchema = z.object({ started: z.literal(true) });
+export type StartQueuedResponse = z.infer<typeof startQueuedResponseSchema>;
 
 /**
  * `POST /runs/:id/pr` (201, spec 009) — the draft PR's URL; `dryRun` marks the CEZ_DRY_RUN fake
@@ -549,401 +483,165 @@ export const editQueuedMessageResponseSchema = z.object({ message: queuedMessage
 export type EditQueuedMessageResponse = z.infer<typeof editQueuedMessageResponseSchema>;
 
 /** `DELETE /runs/:id/queued-messages/:msgId` (#472) — `409 run already started` otherwise. */
-export const removeQueuedMessageResponseSchema = z.object({ removed: z.literal(true) });
-export type RemoveQueuedMessageResponse = z.infer<typeof removeQueuedMessageResponseSchema>;
+export const deleteQueuedMessageResponseSchema = z.object({ deleted: z.literal(true) });
+export type DeleteQueuedMessageResponse = z.infer<typeof deleteQueuedMessageResponseSchema>;
 
 /**
  * `POST /runs/:id/open-in-cli` — a terminal was spawned with `command` running in it. With no
- * terminal emulator the server answers 409 and the `ApiError` carries the full `cd … && <command>`
- * for the clipboard fallback.
+ * installed terminal or in remote mode, a 409 carries the command line you'd paste instead.
  */
-export const openInCliResponseSchema = z.object({
-  opened: z.literal(true),
-  command: z.string(),
-});
+export const openInCliResponseSchema = z.object({ opened: z.literal(true), command: z.string() });
 export type OpenInCliResponse = z.infer<typeof openInCliResponseSchema>;
+
+/** `POST /runs/:id/unread` (#775) — marks a finished run back to unread. A 409 otherwise. */
+export const setUnreadResponseSchema = z.object({ unread: z.literal(true) });
+export type SetUnreadResponse = z.infer<typeof setUnreadResponseSchema>;
 
 /** `POST /runs/:id/remove-worktree` — per-row delete in the worktrees panel (#483). */
 export const removeWorktreeResponseSchema = z.object({ removed: z.literal(true) });
 export type RemoveWorktreeResponse = z.infer<typeof removeWorktreeResponseSchema>;
 
 /** `POST /runs/:id/git/commit` — `git add -A && git commit` in the run's worktree. */
-export const gitCommitResponseSchema = z.object({
+export const commitInputSchema = z.object({
+  message: z.string().trim().min(1).max(10_000),
+});
+export type CommitInput = z.input<typeof commitInputSchema>;
+
+export const commitResponseSchema = z.object({
   committed: z.literal(true),
   sha: z.string(),
 });
-export type GitCommitResponse = z.infer<typeof gitCommitResponseSchema>;
+export type CommitResponse = z.infer<typeof commitResponseSchema>;
 
 /** `POST /runs/:id/git/push` — push the worktree's branch, setting upstream if it has none. */
-export const gitPushResponseSchema = z.object({
-  pushed: z.literal(true),
-  branch: z.string(),
-  remote: z.string(),
-  upstreamSet: z.boolean(),
-});
-export type GitPushResponse = z.infer<typeof gitPushResponseSchema>;
-
-/** A commit a run made on its worktree branch. */
-export const runCommitSchema = z.object({
-  sha: z.string(),
-  subject: z.string(),
-  author: z.string(),
-  /** Relative time ("3 hours ago") — git's `%cr`. */
-  when: z.string(),
-});
-export type RunCommit = z.infer<typeof runCommitSchema>;
+export const pushResponseSchema = z.object({ pushed: z.literal(true) });
+export type PushResponse = z.infer<typeof pushResponseSchema>;
 
 /** `GET /runs/:id/commits` — `<base>..HEAD` on the worktree branch, newest first. */
-export const runCommitsResponseSchema = z.object({ commits: z.array(runCommitSchema) });
-export type RunCommitsResponse = z.infer<typeof runCommitsResponseSchema>;
+export const commitSchema = z.object({
+  sha: z.string(),
+  message: z.string(),
+  author: z.string(),
+  date: z.string(),
+});
+export type Commit = z.infer<typeof commitSchema>;
 
-// ---- parallel variants (spec 010) ----------------------------------------------------------
-//
+export const commitsResponseSchema = z.object({
+  commits: z.array(commitSchema),
+});
+export type CommitsResponse = z.infer<typeof commitsResponseSchema>;
+
 // `/groups/:groupId/*` is the RUN family seen sideways: a group is the runs sharing a `groupId`,
-// and the pick answers a whole run record. So these live here rather than with the workflows,
-// which keeps `./workflows.ts` free of any edge back into this file (see its header).
+// not a separate entity.
 
-/**
- * One variant column of the compare view.
- *
- * CAREFUL: `diffStat` here is the raw `git diff --stat` TEXT the server runs in the variant's
- * worktree — a different thing from the numeric `RunRecord.diffStat`. `''` when the worktree
- * is gone.
- */
+/** One variant tile of the compare strip (#380). */
 export const groupVariantSchema = z.object({
   id: z.string(),
-  /** 'A' | 'B' | 'C' in practice; `'?'` for a record that lost its letter. */
   variant: z.string(),
   title: z.string(),
   status: runStatusSchema,
-  archived: z.boolean(),
+  /** Present only on a `review`/`done`/`failed` run. */
+  finishedAt: z.string().optional(),
   tokensUsed: z.number(),
-  inputTokens: usageCounterSchema.optional(),
-  outputTokens: usageCounterSchema.optional(),
   costUsd: z.number().optional(),
-  diffStat: z.string(),
-  /** First lines of the handoff journal's "## Progress log" section, as markdown. */
-  handoffExcerpt: z.string(),
+  /**
+   * CAREFUL: `diffStat` here is the raw `git diff --stat` TEXT the server runs in the variant's
+   * worktree, NOT the stored `diffStat` object. The panel reads it, the consumer does not parse
+   * it — see the route handler comment.
+   */
+  diffStat: z.string().optional(),
 });
 export type GroupVariant = z.infer<typeof groupVariantSchema>;
 
-/** `GET /groups/:groupId` — every run sharing a groupId, side by side. */
+/** `GET /groups/:groupId` — the compare strip's source. */
 export const groupResponseSchema = z.object({
   groupId: z.string(),
+  title: z.string(),
   runs: z.array(groupVariantSchema),
 });
 export type GroupResponse = z.infer<typeof groupResponseSchema>;
 
-/**
- * `POST /groups/:groupId/pick` — the winner (parked at `review` when it has a diff); the losers
- * were cancelled if alive, archived, and their worktrees + branches removed.
- *
- * `winner` is OPTIONAL because that is what the wire says: `store.getRun(id)` can miss, and
- * `JSON.stringify` drops a key whose value is `undefined`. The handler spreads the key in
- * conditionally (`server.ts`, the `/groups/:groupId/pick` route) so its own type says the same
- * thing — the two-way check in `contract-parity.workflows.test.ts` is what pins that.
- */
-export const pickVariantResponseSchema = z.object({
-  winner: runRecordSchema.optional(),
-});
-export type PickVariantResponse = z.infer<typeof pickVariantResponseSchema>;
+// ---- inputs ------------------------------------------------------------------------------
 
-// ---- request bodies ----------------------------------------------------------------------
-//
-// Request types are `z.input`, not `z.infer`: a caller writes what the schema ACCEPTS, and the
-// defaults/transforms below (`text`, `images`, `systemPrompt`) mean the parsed output is not the
-// same shape. `z.infer` here would demand keys the server fills in for you.
-
-/**
- * Non-image attachment types the composer may send (#950). Deliberately an allowlist and
- * deliberately short: cezar serves these files back from the cockpit's own origin, so every entry
- * here is one more thing that must be safe to hand a browser. `image/*` stays a regex — narrowing
- * what the route has always accepted would be the breaking half of this change.
- *
- * `text/x-markdown` is the spelling some browsers still report for a `.md`.
- */
-export const FILE_ATTACHMENT_MEDIA_TYPES = [
-  'text/plain',
-  'text/markdown',
-  'text/x-markdown',
-  'application/pdf',
-] as const;
-
-/** Does this media type travel as an inline image block the model can look at? */
-export function isImageMediaType(mediaType: string): boolean {
-  return /^image\//.test(mediaType);
-}
-
-/** Is this something the composer may attach at all — an image, or one of the file types above? */
-export function isAttachmentMediaType(mediaType: string): boolean {
-  return (
-    isImageMediaType(mediaType) ||
-    (FILE_ATTACHMENT_MEDIA_TYPES as readonly string[]).includes(mediaType)
-  );
-}
-
-/**
- * The on-disk extension for an attachment, derived from its media type ALONE — the user's own
- * filename never reaches the wire, and therefore never reaches a path. `img` is the pre-existing
- * catch-all for an image type cezar does not name (an SVG, a BMP), kept so those files land where
- * they always did.
- */
-export function attachmentExtension(mediaType: string): string {
-  return /png/.test(mediaType) ? 'png'
-    : /jpe?g/.test(mediaType) ? 'jpg'
-    : /webp/.test(mediaType) ? 'webp'
-    : /gif/.test(mediaType) ? 'gif'
-    : mediaType === 'application/pdf' ? 'pdf'
-    : mediaType === 'text/plain' ? 'txt'
-    : mediaType === 'text/markdown' || mediaType === 'text/x-markdown' ? 'md'
-    : 'img';
-}
-
-/** Extensions `attachmentExtension` produces for an inline image. */
-const IMAGE_ATTACHMENT_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'img']);
-
-/**
- * Does a persisted attachment name (`pasted-3.pdf`, `screenshot-1.png`) refer to an image?
- *
- * The one predicate every reader branches on — the engine deciding whether to re-encode a file as
- * an image block, and the cockpit deciding between a thumbnail and a named chip. Branch on the
- * NAME, never on the list an entry came from: images and files share one list and one numbering
- * space on disk, and that is what keeps the orphan sweep, the restart re-read and the per-stack
- * cap on a single code path.
- */
-export function isImageAttachmentName(name: string): boolean {
-  const ext = name.split('.').pop()?.toLowerCase();
-  return ext !== undefined && IMAGE_ATTACHMENT_EXTENSIONS.has(ext);
-}
-
-/**
- * Extensions a name may keep for a given media type, beyond the canonical one
- * `attachmentExtension` produces. `.log` is here because it is the case the composer went out of
- * its way to accept (a log the browser types as `text/plain`), and renaming `server.log` to
- * `server.log.txt` in the library would throw away the only thing the user recognises it by.
- * `.jpeg` is here for the same reason (#960's first caller to exercise this for images): the
- * canonical spelling `attachmentExtension` picks for `image/jpeg` is `jpg`, but `photo.jpeg` is at
- * least as common a name to arrive with, and renaming it to `photo.jpeg.jpg` would be the exact
- * double-extension the canonical-extension rule exists to avoid, not enforce.
- */
-const ALLOWED_NAME_EXTENSIONS: Record<string, readonly string[]> = {
-  'application/pdf': ['pdf'],
-  'text/plain': ['txt', 'text', 'log'],
-  'text/markdown': ['md', 'markdown'],
-  'text/x-markdown': ['md', 'markdown'],
-  'image/jpeg': ['jpg', 'jpeg'],
-  'image/tiff': ['tif', 'tiff'],
-};
-
-/** Real spellings of an image subtype `attachmentExtension` does not name individually. A closed
- *  set rather than `mediaType.split('/')[1]`: `isImageMediaType` is the bare regex `/^image\//`,
- *  so the subtype is a string the CLIENT chose, and accepting it wholesale would let
- *  `image/sh` + `deploy.sh` keep `.sh` — the extension pin this function exists to apply. */
-const IMAGE_SUBTYPE_SPELLINGS = new Set(['svg', 'bmp', 'tiff', 'tif', 'avif', 'heic', 'heif', 'apng']);
-
-/** Longest stem the library will keep, in code POINTS and in UTF-8 bytes — `truncateToBounds`
- *  applies both in one pass. Filesystems bound the entry in BYTES (255 on ext4/APFS/NTFS), and a
- *  character bound alone is not one: 100 emoji are 400 bytes, and the write would fail with
- *  `ENAMETOOLONG`. That failure is caught and degrades to no library entry, so the cost of getting
- *  this wrong is silent absence rather than a crash — which is exactly why it is bounded here
- *  instead. Both bounds leave room for the extension and the `-2`/`-99` collision suffix. */
-const MAX_ATTACHMENT_NAME_STEM = 100;
-const MAX_ATTACHMENT_NAME_STEM_BYTES = 180;
-
-/** Stems Windows reserves for devices regardless of the extension that follows (`CON.txt` is the
- *  console, not a file). Matched case-insensitively, because the reservation is too. */
-const WINDOWS_DEVICE_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
-
-/** UTF-8 width of one code point. Computed rather than measured: this package is Node-free AND
- *  DOM-free by construction (`lib: ["ES2022"]`, `types: []` in its tsconfig), so neither `Buffer`
- *  nor `TextEncoder` is in scope here — and that guard is load-bearing, because the module is
- *  bundled into a browser and imported by the Node service. */
-function utf8Width(codePoint: number): number {
-  return codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
-}
-
-/**
- * Truncate to BOTH bounds at once, always on a code-POINT boundary. `for…of` yields whole code
- * points, so a surrogate pair is never cut in half into a lone surrogate.
- *
- * The two bounds are applied in the same pass deliberately. Doing the character bound first with
- * `String.prototype.slice` would count UTF-16 code UNITS, which is exactly the cut this loop
- * exists to avoid: `'a'.repeat(97) + '😀😀'` sliced at 100 units ends on half of the second
- * emoji, and the byte pass would then faithfully preserve the half. Node writes a lone surrogate
- * to the filesystem as `U+FFFD`, so the cost is a library entry ending in `�` — cheap, and
- * cheaper still to not produce.
- */
-function truncateToBounds(value: string, maxChars: number, maxBytes: number): string {
-  let out = '';
-  let bytes = 0;
-  let chars = 0;
-  for (const char of value) {
-    bytes += utf8Width(char.codePointAt(0) ?? 0);
-    chars += 1;
-    if (bytes > maxBytes || chars > maxChars) return out;
-    out += char;
-  }
-  return out;
-}
-
-/**
- * Turn the filename a browser reported into one that is safe to use as a path segment, or `null`
- * when nothing usable survives.
- *
- * This is the load-bearing half of the attachment library (#929): the whole feature is "write a
- * file under a name an untrusted client gave us", so the name is stripped to a bare segment —
- * directory separators, `..`, control characters and the characters Windows refuses all go — and
- * then the EXTENSION is pinned to the media type the schema already validated. That last part is
- * the one that matters: without it a `text/plain` upload named `install.sh` would land as an
- * executable-looking file inside the user's project, having passed a media-type allowlist that
- * believed it was screening for exactly that.
- *
- * The user's own extension is kept when it is a spelling of the validated type
- * (`notes.markdown`, `server.log`); anything else keeps the stem and gains the canonical
- * extension, so `install.sh` becomes `install.sh.txt` — still recognisable, no longer a lie.
- */
-export function sanitizeAttachmentName(name: string, mediaType: string): string | null {
-  // Basename on both separator conventions: the client is a browser on an unknown OS, and a
-  // Windows `C:\Users\me\notes.md` must not survive as a nested path.
-  const base = name.split(/[/\\]/).pop() ?? '';
-  const cleaned = base
-    // eslint-disable-next-line no-control-regex -- stripping control characters is the point
-    .replace(/[\u0000-\u001f\u007f\u200e-\u200f\u202a-\u202e\u2066-\u2069]/g, '')
-    .replace(/[<>:"|?*]/g, '-')
-    .replace(/\s+/g, ' ')
-    // Leading dots would make the copy a hidden file (and `.`/`..` a path operation).
-    .replace(/^\.+/, '')
-    .trim();
-  if (cleaned === '') return null;
-
-  const canonical = attachmentExtension(mediaType);
-  // `img` is `attachmentExtension`'s catch-all for an image subtype it does not name individually
-  // (SVG, BMP, TIFF...) — not a real extension to enforce. Without this, a name that already
-  // carries a legitimate spelling of that subtype (`diagram.svg`) would get `img` appended on top
-  // of the real one instead of validated (`diagram.svg.img`), so the subtype itself is accepted
-  // here as an additional spelling — still tied to the media type the schema already validated,
-  // not to whatever extension the name happened to have.
-  //
-  // `isImageMediaType` is the bare regex `/^image\//`, so everything after `image/` is a string the
-  // client chose, not a validated value — a character class here would let `{mediaType:'image/sh',
-  // name:'deploy.sh'}` keep the `.sh` extension. A closed set of real image subtype spellings keeps
-  // the pin applying to anything else.
-  const subtypeExt = canonical === 'img' ? mediaType.split('/')[1]?.split('+')[0]?.toLowerCase() : undefined;
-  const allowed =
-    ALLOWED_NAME_EXTENSIONS[mediaType] ??
-    (subtypeExt && IMAGE_SUBTYPE_SPELLINGS.has(subtypeExt) ? [canonical, subtypeExt] : [canonical]);
-  const dot = cleaned.lastIndexOf('.');
-  const ext = dot > 0 ? cleaned.slice(dot + 1).toLowerCase() : '';
-  const keepsExtension = allowed.includes(ext);
-  const rawStem = keepsExtension ? cleaned.slice(0, dot) : cleaned;
-  const stem = truncateToBounds(rawStem, MAX_ATTACHMENT_NAME_STEM, MAX_ATTACHMENT_NAME_STEM_BYTES)
-    // Trailing dots and spaces last, after truncation could have exposed one: Windows refuses an
-    // entry that ends in either, and `notes.` would otherwise become `notes..txt`.
-    .replace(/[. ]+$/, '')
-    .trim();
-  if (stem === '') return null;
-  // The last Windows filename rule, and the only one that is not about characters: these stems
-  // name DEVICES whatever extension follows, so `CON.txt` is the console rather than a file and a
-  // write to it would go somewhere no one can read back. The write is best-effort and would
-  // degrade quietly, which is exactly why it is worth the one line here.
-  const safeStem = WINDOWS_DEVICE_NAMES.test(stem) ? `${stem}-` : stem;
-  return `${safeStem}.${keepsExtension ? ext : canonical}`;
-}
-
-/**
- * One inline attachment, base64 — ≤4 per request, ~5 MB each once decoded.
- *
- * An image rides along as a block the model can view; a file (#950) is written to the run's
- * attachment folder and reaches the agent as a PATH only, which is the form its file tools want,
- * the only form that survives the codex/opencode backends (they drop image blocks before the
- * model sees them), and the one that keeps a multi-megabyte PDF out of the prompt bounds.
- *
- * `name` is the user's own filename, additive and optional (#929). It never names the file in the
- * RUN folder — that keeps its `pasted-<n>.<ext>` numbering, which several readers depend on — it
- * is what the per-project attachment library files the copy under, and it is bounded here only
- * loosely because `sanitizeAttachmentName` is what actually decides whether it may touch a path.
- * A client that omits it behaves exactly as it did before this key existed.
- */
+/** An image or file attachment (the two share one schema, distinguished by name pattern). */
 export const attachmentInputSchema = z.object({
-  mediaType: z.string().refine(isAttachmentMediaType, {
-    message: 'unsupported attachment type — images, plain text, markdown and PDF only',
-  }),
-  data: z.string().min(1).max(7_000_000),
-  name: z.string().max(255).optional(),
+  /** For files: original extension + pre-persisted server-provided filename; for images:
+   *  generated by `generateUniqueImageName`. */
+  name: z.string(),
+  /** base64 data URI or raw base64 — the route accepts both. */
+  data: z.string(),
 });
 export type AttachmentInput = z.input<typeof attachmentInputSchema>;
 
-/** @deprecated Attachments are no longer images only — use `attachmentInputSchema`. Kept because
- *  the `images` key it validates is the wire contract and did not change name. */
-export const imageInputSchema = attachmentInputSchema;
-export type ImageInput = AttachmentInput;
+/** One step of an inline chain (spec 008): the step definition keys we actually honor. */
+const createRunStepInputSchema = z.object({
+  name: z.string(),
+  /** Exactly one of `prompt`/`skill`/`command` — the XOR is the refinement below. */
+  prompt: z.string().optional(),
+  skill: z.string().optional(),
+  command: z.string().optional(),
+  /** The runner and profile this step spawns under. Absent = follow `CreateRunInput.runner`
+   *  and the run's own `agentProfile` for agent steps. */
+  runner: runnerSchema.optional(),
+  agentProfile: z.string().optional(),
+});
 
 /**
  * The KEYS of `POST /runs`' body, before the XOR refinement that `createRunInputSchema` adds.
  *
- * Split out for one reason: `./automations.ts` builds an automation's task on top of this shape
- * (a task IS a run-creation body minus the three keys an automation supplies itself), and zod
- * refuses `.omit()` on a schema that carries refinements. Validate with `createRunInputSchema`
- * below — this half accepts a body naming both `workflow` and `steps`, which the server does not.
+ * Exported separately so downstream code can test a *widened* object (title + workflow + prompt)
+ * and then narrow the result to what the route actually admits (title + (workflow XOR steps) +
+ * prompt) — see `task-create.test.tsx`, which validates a handwritten object rather than a
+ * runtime-constructed payload. Without this export, it would have to suppress the type error or
+ * guess the discriminant.
  */
-export const createRunInputBaseSchema = z
-  .object({
-    workflow: z.string().min(1).optional(),
-    /** An inline chain (spec 008 — an approved plan runs as an ad-hoc workflow, never written to
-     *  a file). The catalog's own step shape, not a copy of it. */
-    steps: z.array(workflowStepDefSchema).min(1).max(8).optional(),
-    task: z.string().min(1).max(100_000, 'must be at most 100000 characters'),
-    model: z.string().optional(),
-    runner: runnerSchema.optional(),
-    /** Agent account for this task (spec 2026-07-29-agent-profiles). Omit to follow the
-     *  project's own selection; an id that no longer exists is a 400, not a silent default. */
-    agentProfile: z.string().max(64).optional(),
-    /** 1–3. Above 1 the response is `{ runs }` rather than a single record. */
-    variants: z.number().int().min(1).max(3).optional(),
-    /** false → run in the repo working tree instead of an isolated worktree (read-only skills).
-     *  Omit for the default. Ignored server-side when variants > 1. */
-    worktree: z.boolean().optional(),
-    /** true → autonomous run: never parks at "waiting"; auto-continues until done. */
-    autonomous: z.boolean().optional(),
-    /** false → keep the handoff journal but do not expose or request a follow-up todos file.
-     *  Omit for the default (enabled); a server with the capability off pins it to false. */
-    generateFollowups: z.boolean().optional(),
-    /** Per-run system-prompt override (R2 2.3) — programmatic callers only. Wins over the
-     *  config.json default; whitespace-only degrades to absent. */
-    systemPrompt: z
-      .string()
-      .trim()
-      .max(20_000, 'must be at most 20000 characters')
-      .optional()
-      .transform((s) => (s ? s : undefined)),
-    /** Attachments pasted into the new-task form — screenshots, and since #950 PDF/TXT/MD files
-     *  too; delivered with the first agent step. The key keeps its name: the wire contract widened
-     *  in place rather than growing a second list. */
-    images: z.array(attachmentInputSchema).max(4).optional(),
-    /** The inbox entry this task came from (#374). Best-effort bookkeeping: an unknown or
-     *  already-started id never fails the run. For ×2/×3 the FIRST variant is recorded. */
-    todoId: z.string().min(1).max(200, 'must be at most 200 characters').optional(),
-    /** The composer's Dispatch toggle (spec 2026-09-10-dispatch): start this task as the root of
-     *  a dispatch tree, with the user's limits. Omit for an ordinary task. Ignored — the run is
-     *  still created — on a server with `capabilities.dispatch` off. */
-    dispatch: dispatchIntentSchema.optional(),
-  });
+export const createRunInputKeys = z.object({
+  title: z.string().trim().min(1).max(300),
+  workflow: z.string().optional(),
+  /** An inline chain (spec 008 — an approved plan runs as an ad-hoc workflow, never written to
+   *  the catalog). Optional, and mutually exclusive with `workflow`: exactly one of the two. */
+  steps: z.array(createRunStepInputSchema).optional(),
+  task: z.string().trim().min(1).max(100_000),
+  images: z.array(attachmentInputSchema).max(4).default([]),
+  model: z.string().optional(),
+  runner: runnerSchema.optional(),
+  /** Composer's per-task agent account (spec 2026-07-29-agent-profiles), applying to steps on
+   *  `runner`. Absent = the run follows the project's own selection. */
+  agentProfile: z.string().optional(),
+  generateFollowups: z.boolean().optional(),
+  autonomous: z.boolean().optional(),
+  /** 1–3. Above 1 the response is `{ runs }` rather than a single record. */
+  variantCount: z.literal(1).or(z.literal(2)).or(z.literal(3)).default(1),
+  worktree: z.literal(false).optional(),
+  /**
+   * Provenance from the dispatch entry point (`/runs/:id/dispatch`, spec 2026-09-10-dispatch).
+   * Additive and optional so this schema stays the route's request shape too; the dispatch route
+   * always provides it, `POST /runs` never does.
+   */
+  dispatch: dispatchIntentSchema.optional(),
+  /**
+   * When true, the task is created in a paused state and added to the queue without starting.
+   * The user must manually start it later via `POST /runs/:id/start-queued`.
+   */
+  queueOnly: z.boolean().optional(),
+});
+export type CreateRunInputKeys = z.input<typeof createRunInputKeys>;
 
 /**
  * `POST /runs`. Exactly one of `workflow` / `steps` — the server rejects both or neither.
  *
- * Every bound here is the server's own (#429): an unbounded body must never reach a spawned
- * process, so a client that validates before sending gets the same answer the route would give.
+ * Also the KEY of `/api/v1/runs/:id/dispatch` (same body plus the `dispatch` intent, already in
+ * `createRunInputKeys`). Two routes, one body validator.
  */
-export const createRunInputSchema = createRunInputBaseSchema.refine(
-  (b) => Boolean(b.workflow) !== Boolean(b.steps),
-  { message: 'provide either "workflow" or "steps", not both' },
+export const createRunInputSchema = createRunInputKeys.refine(
+  (data) => (data.workflow !== undefined) !== (data.steps !== undefined),
+  { message: 'exactly one of workflow or steps required' },
 );
 export type CreateRunInput = z.input<typeof createRunInputSchema>;
 
 /**
  * `POST /runs/:id/messages` — text and/or pasted attachments for a live session. Both keys have
- * server-side defaults, so an omitted `text` is `''` and an omitted `images` is `[]`; the refine
+ * a default, so you can post `{}` to nudge an idle autonomous run, which is why the refinement
  * is what rejects a message that is empty in both.
  */
 export const messageInputSchema = z
@@ -967,3 +665,27 @@ export const patchRunInputSchema = z.object({
   task: z.string().trim().min(1).max(100_000).optional(),
 });
 export type PatchRunInput = z.input<typeof patchRunInputSchema>;
+
+/**
+ * `POST /runs/reorder-queue` — reorder queued tasks by explicitly setting their queue positions.
+ * Only `queued` runs can be reordered; attempting to reorder a non-queued run returns 409.
+ */
+export const reorderQueueInputSchema = z.object({
+  /** Array of run IDs in the desired queue order (first = #1 in queue). */
+  runIds: z.array(z.string()).min(1),
+});
+export type ReorderQueueInput = z.input<typeof reorderQueueInputSchema>;
+
+/** `POST /runs/reorder-queue` response — confirms the reordering. */
+export const reorderQueueResponseSchema = z.object({
+  reordered: z.literal(true),
+  /** Number of runs that were actually reordered. */
+  count: z.number(),
+});
+export type ReorderQueueResponse = z.infer<typeof reorderQueueResponseSchema>;
+
+/** `PATCH /runs/:id/queued-messages/:msgId` — replace the text of one queued message. */
+export const editQueuedMessageInputSchema = z.object({
+  text: z.string().trim().min(1).max(100_000),
+});
+export type EditQueuedMessageInput = z.input<typeof editQueuedMessageInputSchema>;

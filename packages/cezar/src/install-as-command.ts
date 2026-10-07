@@ -1,8 +1,8 @@
 /** The pure half of `scripts/install-as-command.mjs` (spec 013).
  *
  *  `npm run install-as-command` builds this checkout and puts a global
- *  `cezar`/`cez`/`cezar-cli`/`cezar-run` command on PATH pointing at THIS working tree —
- *  the local-dev equivalent of `npx cezar-cli`, with no publish. This module
+ *  `maestro`/`mro`/`maestro-cli`/`maestro-run` command on PATH pointing at THIS working tree —
+ *  the local-dev equivalent of `npx maestro-cli`, with no publish. This module
  *  owns the *decisions* (which npm command runs, where the shims land) so they
  *  are unit-testable; the `.mjs` script owns the spawning and exit codes.
  *  Kept dependency-free and side-effect-free (mirrors `pack-check.ts`).
@@ -12,12 +12,12 @@ import path from 'node:path';
 
 /** Scoped package name — both install flavors register globally under it, so
  *  uninstall is a single `npm rm --global` of this name regardless of flavor. */
-export const PACKAGE_NAME = '@open-mercato/cezar';
+export const PACKAGE_NAME = '@open-mercato/maestro';
 
-/** Every bin the main package installs. `cezar-cli` (spec 013) and `cezar-run` are added
- *  so a single link / global-install exposes the same names as `npx cezar-cli` and
- *  `npx cezar-run`. */
-export const BIN_NAMES = ['cezar', 'cez', 'cezar-cli', 'cezar-run'] as const;
+/** Every bin the main package installs. `maestro-cli` (spec 013) and `maestro-run` are added
+ *  so a single link / global-install exposes the same names as `npx maestro-cli` and
+ *  `npx maestro-run`. */
+export const BIN_NAMES = ['maestro', 'mro', 'maestro-cli', 'maestro-run'] as const;
 
 export type InstallMode = 'link' | 'global' | 'uninstall';
 

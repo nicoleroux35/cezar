@@ -5,7 +5,7 @@ import {
   trackerItemResultSchema,
   trackerItemsResultSchema,
   type TrackerAssociation,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 import { createJiraClient } from './jira.ts';
 
 const origin = 'https://acme.atlassian.net';

@@ -1,4 +1,4 @@
-import type { TrackerFailure, TrackerNotFound, TrackerInvalidCursor } from '@open-mercato/cezar-contract';
+import type { TrackerFailure, TrackerNotFound, TrackerInvalidCursor } from '@open-mercato/maestro-contract';
 
 export class TrackerRequestError extends Error {
   constructor(

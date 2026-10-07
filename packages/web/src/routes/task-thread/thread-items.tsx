@@ -20,7 +20,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'rea
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ZoomableImage } from '@/components/zoomable-image'
 import { Link } from '@/lib/project-router'
-import { isImageAttachmentName, type FileDiff, type ToolKind, type UiToolItem } from '@open-mercato/cezar-api-client'
+import { isImageAttachmentName, type FileDiff, type ToolKind, type UiToolItem } from '@open-mercato/maestro-api-client'
 import { cn } from '@/lib/utils'
 
 import { parseReviewMessage } from './diff-comments'

@@ -119,6 +119,12 @@ export const BACKEND_MODEL_MAP: Readonly<Record<AgentBackend, BackendModelMap>> 
   // the run (#405's invariant). Rejecting a bare id the way opencode and pi do would reject the
   // only form Copilot accepts.
   copilot: { defaultProvider: 'github' },
+  // Kilo uses the same multi-provider approach as opencode
+  kilo: {},
+  // Gemini uses Google's own models, optionally via Vertex
+  gemini: { defaultProvider: 'google' },
+  // Antigravity uses Google's models
+  antigravity: { defaultProvider: 'google' },
 };
 
 const SLASH = '/';

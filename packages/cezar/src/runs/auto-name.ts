@@ -153,7 +153,7 @@ export function postValidateTitle(title: string, refNumber?: number): string {
 export async function generateRunName(repoRoot: string, ctx: NamerContext): Promise<NameResult | null> {
   try {
     const config = await loadConfig(repoRoot);
-    const runner = createRunner(config.defaultRunner);
+    const runner = await createRunner(config.defaultRunner);
     const model = config.defaultRunner === 'claude' ? config.namerModel : undefined;
     // Name under the project's own agent account (spec 2026-07-29-agent-profiles) — naming is
     // a model call like any other, and billing it to the personal subscription for a work

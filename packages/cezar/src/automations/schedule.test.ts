@@ -9,7 +9,7 @@ import {
   zonedParts,
   zonedWallTimeToUtc,
   type AutomationSchedule,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 
 const WARSAW = 'Europe/Warsaw';
 const NEW_YORK = 'America/New_York';

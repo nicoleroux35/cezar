@@ -1,0 +1,73 @@
+[
+  {
+    "type": "session.started",
+    "backend": "opencode",
+    "sessionId": "sess_abc123",
+    "timestamp": 1696600000000
+  },
+  {
+    "type": "turn.started",
+    "timestamp": 1696600001000
+  },
+  {
+    "type": "item.delta",
+    "itemId": "part_1",
+    "delta": {
+      "type": "text",
+      "text": "I'll help you with that task."
+    },
+    "timestamp": 1696600002000
+  },
+  {
+    "type": "item.created",
+    "itemId": "tool_1",
+    "item": {
+      "id": "tool_1",
+      "type": "tool",
+      "name": "bash",
+      "phase": "pending",
+      "input": {
+        "command": "ls -la"
+      }
+    },
+    "timestamp": 1696600003000
+  },
+  {
+    "type": "item.updated",
+    "itemId": "tool_1",
+    "updates": {
+      "phase": "completed",
+      "output": "total 24\ndrwxr-xr-x  5 user  staff  160 Oct  6 10:00 .\ndrwxr-xr-x  8 user  staff  256 Oct  6 09:55 ..\n"
+    },
+    "timestamp": 1696600004000
+  },
+  {
+    "type": "item.delta",
+    "itemId": "part_2",
+    "delta": {
+      "type": "text",
+      "text": "The directory listing shows 5 items."
+    },
+    "timestamp": 1696600005000
+  },
+  {
+    "type": "usage.updated",
+    "usage": {
+      "inputTokens": 150,
+      "outputTokens": 45,
+      "reasoningTokens": 0
+    },
+    "timestamp": 1696600006000
+  },
+  {
+    "type": "usage.updated",
+    "usage": {
+      "costUsd": 0.0025
+    },
+    "timestamp": 1696600007000
+  },
+  {
+    "type": "turn.ended",
+    "timestamp": 1696600008000
+  }
+]

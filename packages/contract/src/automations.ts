@@ -3,7 +3,7 @@ import { trackerAssociationSchema, trackerFailureSchema } from './tracker.ts';
 // An automation launches an ORDINARY cezar task, so the task it carries is the composer's own
 // run-creation input minus the keys an automation supplies itself. Consumed rather than
 // redeclared — the same one-way direction `./runs.ts` takes towards `./workflows.ts`.
-import { createRunInputBaseSchema, runStatusSchema } from './runs.ts';
+import { createRunInputKeys, runStatusSchema } from './runs.ts';
 import { DISPATCH_MAX_SUBTASKS, dispatchKindSchema } from './dispatch.ts';
 import { automationScheduleSchema } from './automation-schedule.ts';
 
@@ -122,8 +122,8 @@ export type AutomationDispatch = z.infer<typeof automationDispatchSchema>;
  *    which makes the key REQUIRED (`string | undefined`) on the output side; the automation route
  *    stores and answers it plainly, so it stays optional.
  */
-export const automationTaskSchema = createRunInputBaseSchema
-  .omit({ task: true, images: true, todoId: true, systemPrompt: true })
+export const automationTaskSchema = createRunInputKeys
+  .omit({ task: true, images: true })
   .extend({
     /** The prompt template. `{{github.number}}`, `{{github.title}}`, `{{github.url}}` and
      *  `{{github.labels}}` are substituted per match; GitHub content is appended as untrusted

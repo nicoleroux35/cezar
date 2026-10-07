@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { hasAccountChoice, useAgentAccounts } from '@/api/agent-accounts'
 import { useConfig, useProviderStatus, useRunnerModels } from '@/api/queries'
-import type { CreateRunInput, Runner } from '@open-mercato/cezar-api-client'
+import type { CreateRunInput, Runner } from '@open-mercato/maestro-api-client'
 import { PickerPill, RunnerPill, type RunnerAccountChoice } from '@/components/picker-pill'
 import { usableRunners } from '@/lib/provider-status'
 import {
@@ -257,7 +257,7 @@ export function EnginePills({
   const { runner, model, runners, canRun, modelsLocked } = resolved
   const config = useConfig()
   const catalog = useRunnerModels(runner)
-  const models = modelsForRunner(runner, catalog.data, [pick.model, config.data?.defaultModels?.[runner]])
+  const models = modelsForRunner(runner, catalog.data, [pick.model, config.data?.defaultModels?.[runner as keyof typeof config.data.defaultModels]])
   const unavailable = disabled || !canRun
   const accountChoices = accounts ? resolved.accounts : []
   // Shown when there is a choice to make: more than one runner, or — where accounts are offered —

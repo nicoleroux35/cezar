@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
-import { createCezarClient } from '@open-mercato/cezar-api-client';
+import { createMaestroClient } from '@open-mercato/maestro-api-client';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
@@ -26,7 +26,7 @@ import { createApp } from './server.ts';
  * settles (see the spec's open question about the server becoming its own workspace package),
  * a consumer-side copy of this test belongs wherever the type edge lands.
  */
-describe('createCezarClient<AppType>', () => {
+describe('createMaestroClient<AppType>', () => {
   const savedHome = process.env.CEZ_HOME;
   const savedDryRun = process.env.CEZ_DRY_RUN;
   let home: string;
@@ -34,7 +34,7 @@ describe('createCezarClient<AppType>', () => {
   let store: RunStore;
   let contexts: ProjectContexts;
   let app: ReturnType<typeof createApp>;
-  let client: ReturnType<typeof createCezarClient<AppType>>;
+  let client: ReturnType<typeof createMaestroClient<AppType>>;
 
   beforeEach(async () => {
     home = mkdtempSync(join(tmpdir(), 'cez-typed-home-'));
@@ -54,7 +54,7 @@ describe('createCezarClient<AppType>', () => {
       version: '0.0.0-test',
       contexts,
     });
-    client = createCezarClient<AppType>({
+    client = createMaestroClient<AppType>({
       // Any absolute origin will do — the custom fetch below never leaves the process. The
       // `host` header is what the request-origin guard (#426) checks, and it has to look like
       // the loopback deployment a real cockpit is.

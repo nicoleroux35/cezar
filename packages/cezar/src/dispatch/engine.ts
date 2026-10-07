@@ -13,7 +13,7 @@ import {
   type DispatchPendingReport,
   type DispatchReport,
   type RunDispatch,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 import type { RunRecord } from '../runs/store.ts';
 
 /**

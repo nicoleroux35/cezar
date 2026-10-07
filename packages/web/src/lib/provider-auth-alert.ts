@@ -2,9 +2,9 @@ import type {
   ProviderId,
   ProviderStatusResponse,
   WorkspaceUiState,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 
-const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'junie', 'opencode', 'cursor', 'pi', 'copilot']
+const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'junie', 'opencode', 'cursor', 'pi', 'copilot', 'kilo', 'gemini', 'antigravity']
 const LABELS: Record<ProviderId, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
@@ -13,6 +13,9 @@ const LABELS: Record<ProviderId, string> = {
   pi: 'pi',
   junie: 'Junie',
   copilot: 'GitHub Copilot CLI',
+  kilo: 'Kilo',
+  gemini: 'Gemini',
+  antigravity: 'Antigravity',
 }
 
 export interface ProviderAuthIncident {
@@ -32,7 +35,7 @@ export function providerAuthDismissals(value: unknown): ProviderAuthDismissals {
   for (const provider of PROVIDERS) {
     const id = record[provider]
     if (typeof id === 'string' && id.length > 0 && id.length <= 128) {
-      dismissals[provider] = id
+      dismissals[provider as keyof ProviderAuthDismissals] = id
     }
   }
   return dismissals

@@ -34,12 +34,17 @@ describe('parseRemote', () => {
 
 describe('forgeKindOfRemote', () => {
   // The registry probe's classification (#698) — same host table as resolveForge,
-  // but string-only: no driver, no repo root, no `gh`.
+  // but string-only: no driver, no repo root, no CLI.
   it.each([
     ['https://github.com/acme/demo.git', 'github'],
     ['git@github.com:acme/demo.git', 'github'],
-    ['git@gitlab.com:acme/demo.git', null],
-    ['https://git.example.com/acme/demo.git', null],
+    ['git@gitlab.com:acme/demo.git', 'gitlab'],
+    ['https://gitlab.com/group/project.git', 'gitlab'],
+    ['https://gitlab.example.com/acme/demo.git', 'gitlab'], // self-hosted GitLab
+    ['git@codeberg.org:user/repo.git', 'forgejo'],
+    ['https://codeberg.org/user/repo.git', 'forgejo'],
+    ['https://gitea.example.com/acme/demo.git', 'gitea'], // self-hosted Gitea
+    ['https://git.example.com/acme/demo.git', null], // unknown
     ['/srv/git/demo.git', null],
     [undefined, null],
   ])('classifies %s as %s', (remote, expected) => {
@@ -56,11 +61,27 @@ describe('resolveForge', () => {
     expect(resolveForge(info('git@github.com:acme/demo.git'))?.kind).toBe('github');
   });
 
-  it('returns null for an unknown forge host (GitLab lands here later)', () => {
-    expect(resolveForge(info('git@gitlab.com:acme/demo.git'))).toBeNull();
+  it('maps a gitlab.com remote to the GitLab driver', () => {
+    expect(resolveForge(info('git@gitlab.com:acme/demo.git'))?.kind).toBe('gitlab');
   });
 
-  it('returns null for a self-hosted host', () => {
+  it('maps a self-hosted gitlab host to the GitLab driver', () => {
+    expect(resolveForge(info('https://gitlab.example.com/acme/demo.git'))?.kind).toBe('gitlab');
+  });
+
+  it('maps a codeberg.org remote to the Forgejo driver', () => {
+    expect(resolveForge(info('https://codeberg.org/user/repo.git'))?.kind).toBe('forgejo');
+  });
+
+  it('maps a self-hosted gitea host to the Gitea driver', () => {
+    expect(resolveForge(info('https://gitea.company.com/acme/demo.git'))?.kind).toBe('gitea');
+  });
+
+  it('maps a self-hosted forgejo host to the Forgejo driver', () => {
+    expect(resolveForge(info('https://forgejo.example.org/acme/demo.git'))?.kind).toBe('forgejo');
+  });
+
+  it('returns null for a generic self-hosted host', () => {
     expect(resolveForge(info('https://git.example.com/acme/demo.git'))).toBeNull();
   });
 
@@ -86,6 +107,48 @@ describe('GitHub driver viewUrl', () => {
     ['pr', 128, 'https://github.com/acme/demo/pull/128'],
     ['branch', 'feat/cockpit ui', 'https://github.com/acme/demo/tree/feat/cockpit%20ui'],
     ['commit', 'abc1234', 'https://github.com/acme/demo/commit/abc1234'],
+  ] as const)('%s → %s', (kind, ref, expected) => {
+    expect(driver.viewUrl(kind, ref)).toBe(expected);
+  });
+});
+
+describe('GitLab driver viewUrl', () => {
+  const driver = resolveForge(info('git@gitlab.com:acme/demo.git'))!;
+
+  it.each([
+    ['repo', 'x', 'https://gitlab.com/acme/demo'],
+    ['issue', 142, 'https://gitlab.com/acme/demo/-/issues/142'],
+    ['pr', 128, 'https://gitlab.com/acme/demo/-/merge_requests/128'],
+    ['branch', 'feat/ui', 'https://gitlab.com/acme/demo/-/tree/feat/ui'],
+    ['commit', 'abc1234', 'https://gitlab.com/acme/demo/-/commit/abc1234'],
+  ] as const)('%s → %s', (kind, ref, expected) => {
+    expect(driver.viewUrl(kind, ref)).toBe(expected);
+  });
+});
+
+describe('Gitea driver viewUrl', () => {
+  const driver = resolveForge(info('https://gitea.example.com/acme/demo.git'))!;
+
+  it.each([
+    ['repo', 'x', 'https://gitea.example.com/acme/demo'],
+    ['issue', 142, 'https://gitea.example.com/acme/demo/issues/142'],
+    ['pr', 128, 'https://gitea.example.com/acme/demo/pulls/128'],
+    ['branch', 'main', 'https://gitea.example.com/acme/demo/src/branch/main'],
+    ['commit', 'abc1234', 'https://gitea.example.com/acme/demo/commit/abc1234'],
+  ] as const)('%s → %s', (kind, ref, expected) => {
+    expect(driver.viewUrl(kind, ref)).toBe(expected);
+  });
+});
+
+describe('Forgejo driver viewUrl', () => {
+  const driver = resolveForge(info('https://codeberg.org/user/repo.git'))!;
+
+  it.each([
+    ['repo', 'x', 'https://codeberg.org/user/repo'],
+    ['issue', 142, 'https://codeberg.org/user/repo/issues/142'],
+    ['pr', 128, 'https://codeberg.org/user/repo/pulls/128'],
+    ['branch', 'main', 'https://codeberg.org/user/repo/src/branch/main'],
+    ['commit', 'abc1234', 'https://codeberg.org/user/repo/commit/abc1234'],
   ] as const)('%s → %s', (kind, ref, expected) => {
     expect(driver.viewUrl(kind, ref)).toBe(expected);
   });

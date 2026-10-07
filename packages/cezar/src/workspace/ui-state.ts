@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import type { WorkspaceUiState } from '@open-mercato/cezar-contract';
+import type { WorkspaceUiState } from '@open-mercato/maestro-contract';
 import { workspaceUiStatePath } from '../paths.ts';
 import { atomicWriteJsonSync } from './config.ts';
 

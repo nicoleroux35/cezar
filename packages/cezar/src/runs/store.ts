@@ -13,7 +13,7 @@ import { MAX_REF } from './task-refs.ts';
 import { workflowDefSchema } from '../workflows/types.ts';
 // A contract VALUE, like `workspaceUiStateSchema` in `workspace/migrations.ts`: the persisted
 // `dispatch` object and its wire half are literally the same schema, so they cannot drift.
-import { dispatchSchema, trackerAssociationSchema, trackerAutomationEventSchema } from '@open-mercato/cezar-contract';
+import { dispatchSchema, trackerAssociationSchema, trackerAutomationEventSchema } from '@open-mercato/maestro-contract';
 
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 
@@ -284,6 +284,12 @@ export const runRecordSchema = z.object({
    *  Persisted so a restart cannot reset a loop back to zero. */
   autoResumeAttempts: z.number().int().min(0).optional().catch(undefined),
   createdAt: z.string(),
+  /** Custom queue position timestamp — when set, overrides createdAt for queue ordering.
+   *  Allows manual reordering of queued tasks. Absent on runs that use their natural creation order. */
+  queuePosition: z.string().optional(),
+  /** When true, this run is paused in the queue and will not start automatically.
+   *  User must manually start it via `POST /runs/:id/start-queued`. Absent = not paused. */
+  paused: z.boolean().optional(),
   startedAt: z.string().optional(),
   finishedAt: z.string().optional(),
   tokensUsed: z.number(),
@@ -1235,6 +1241,32 @@ export class RunStore extends EventEmitter {
     delete run.seenAt;
     this.touch(run);
     return run;
+  }
+
+  /**
+   * Reorder queued tasks by explicitly setting their queue positions.
+   * Each run receives a queuePosition timestamp that determines its order (older = higher priority).
+   * Only `queued` runs can be reordered; returns the count of runs that were actually reordered.
+   */
+  reorderQueue(runIds: string[]): number {
+    let count = 0;
+    const baseTime = Date.now();
+
+    for (let i = 0; i < runIds.length; i++) {
+      const runId = runIds[i];
+      if (!runId) continue;
+      const run = this.runs.get(runId);
+      if (!run) continue;
+      if (run.status !== 'queued') continue;
+      
+      // Set queuePosition with decreasing timestamps so first in array = #1 in queue
+      // Subtract index in milliseconds to ensure stable ordering
+      run.queuePosition = new Date(baseTime - (runIds.length - i) * 1000).toISOString();
+      this.touch(run);
+      count++;
+    }
+    
+    return count;
   }
 
   /** Bulk mark-read: stamp every currently-unread finished run; returns the count.

@@ -5,7 +5,7 @@ import type {
   PlanResponse,
   Runner,
   WorkflowStepDef,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 
 import { runnerOverride } from './new-task-form'
 

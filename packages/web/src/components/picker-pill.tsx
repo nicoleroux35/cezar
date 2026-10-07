@@ -1,7 +1,7 @@
 import { SearchIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { DEFAULT_AGENT_ACCOUNT_ID, type Runner } from '@open-mercato/cezar-api-client'
+import { DEFAULT_AGENT_ACCOUNT_ID, type Runner } from '@open-mercato/maestro-api-client'
 import {
   DropdownMenu,
   DropdownMenuContent,

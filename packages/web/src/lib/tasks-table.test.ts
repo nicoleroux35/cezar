@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ProcessUsage, RunRecord } from '@open-mercato/cezar-api-client'
+import type { ProcessUsage, RunRecord } from '@open-mercato/maestro-api-client'
 import {
   compareGroups,
   filterRuns,

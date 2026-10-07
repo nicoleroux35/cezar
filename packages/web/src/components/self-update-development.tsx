@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { useRefreshSelfUpdateDevelopment, useSelfUpdateDevelopment } from '@/api/queries'
-import type { CezarCheckout, PullBuild, SelfUpdateStatus } from '@open-mercato/cezar-api-client'
+import type { CezarCheckout, PullBuild, SelfUpdateStatus } from '@open-mercato/maestro-api-client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

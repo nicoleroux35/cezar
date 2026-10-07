@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { activeNavItem, activeNavPath, visibleNavItems, type NavItem } from '@/components/nav-items'
-import type { TrackerKind } from '@open-mercato/cezar-api-client'
+import type { TrackerKind } from '@open-mercato/maestro-api-client'
 import {
   DEFAULT_SIDEBAR_WIDTH,
   MAX_SIDEBAR_WIDTH,

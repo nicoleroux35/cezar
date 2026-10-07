@@ -9,11 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createUsageStore, type UsageStore } from './events'
 import { GlobalEventsProvider, useGlobalEvents, useRunUsage, useUsage } from './global-events'
-import { setApiScope } from '@open-mercato/cezar-api-client'
+import { setApiScope } from '@open-mercato/maestro-api-client'
 import { createQueryClient } from './query-client'
 import { queryKeys, useProviderStatus, useRuns, useTodos, workspaceQueryKeys } from './queries'
 import { RUN_EVENT_BATCH_MS } from './run-events'
-import type { ApiRun, ProviderStatusResponse, RunRecord } from '@open-mercato/cezar-api-client'
+import type { ApiRun, ProviderStatusResponse, RunRecord } from '@open-mercato/maestro-api-client'
 
 /**
  * jsdom ships no EventSource at all (it is not in its supported-API set), so there is nothing to

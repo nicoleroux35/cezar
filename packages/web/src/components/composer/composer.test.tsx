@@ -4,7 +4,7 @@ import * as React from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { Skill } from '@open-mercato/cezar-api-client'
+import type { Skill } from '@open-mercato/maestro-api-client'
 import { resetToasts, Toaster } from '@/components/ui/toaster'
 
 import {

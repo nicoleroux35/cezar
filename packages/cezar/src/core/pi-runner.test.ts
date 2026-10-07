@@ -18,8 +18,8 @@ import { buildPiArgs, PiRunner } from './pi-runner.js';
  */
 
 describe('createRunner returns the pi runner', () => {
-  it('maps the "pi" id to a PiRunner with backend "pi"', () => {
-    const runner = createRunner('pi');
+  it('maps the "pi" id to a PiRunner with backend "pi"', async () => {
+    const runner = await createRunner('pi');
     expect(runner).toBeInstanceOf(PiRunner);
     expect(runner.backend).toBe('pi');
   });

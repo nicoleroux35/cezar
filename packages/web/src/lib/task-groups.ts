@@ -1,4 +1,4 @@
-import type { RunRecord } from '@open-mercato/cezar-api-client'
+import type { RunRecord } from '@open-mercato/maestro-api-client'
 import { isAwaitingAnswer, isNeedsYouStatus } from './attention'
 
 /**
@@ -178,15 +178,19 @@ export function groupTitle(run: Pick<RunRecord, 'title'>): string {
 /**
  * Queue positions: the `#2` a queued row shows instead of an age.
  *
- * Computed over the *active* queued runs by creation order, which is the order the engine will
- * actually start them in — never over the filtered/sorted view, or the number would change as
- * the sidebar re-sorted underneath it. Archived runs are excluded for the same reason: they are
- * not in the queue.
+ * Computed over the *active* queued runs by their queue order (queuePosition ?? createdAt),
+ * which is the order the engine will actually start them in — never over the filtered/sorted view,
+ * or the number would change as the sidebar re-sorted underneath it. Archived runs are excluded
+ * for the same reason: they are not in the queue.
  */
 export function queuePositions(runs: readonly RunRecord[]): Map<string, number> {
   const queued = runs
     .filter((run) => !run.archived && run.status === 'queued')
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .sort((a, b) => {
+      const aTime = a.queuePosition ?? a.createdAt
+      const bTime = b.queuePosition ?? b.createdAt
+      return aTime.localeCompare(bTime)
+    })
   return new Map(queued.map((run, index) => [run.id, index + 1]))
 }
 
@@ -230,7 +234,9 @@ export function sortRuns(runs: readonly RunRecord[], view: ListView): RunRecord[
         if (order !== 0) return order
       }
       if (a.status === 'queued' && b.status === 'queued') {
-        return a.createdAt.localeCompare(b.createdAt)
+        const aTime = a.queuePosition ?? a.createdAt
+        const bTime = b.queuePosition ?? b.createdAt
+        return aTime.localeCompare(bTime)
       }
       return b.createdAt.localeCompare(a.createdAt)
     })

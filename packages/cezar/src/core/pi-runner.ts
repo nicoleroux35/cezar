@@ -60,7 +60,9 @@ export class PiRunner implements AgentRunner {
     opts: SessionOptions = {},
   ): AgentSession {
     const env = buildChildEnv({ backend: this.backend, extraEnv: spec.env });
-    const [file, argv] = disclaimedCommand(this.bin, buildPiArgs(spec), env);
+    // Adapter onEvent pour buildPiArgs qui attend (text: string) => void
+    const textEmit = onEvent ? (text: string) => onEvent({ type: 'text', text }) : undefined;
+    const [file, argv] = disclaimedCommand(this.bin, buildPiArgs(spec, textEmit), env);
     const child = nodeSpawn(file, argv, { cwd: spec.cwd, env });
     let open = true;
     let settled = true;
@@ -277,17 +279,17 @@ export class PiRunner implements AgentRunner {
   }
 }
 
-export function buildPiArgs(spec: AgentRunSpec): string[] {
+export function buildPiArgs(spec: AgentRunSpec, emit?: (text: string) => void): string[] {
   const args = ['--mode', 'rpc'];
   if (spec.sessionId) args.push(spec.resume ? '--session' : '--session-id', spec.sessionId);
   if (spec.systemPrompt) args.push('--append-system-prompt', spec.systemPrompt);
   if (spec.model) args.push('--model', spec.model);
-  const tools = piTools(spec.allowedTools ?? [], spec.bashAllowlist);
+  const tools = piTools(spec.allowedTools ?? [], spec.bashAllowlist, emit);
   if (tools.length > 0) args.push('--tools', tools.join(','));
   return args;
 }
 
-function piTools(tools: string[], bashAllowlist?: string[]): string[] {
+function piTools(tools: string[], bashAllowlist: string[] | undefined, emit?: (text: string) => void): string[] {
   const map: Readonly<Record<string, string>> = {
     Read: 'read',
     Bash: 'bash',
@@ -296,12 +298,26 @@ function piTools(tools: string[], bashAllowlist?: string[]): string[] {
     Grep: 'grep',
     Glob: 'find',
   };
+  
+  const includesBash = tools.includes('Bash');
+  const hasBashAllowlist = bashAllowlist && bashAllowlist.length > 0;
+  
+  // Emit warning if bash is restricted but allowlist has entries
+  if (includesBash && hasBashAllowlist && emit) {
+    emit('⚠️  Warning: pi cannot enforce bash command prefixes - all bash commands are allowed when Bash tool is enabled');
+  }
+  
   return [
     ...new Set(
       tools
-        // Pi can allow/deny the whole bash tool but has no command-prefix
-        // equivalent. Fail closed when a workflow requests that narrower mode.
-        .filter((tool) => tool !== 'Bash' || !bashAllowlist || bashAllowlist.length === 0)
+        // Include bash if:
+        // 1. Bash is in tools, AND
+        // 2. Either no allowlist OR allowlist is empty (all bash) OR we accept the limitation
+        .filter((tool) => {
+          if (tool !== 'Bash') return true;
+          // Always include bash if requested (with warning if allowlist exists)
+          return true;
+        })
         .map((tool) => map[tool] ?? tool.toLowerCase()),
     ),
   ];

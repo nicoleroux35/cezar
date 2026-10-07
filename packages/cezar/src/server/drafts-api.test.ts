@@ -9,7 +9,7 @@ import {
   type DraftEntry,
   type DraftImage,
   type RunDraftsResponse,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import { draftsRoot } from '../runs/drafts.ts';
 import type { RunManager } from '../workflows/run.ts';

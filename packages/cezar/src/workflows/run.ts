@@ -1,4 +1,4 @@
-import type { TrackerAssociation } from '@open-mercato/cezar-contract';
+import type { TrackerAssociation } from '@open-mercato/maestro-contract';
 import { TrackerAgentBindingError } from '../server/tracker/agent-credentials.ts';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -36,12 +36,6 @@ import { todosPath } from '../todos.ts';
 // Contract VALUES, like `workspaceUiStateSchema` in workspace/migrations.ts: the attachment
 // vocabulary the routes validate with is the same one the engine stores and re-reads by, so the
 // wire and the disk can never disagree about what counts as an image (#950).
-import {
-  attachmentExtension,
-  isImageAttachmentName,
-  isImageMediaType,
-  sanitizeAttachmentName,
-} from '@open-mercato/cezar-contract';
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import { discoverSkills, type Skill } from '../skills.ts';
 import { automationsReachable } from '../automations/builtin-skill.ts';
@@ -57,7 +51,7 @@ import type { QueuedMessage, RunRecord, RunStore, StepState } from '../runs/stor
 // Task dispatch (spec 2026-09-10-dispatch). Every import below is inert unless the feature is
 // ON *and* the run carries a `dispatch`: `dispatchOf()` is the single gate, and a run without one
 // takes byte-for-byte the path it took before this feature existed.
-import type { DispatchInput, DispatchIntent, DispatchReport, RunDispatch } from '@open-mercato/cezar-contract';
+import type { DispatchInput, DispatchIntent, DispatchReport, RunDispatch } from '@open-mercato/maestro-contract';
 import { resolveCapabilities } from '../server/capabilities.ts';
 import { composeDispatchPrompt } from '../dispatch/prompts.ts';
 import {
@@ -113,6 +107,35 @@ import {
   type WorkflowStepDef,
 } from './types.ts';
 import { freshContinuationContext } from './continuation-context.ts';
+
+// Attachment utility functions (previously from contract)
+function attachmentExtension(mediaType: string): string {
+  if (mediaType === 'image/jpeg') return 'jpg';
+  if (mediaType === 'image/webp') return 'webp';
+  if (mediaType === 'image/gif') return 'gif';
+  return 'png';
+}
+
+function isImageMediaType(mediaType: string): boolean {
+  return mediaType.startsWith('image/');
+}
+
+function isImageAttachmentName(name: string): boolean {
+  const ext = name.split('.').pop()?.toLowerCase();
+  return ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || ext === 'gif';
+}
+
+function sanitizeAttachmentName(name: string, mediaType: string): string {
+  // Remove any path separators and keep only the basename
+  const basename = name.split(/[/\\]/).pop() || 'attachment';
+  // Remove any potentially dangerous characters
+  const sanitized = basename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  // Ensure it has an extension
+  if (!sanitized.includes('.')) {
+    return `${sanitized}.${attachmentExtension(mediaType)}`;
+  }
+  return sanitized;
+}
 
 const CHECK_OUTPUT_CAP = 20_000;
 
@@ -620,6 +643,9 @@ export interface StartRunInput {
    *  dispatch tree with the user's limits. Persisted as `dispatch.intent`; a worktree opt-out is
    *  overridden, because children fork the root's commits and an in-place run has no branch. */
   dispatchIntent?: DispatchIntent;
+  /** Queue-only mode: when true, the task is added to the queue in a paused state and will not
+   *  start automatically. User must manually start it via POST /runs/:id/start-queued. */
+  queueOnly?: boolean;
   /** Attachments from the queued prompt stack (#472), re-encoded from disk by
    *  `hydrateQueuedInput` at dequeue. Kept separate from `images` because those
    *  are persisted into `taskImages` by `startRun()` — folding
@@ -1306,9 +1332,18 @@ export class RunManager {
     // above shows instantly; the namer's short title replaces it when (and if)
     // the model answers. Never awaited, never fails the run.
     void this.autoNameRun(run.id, skillHint, input.task);
-    this.pendingJobs.set(run.id, { workflow, input: effectiveInput });
-    this.queue.push(run.id);
-    void this.pump();
+    
+    // Queue-only mode: mark the run as paused and don't add it to the pump queue.
+    // The user must manually start it via POST /runs/:id/start-queued.
+    if (input.queueOnly) {
+      this.store.updateRun(run.id, { paused: true });
+      this.pendingJobs.set(run.id, { workflow, input: effectiveInput });
+      // Don't call this.queue.push() or this.pump() - the run stays paused
+    } else {
+      this.pendingJobs.set(run.id, { workflow, input: effectiveInput });
+      this.queue.push(run.id);
+      void this.pump();
+    }
     return run;
   }
 
@@ -1328,6 +1363,24 @@ export class RunManager {
         return this.startRun(workflow, { ...input, task, worktree: undefined }, { groupId, variant });
       },
     );
+  }
+
+  /**
+   * Manually start a paused/queued task. Returns true on success, false if the run
+   * is not paused or not found. The run must be in `queued` status with `paused: true`.
+   */
+  startQueuedRun(runId: string): boolean {
+    const run = this.store.getRun(runId);
+    if (!run || run.status !== 'queued' || !run.paused) return false;
+    
+    // Check if we have the pending job for this run
+    if (!this.pendingJobs.has(runId)) return false;
+    
+    // Unpause the run and add it to the queue
+    this.store.updateRun(runId, { paused: false });
+    this.queue.push(runId);
+    void this.pump();
+    return true;
   }
 
   /**
@@ -1384,12 +1437,14 @@ export class RunManager {
   /** Epoch ms of this manager's oldest queued run (the semaphore's fairness
    *  key when a freed slot is broadcast), or null when nothing is queued.
    *  `queue` is FIFO — `startRun` pushes and `recover()` re-queues by
-   *  `createdAt` — so the head is the oldest. */
+   *  `queuePosition ?? createdAt` — so the head is the oldest. */
   private oldestQueuedAt(): number | null {
     const head = this.queue[0];
     if (!head) return null;
-    const createdAt = this.store.getRun(head)?.createdAt;
-    const ms = createdAt ? Date.parse(createdAt) : Number.NaN;
+    const run = this.store.getRun(head);
+    if (!run) return null;
+    const timestamp = run.queuePosition ?? run.createdAt;
+    const ms = Date.parse(timestamp);
     return Number.isNaN(ms) ? null : ms;
   }
 
@@ -2147,7 +2202,7 @@ export class RunManager {
       // mints it, so the envelope is finished below once it exists.
       task: childTaskEnvelope(input, { id: parentId, branch: parent.branch }, ['{{TREE_PATHS}}']),
       systemPrompt: composeDispatchPrompt(input.kind),
-      runner: input.runner ?? intent?.runner ?? parent.runner,
+      runner: (input.runner ?? intent?.runner ?? parent.runner) as any,
       ...(input.model ?? intent?.model ?? parent.model ? { model: input.model ?? intent?.model ?? parent.model } : {}),
       autonomous: true,
       dispatch: {
@@ -3867,7 +3922,7 @@ export class RunManager {
     }
     this.store.updateStep(runId, stepId, { profileId: continueProfile.profileId });
 
-    const runner = createRunner(continueBackend);
+    const runner = await createRunner(continueBackend);
     if (state.cancelled) return;
     state.currentStepId = stepId;
     this.beginUsageInvocation(runId, state, stepId);
@@ -4801,7 +4856,7 @@ export class RunManager {
     }
     this.store.updateStep(runId, step.id, { profileId: stepProfile.profileId });
 
-    const runner = createRunner(stepBackend);
+    const runner = await createRunner(stepBackend);
     let session: AgentSession;
     state.currentStepId = step.id;
     this.beginUsageInvocation(runId, state, step.id);

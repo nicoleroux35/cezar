@@ -3,7 +3,7 @@ import { PackageCheckIcon } from 'lucide-react'
 
 import { putWorkspaceConfig } from '@/api/client'
 import { useProjects, useSkillsUpdate, useWorkspaceConfig, workspaceQueryKeys } from '@/api/queries'
-import type { SetWorkspaceConfigInput, WorkspaceConfigResponse } from '@open-mercato/cezar-api-client'
+import type { SetWorkspaceConfigInput, WorkspaceConfigResponse } from '@open-mercato/maestro-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'

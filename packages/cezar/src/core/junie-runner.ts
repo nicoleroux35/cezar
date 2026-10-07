@@ -59,15 +59,12 @@ export interface JunieRunnerOptions {
  * it once during bootstrap, best-effort: a real auth failure still surfaces
  * clearly from the first `session/prompt` error.
  *
- * Zero-config full-auto: `session/set_config_option(brave_mode, 'on')` right
- * after `session/new`, matching codex's `danger-full-access`/`never` and
- * opencode's auto-approve-everything default (#430's documented posture —
- * `auto` means full shell access, not a sandbox). junie has no per-tool
- * allowlist on this transport, so `spec.allowedTools`/`bashAllowlist` are
- * ignored, same as codex. A `session/request_permission` request (junie's ACP
- * approval channel) is answered with the first "allow" option regardless —
- * never observed firing live with brave_mode on, but implemented per protocol
- * for robustness rather than left to hang the turn.
+ * Tool permissions: When `spec.allowedTools` or `spec.bashAllowlist` are
+ * specified, brave_mode is NOT enabled and permission requests are filtered
+ * according to the allowlist. When no restrictions apply, brave_mode is enabled
+ * for full auto-approval (matching the zero-config posture of other runners).
+ * `session/request_permission` requests are answered with "allow" for permitted
+ * tools and "deny" for restricted ones.
  */
 export class JunieRunner implements AgentRunner {
   readonly backend = 'junie' as const;
@@ -356,12 +353,23 @@ class JunieSession implements AgentSession {
       const sessionId = this.sessionId;
       this.emitUi((state) => junieSessionStarted(sessionId, state));
 
-      // Zero-config full-auto (#430's documented posture): best-effort — a
-      // future protocol revision that drops this configId must not abort the
-      // whole session over an internal nicety.
-      await this.rpc
-        .request('session/set_config_option', { sessionId, configId: 'brave_mode', value: 'on' })
-        .catch(() => undefined);
+      // Zero-config full-auto (#430's documented posture) when no tool
+      // restrictions apply. When allowedTools or bashAllowlist are specified,
+      // brave_mode is NOT enabled and permission requests are filtered manually.
+      const hasToolRestrictions =
+        (this.spec.allowedTools && this.spec.allowedTools.length > 0) ||
+        (this.spec.bashAllowlist && this.spec.bashAllowlist.length > 0);
+
+      if (!hasToolRestrictions) {
+        await this.rpc
+          .request('session/set_config_option', { sessionId, configId: 'brave_mode', value: 'on' })
+          .catch(() => undefined);
+      } else {
+        this.emit({
+          type: 'note',
+          message: 'Tool restrictions enabled - permissions will be filtered according to allowedTools',
+        });
+      }
 
       // Junie's model ids are opaque, junie-catalog strings (e.g.
       // `v1:12:jetbrains-ai:claude-sonnet-5`), never `provider/model` — a bad

@@ -1,7 +1,7 @@
 {
-  "name": "@open-mercato/cezar-api-client",
-  "version": "0.14.0",
-  "description": "Typed client and shared contract types for the cezar cockpit HTTP API.",
+  "name": "@open-mercato/maestro-api-client",
+  "version": "1.0.0",
+  "description": "Typed client and shared contract types for the maestro cockpit HTTP API.",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
-    "@open-mercato/cezar-contract": "^0.14.0",
+    "@open-mercato/maestro-contract": "workspace:*",
     "hono": "^4.6.0"
   },
   "devDependencies": {

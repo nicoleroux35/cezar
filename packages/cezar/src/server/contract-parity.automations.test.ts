@@ -10,7 +10,7 @@ import type {
   automationResponseSchema,
   automationRetryResponseSchema,
   automationsResponseSchema,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 import type { AppType } from './app-type.ts';
 
 /**

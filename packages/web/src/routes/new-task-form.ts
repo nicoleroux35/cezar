@@ -1,7 +1,7 @@
 // A contract VALUE, not a type: which runners cezar can interrogate for a live catalog is decided
 // once, by the schema `GET /api/v1/models` validates with, so the picker and the route cannot
 // disagree about who has discovery. It narrows `Runner` to `ModelDiscoveryRunner`.
-import { runnerDiscoversModels } from '@open-mercato/cezar-api-client'
+import { runnerDiscoversModels } from '@open-mercato/maestro-api-client'
 import type {
   BackendCheck,
   CreateRunInput,
@@ -13,7 +13,7 @@ import type {
   RunnerModelCatalogResponse,
   Skill,
   WorkflowDef,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 
 /**
  * The new-task form's picker rules and its POST body, as pure functions — the exact semantics
@@ -56,6 +56,9 @@ export const RUNNERS: readonly RunnerOption[] = [
   { id: 'cursor', label: 'cursor', desc: 'Cursor Agent CLI' },
   { id: 'pi', label: 'pi', desc: 'pi CLI (provider/model)' },
   { id: 'copilot', label: 'copilot', desc: 'GitHub Copilot CLI (ACP)' },
+  { id: 'kilo', label: 'kilo', desc: 'Kilo Code CLI' },
+  { id: 'gemini', label: 'gemini', desc: 'Google Gemini CLI (ACP)' },
+  { id: 'antigravity', label: 'antigravity', desc: 'Google Antigravity CLI' },
 ]
 
 export interface ModelPreset {
@@ -107,6 +110,17 @@ export const MODELS_BY_RUNNER: Record<Runner, readonly ModelPreset[]> = {
   // stays free text for anything the account is entitled to.
   copilot: [
     { id: '', label: 'auto', desc: 'Let Copilot pick the model' },
+  ],
+  kilo: [
+    { id: '', label: 'auto', desc: 'Use your Kilo default model' },
+  ],
+  gemini: [
+    { id: '', label: 'auto', desc: 'Let Gemini pick the model' },
+    { id: 'gemini-2.0-flash-exp', label: 'gemini-2.0-flash-exp', desc: 'Experimental fast model' },
+    { id: 'gemini-1.5-pro', label: 'gemini-1.5-pro', desc: 'Pro model' },
+  ],
+  antigravity: [
+    { id: '', label: 'auto', desc: 'Use your Antigravity default model' },
   ],
 }
 
@@ -349,6 +363,8 @@ export function buildCreateRunBody(opts: {
    *  stays off the wire: its PRESENCE is what makes the server compose the dispatch-mode prompt
    *  and force the worktree. */
   dispatch?: DispatchIntent | null
+  /** Queue-only mode: true → add to queue without starting automatically. */
+  queueOnly?: boolean
 }): CreateRunInput {
   const {
     task,
@@ -366,6 +382,7 @@ export function buildCreateRunBody(opts: {
     generateFollowups,
     todoId,
     dispatch,
+    queueOnly,
   } = opts
   return {
     task,
@@ -385,6 +402,7 @@ export function buildCreateRunBody(opts: {
     generateFollowups: generateFollowups === false ? false : undefined,
     todoId: todoId || undefined,
     dispatch: dispatch ?? undefined,
+    queueOnly: queueOnly === true ? true : undefined,
   }
 }
 

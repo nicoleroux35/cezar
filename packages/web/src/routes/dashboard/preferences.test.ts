@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import {
   dashboardPreferencesInputSchema,
   dashboardPreferencesSchema,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 import { defaultOrder, resetViewOrder, useDashboardPreferences } from './preferences'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }))

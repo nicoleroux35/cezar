@@ -5,7 +5,7 @@ import {
   zonedWallTimeToUtc,
   type AutomationListEntry,
   type ZonedParts,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 
 import { StatusDot } from '@/components/status-dot'
 import { hm, triggerLabel } from '@/lib/automation-format'

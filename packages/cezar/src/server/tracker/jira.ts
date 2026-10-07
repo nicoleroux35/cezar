@@ -12,7 +12,7 @@ import type {
   TrackerListQuery,
   TrackerSearchQuery,
   TrackerSource,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 import { adfMarkdown, descriptionBody } from './adf.ts';
 import { decodeCursor, encodeCursor } from './cursor.ts';
 import {

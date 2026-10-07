@@ -1,10 +1,10 @@
-import { dashboardOverviewTaskSchema } from '@open-mercato/cezar-contract';
+import { dashboardOverviewTaskSchema } from '@open-mercato/maestro-contract';
 import type {
   DashboardOverview,
   DashboardOverviewQuery,
   DashboardSnapshot,
   DashboardTaskRow,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 
 /** Current workload plus finish-date outcomes; neither task count nor done implies business acceptance. */
 export function buildDashboardOverview(
@@ -25,13 +25,13 @@ export function buildDashboardOverview(
         !row.archived &&
         (row.status === 'waiting' ||
           row.status === 'review' ||
-          (row.status === 'failed' && Boolean(row.awaitingAnswerSince)))
+          (row.status === 'failed' && Boolean((row as any).awaitingAnswerSince)))
       );
     const finished = Date.parse(row.finishedAt ?? '');
     return (
       row.status === (group === 'completed' ? 'done' : 'failed') &&
-      !row.autoResumeAt &&
-      !row.awaitingAnswerSince &&
+      !(row as any).autoResumeAt &&
+      !(row as any).awaitingAnswerSince &&
       finished >= start &&
       finished <= at
     );

@@ -64,7 +64,7 @@ export async function planChain(repoRoot: string, task: string): Promise<PlanRes
   // Plan with the configured default runner. `plannerModel` ("sonnet") is a
   // Claude alias, so only pass it when the planner runs on Claude — Codex /
   // OpenCode pick their own default model instead.
-  const runner = createRunner(config.defaultRunner);
+  const runner = await createRunner(config.defaultRunner);
   const plannerModel = config.defaultRunner === 'claude' ? config.plannerModel : undefined;
   // Plan under the SAME agent account this project's tasks run on (spec
   // 2026-07-29-agent-profiles). Without this the planner would quietly bill the personal

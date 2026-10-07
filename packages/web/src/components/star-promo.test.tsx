@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
-import type { DashboardInsights, RunRecord, StarCountPayload } from '@open-mercato/cezar-api-client'
+import type { DashboardInsights, RunRecord, StarCountPayload } from '@open-mercato/maestro-api-client'
 import {
   STAR_ASK_KEY,
   STAR_ASK_PENDING_MS,

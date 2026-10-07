@@ -32,7 +32,7 @@ import type {
   GithubMergeMethod,
   GithubPrMergeState,
   UiState,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 import { IssueBrowserLayout } from '@/components/issue-browser-layout'
 import { CenteredState } from '@/components/centered-state'
 import { Diff, type DiffFileChange } from '@/components/diff'

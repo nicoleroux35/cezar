@@ -5,6 +5,13 @@
  * `sendMessage` returns false and emits a note; a follow-up run starts a new
  * `agent -p` process. Resume via Cursor `--resume` is a future enhancement.
  *
+ * Tool permissions: When `spec.allowedTools` or `spec.bashAllowlist` are
+ * specified, `--force --trust` flags are omitted and restrictions are
+ * communicated via the system prompt. This provides prompt-based guidance
+ * rather than hard enforcement (Cursor has no documented per-tool permission
+ * flags). The agent may still use other tools, but the prompt makes the
+ * restrictions clear.
+ *
  * Emits v1 `AgentEvent`s and, when `opts.onUiEvent` is set, protocol v2
  * `UiEvent`s alongside (same pattern as claude/codex/opencode).
  */
@@ -45,12 +52,41 @@ export type BuildCursorArgsInput = {
   userPrompt: string;
   systemPrompt?: string;
   model?: string;
+  allowedTools?: string[];
+  bashAllowlist?: string[];
 };
 
-/** CLI argv for headless write mode (prompt is the final positional). */
+/** CLI argv for headless write mode (prompt is the final positional).
+ *  When `allowedTools` or `bashAllowlist` are specified, `--force --trust` are
+ *  omitted and tool restrictions are communicated via the system prompt (Cursor
+ *  has no documented per-tool permission flags). This provides prompt-based
+ *  guidance rather than hard enforcement. */
 export function buildCursorArgs(input: BuildCursorArgsInput): string[] {
-  const prompt = prependSystemPrompt(input.systemPrompt, input.userPrompt);
-  const args = ['-p', '--force', '--trust', '--output-format', 'stream-json'];
+  let prompt = prependSystemPrompt(input.systemPrompt, input.userPrompt);
+  
+  // Check if tool restrictions apply
+  const hasRestrictions =
+    (input.allowedTools && input.allowedTools.length > 0) ||
+    (input.bashAllowlist && input.bashAllowlist.length > 0);
+  
+  const args = ['-p', '--output-format', 'stream-json'];
+  
+  // Only auto-approve if no tool restrictions
+  if (!hasRestrictions) {
+    args.push('--force', '--trust');
+  } else {
+    // Add tool restrictions to prompt as guidance
+    const restrictions: string[] = [];
+    if (input.allowedTools && input.allowedTools.length > 0) {
+      restrictions.push(`You may ONLY use these tools: ${input.allowedTools.join(', ')}`);
+    }
+    if (input.bashAllowlist && input.bashAllowlist.length > 0) {
+      restrictions.push(`Bash commands must start with one of: ${input.bashAllowlist.join(', ')}`);
+    }
+    const restrictionNote = `\n\n[IMPORTANT TOOL RESTRICTIONS]\n${restrictions.join('\n')}\nDo not use any other tools or commands.\n`;
+    prompt = prompt + restrictionNote;
+  }
+  
   if (input.model?.trim()) {
     args.push('--model', input.model.trim());
   }
@@ -133,6 +169,8 @@ export class CursorAgentRunner implements AgentRunner {
       userPrompt: spec.userPrompt,
       systemPrompt: spec.systemPrompt,
       model: spec.model,
+      allowedTools: spec.allowedTools,
+      bashAllowlist: spec.bashAllowlist,
     });
 
     let child: ChildProcessWithoutNullStreams;

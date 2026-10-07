@@ -89,7 +89,7 @@ import {
   retryProviderAuth,
   searchTrackerItems,
 } from './client'
-import { queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@open-mercato/cezar-api-client'
+import { queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@open-mercato/maestro-api-client'
 import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
 import { githubRepoBase } from '@/lib/tasks-table'
@@ -119,7 +119,7 @@ import type {
   TrackerItemsResponse,
   TrackerKind,
   UpdateChannel,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 import { subscribeTopic } from './ws'
 
 /**
@@ -452,7 +452,10 @@ export function useRunnerModelCatalogs(
   const pi = useRunnerModels('pi', enabled)
   const junie = useRunnerModels('junie', enabled)
   const copilot = useRunnerModels('copilot', enabled)
-  return { claude, codex, junie, opencode, cursor, pi, copilot }
+  const kilo = useRunnerModels('kilo', enabled)
+  const gemini = useRunnerModels('gemini', enabled)
+  const antigravity = useRunnerModels('antigravity', enabled)
+  return { claude, codex, junie, opencode, cursor, pi, copilot, kilo, gemini, antigravity }
 }
 
 export function useProviderStatus() {

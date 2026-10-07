@@ -7,7 +7,7 @@ import {
   dashboardInsightsQuerySchema,
   dashboardFeedQuerySchema,
   dashboardTasksQuerySchema,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 import { DashboardReader } from '../workspace/dashboard.ts';
 import type { CostVisibility } from '../workspace/dashboard-costs.ts';
 import { queryZodValidator } from './validators.ts';

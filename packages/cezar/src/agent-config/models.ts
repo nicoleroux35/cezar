@@ -24,6 +24,9 @@ const MODEL_SETTINGS_STRATEGIES: Record<RunnerId, AgentModelSettingsStrategy> = 
   pi: piModelSettingsStrategy,
   junie: junieModelSettingsStrategy,
   copilot: copilotModelSettingsStrategy,
+  kilo: opencodeModelSettingsStrategy, // Kilo uses the same protocol as opencode
+  gemini: { runner: 'gemini', read: async () => ({}) }, // Gemini has no settings file yet
+  antigravity: { runner: 'antigravity', read: async () => ({}) }, // Antigravity has no settings file yet
 };
 
 export function readAgentModelSettings(

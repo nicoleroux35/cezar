@@ -1,5 +1,5 @@
-import type { DispatchIntent } from '@open-mercato/cezar-contract';
-import { zonedParts } from '@open-mercato/cezar-contract';
+import type { DispatchIntent } from '@open-mercato/maestro-contract';
+import { zonedParts } from '@open-mercato/maestro-contract';
 import { loadWorkflows } from '../workflows/load.ts';
 import { stepsIssue, type WorkflowDef } from '../workflows/types.ts';
 import type { RunStore } from '../runs/store.ts';

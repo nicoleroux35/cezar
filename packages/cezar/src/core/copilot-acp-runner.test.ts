@@ -138,9 +138,9 @@ describe('CopilotAcpRunner — one turn over the mock', () => {
     expect(c.ui.filter((e) => e.type === 'plan.updated')).toHaveLength(2);
   });
 
-  it('is what the factory builds for `copilot` — never Claude by fallthrough', () => {
-    expect(createRunner('copilot')).toBeInstanceOf(CopilotAcpRunner);
-    expect(createRunner('copilot').backend).toBe('copilot');
+  it('is what the factory builds for `copilot` — never Claude by fallthrough', async () => {
+    expect(await createRunner('copilot')).toBeInstanceOf(CopilotAcpRunner);
+    expect((await createRunner('copilot')).backend).toBe('copilot');
   });
 });
 

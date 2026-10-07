@@ -3,7 +3,7 @@ import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ApiRun, RunStatus } from '@open-mercato/cezar-api-client'
+import type { ApiRun, RunStatus } from '@open-mercato/maestro-api-client'
 
 import { deliveryPath, useDeliverPrompt } from './deliver-prompt'
 import { useContinueAction } from './follow-up-engine'

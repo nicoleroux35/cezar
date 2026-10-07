@@ -9,7 +9,7 @@ import {
   useSetSelfUpdateChannel,
   workspaceQueryKeys,
 } from '@/api/queries'
-import type { SelfUpdateStatus, UpdateChannel } from '@open-mercato/cezar-api-client'
+import type { SelfUpdateStatus, UpdateChannel } from '@open-mercato/maestro-api-client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {

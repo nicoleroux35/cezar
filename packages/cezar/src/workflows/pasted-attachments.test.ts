@@ -24,7 +24,7 @@ import {
   isAttachmentMediaType,
   isImageAttachmentName,
   sanitizeAttachmentName,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];

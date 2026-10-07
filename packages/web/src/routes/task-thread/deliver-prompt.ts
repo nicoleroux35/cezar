@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 
 import { ApiError } from '@/api/client'
 import { runQueryOptions, useSendMessage } from '@/api/queries'
-import type { ApiRun, AttachmentInput, RunStatus } from '@open-mercato/cezar-api-client'
+import type { ApiRun, AttachmentInput, RunStatus } from '@open-mercato/maestro-api-client'
 
 import type { ContinueAction } from './follow-up-engine'
 import { lastSessionId } from './run-actions'

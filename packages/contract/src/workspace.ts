@@ -68,6 +68,9 @@ export const workspaceConfigResponseSchema = z.object({
       pi: z.string().optional(),
       junie: z.string().optional(),
       copilot: z.string().optional(),
+      kilo: z.string().optional(),
+      gemini: z.string().optional(),
+      antigravity: z.string().optional(),
     }).optional(),
   }),
 });
@@ -104,6 +107,9 @@ export const setWorkspaceConfigInputSchema = z.object({
           cursor: z.string().trim().min(1).max(200).nullable().optional(),
           pi: z.string().trim().min(1).max(200).nullable().optional(),
           copilot: z.string().trim().min(1).max(200).nullable().optional(),
+          kilo: z.string().trim().min(1).max(200).nullable().optional(),
+          gemini: z.string().trim().min(1).max(200).nullable().optional(),
+          antigravity: z.string().trim().min(1).max(200).nullable().optional(),
         })
         .optional(),
     })
@@ -549,7 +555,7 @@ export type ProviderConnectResponse = z.infer<typeof providerConnectResponseSche
  * 400s, so the client compiles against exactly what the route accepts. One definition, used by
  * the route's query validator and by the cockpit's picker.
  */
-export const modelDiscoveryRunnerSchema = z.enum(['claude', 'codex', 'opencode', 'cursor', 'junie']);
+export const modelDiscoveryRunnerSchema = z.enum(['claude', 'codex', 'opencode', 'cursor', 'junie', 'kilo']);
 export type ModelDiscoveryRunner = z.infer<typeof modelDiscoveryRunnerSchema>;
 export const MODEL_DISCOVERY_RUNNERS: readonly ModelDiscoveryRunner[] =
   modelDiscoveryRunnerSchema.options;
@@ -566,7 +572,7 @@ export const runnerModelOptionSchema = z.object({
 });
 export type RunnerModelOption = z.infer<typeof runnerModelOptionSchema>;
 
-/** `GET /api/v1/models?runner=claude|codex|opencode|cursor|junie` — the models discovered from that runner's
+/** `GET /api/v1/models?runner=claude|codex|opencode|cursor|junie|kilo` — the models discovered from that runner's
  *  own host installation, plus how fresh the answer is. Never an error: an unavailable CLI
  *  degrades to `source: 'unavailable'` with a `reason`. */
 export const runnerModelCatalogResponseSchema = z.object({

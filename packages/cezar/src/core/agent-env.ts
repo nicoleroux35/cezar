@@ -240,6 +240,12 @@ const BACKEND_ALLOW_PREFIXES: Record<AgentBackend, readonly string[]> = {
   // it authenticates with (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_HOST`) are already forwarded to every
   // backend below, and `COPILOT_GITHUB_TOKEN` is covered by this prefix — so nothing else widens.
   copilot: ['COPILOT_'],
+  // Kilo uses the same multi-provider approach as opencode
+  kilo: ['KILO_', ...MULTI_PROVIDER_PREFIXES],
+  // Gemini authenticates via GEMINI_API_KEY or Google Cloud credentials
+  gemini: ['GEMINI_', 'GOOGLE_GENERATIVE_AI_', 'GOOGLE_CLOUD_', 'GCLOUD_'],
+  // Antigravity uses Google account via system keyring or browser OAuth
+  antigravity: ['ANTIGRAVITY_', 'AGY_', 'GOOGLE_CLOUD_', 'GCLOUD_'],
 };
 
 /** `gh` handoff (draft PRs) works in every backend — the one credential the

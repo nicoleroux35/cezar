@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 
 import { applySkillsUpdate, checkSkillsUpdate, createRun, putWorkspaceUiState } from '@/api/client'
 import { queryKeys, useImportableSkills, useSkillsUpdate, useWorkspaceUiState, workspaceQueryKeys } from '@/api/queries'
-import type { SkillsUpdateState, WorkspaceUiState } from '@open-mercato/cezar-api-client'
+import type { SkillsUpdateState, WorkspaceUiState } from '@open-mercato/maestro-api-client'
 import { Button } from '@/components/ui/button'
 import { CenteredState } from '@/components/centered-state'
 import {

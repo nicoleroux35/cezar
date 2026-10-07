@@ -3,7 +3,7 @@ import {
   DISPATCH_MAX_SUBTASKS,
   type DispatchIntent,
   type Runner,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 import type { PendingAttachment } from '@/components/composer/composer-attachments'
 import { RUNNERS, type TaskSource } from './new-task-form'
 
@@ -29,9 +29,11 @@ export interface NewTaskDraft {
   agentProfile: string | null
   model: string | null
   variants: number
-  /** The `Start | Plan first` toggle (#383). Sticky like the pickers: plan-first is a way of
+  /** The `Start | Plan first | Add to queue` toggle. Sticky like the pickers: the mode is a way of
    *  working, not a per-task whim — it survives navigation with the rest of the draft. */
   planFirst: boolean
+  /** Queue-only mode: when true, the task is added to the queue without starting automatically. */
+  queueOnly: boolean
   /** Worktree opt-out (#worktree-toggle): false runs in the repo working tree. null → the
    *  remembered `lastWorktree` / default (isolated worktree). */
   worktree: boolean | null
@@ -132,6 +134,7 @@ const EMPTY: NewTaskDraft = {
   model: null,
   variants: 1,
   planFirst: false,
+  queueOnly: false,
   worktree: null,
   autonomous: null,
   generateFollowups: null,
@@ -167,6 +170,7 @@ function normalize(raw: unknown): NewTaskDraft {
     model: typeof obj.model === 'string' ? obj.model : null,
     variants: obj.variants === 2 || obj.variants === 3 ? obj.variants : 1,
     planFirst: obj.planFirst === true,
+    queueOnly: obj.queueOnly === true,
     worktree: typeof obj.worktree === 'boolean' ? obj.worktree : null,
     autonomous: typeof obj.autonomous === 'boolean' ? obj.autonomous : null,
     generateFollowups:

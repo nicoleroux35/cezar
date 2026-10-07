@@ -1,11 +1,11 @@
 import type { EventPollInput } from './event-scan.ts';
-import type { TrackerAutomationEvent } from '@open-mercato/cezar-contract';
+import type { TrackerAutomationEvent } from '@open-mercato/maestro-contract';
 import type { TrackerEventCandidate, PollPage } from '../../automations/event-source.ts';
 import type {
   TrackerKind, TrackerAssociation, TrackerAssociationInput, TrackerAssociationResult,
   TrackerCandidatesQuery, TrackerCandidatesResult, TrackerListQuery, TrackerSearchQuery,
   TrackerItemsResult, TrackerItemResult,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 
 export interface TrackerClient {
   readonly kind: TrackerKind;

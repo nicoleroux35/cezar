@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { SelfUpdateDevelopment, SelfUpdateStatus } from '@open-mercato/cezar-api-client'
+import type { SelfUpdateDevelopment, SelfUpdateStatus } from '@open-mercato/maestro-api-client'
 import { workspaceQueryKeys } from '@/api/queries'
 import { SelfUpdateDialog } from '@/components/self-update-dialog'
 import { pullOfVersion } from '@/components/self-update-development'
@@ -18,7 +18,7 @@ vi.mock('@/api/client', async (original) => ({
 const status: SelfUpdateStatus = {
   version: '0.12.0',
   installKind: 'managed',
-  entry: '/home/u/.cezar/versions/current/node_modules/@open-mercato/cezar/dist/index.js',
+  entry: '/home/u/.cezar/versions/current/node_modules/@open-mercato/maestro/dist/index.js',
   canSelfUpdate: true,
   channel: 'stable',
   restartMode: 'reexec',

@@ -5,7 +5,7 @@ import {
   projectInsightRow,
   type InsightRow,
 } from './dashboard-insights.ts';
-import type { DashboardInsightsQuery, DashboardOverviewQuery } from '@open-mercato/cezar-contract';
+import type { DashboardInsightsQuery, DashboardOverviewQuery } from '@open-mercato/maestro-contract';
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -24,7 +24,7 @@ import {
   type DashboardTaskRow,
   type DashboardTasksPage,
   type DashboardTelemetry,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 import {
   DashboardCostSnapshots,
   projectCostTask,
@@ -67,14 +67,14 @@ const order = (a: DashboardTaskRow, b: DashboardTaskRow) =>
 /** A `waiting` run, or a `failed` one whose session closed on an unanswered `CEZ:ASK` — both are
  *  a question for the user, which is how the cockpit's attention layer reads them too. */
 const isQuestion = (r: DashboardTaskRow) =>
-  r.status === 'waiting' || (r.status === 'failed' && Boolean(r.awaitingAnswerSince));
+  r.status === 'waiting' || (r.status === 'failed' && Boolean((r as any).awaitingAnswerSince));
 function group(rows: DashboardTaskRow[], name: DashboardGroup): DashboardTaskRow[] {
   const selected = rows
     .filter((r) => {
       if (r.archived) return false;
       if (name === 'running') return r.status === 'running';
       if (name === 'queued') return r.status === 'queued';
-      if (name === 'scheduled') return r.status === 'failed' && Boolean(r.autoResumeAt);
+      if (name === 'scheduled') return r.status === 'failed' && Boolean((r as any).autoResumeAt);
       if (name === 'questions') return isQuestion(r);
       if (name === 'reviews') return r.status === 'review';
       return isQuestion(r) || r.status === 'review';
@@ -283,7 +283,7 @@ export class DashboardReader {
           identity,
           rows: slim,
           costRows: diagnostic.runs.map((run) => projectCostTask(project.id, run)),
-          insightRows: diagnostic.runs.map((run) => projectInsightRow(project.id, run)),
+          insightRows: diagnostic.runs.map((run) => projectInsightRow(project.id, run as any)),
           builtAt: this.now(),
           coverage: {
             projectId: project.id,
@@ -364,7 +364,7 @@ export class DashboardReader {
     const counts: DashboardCounts = {
       running: group(rows, 'running').length,
       monitoring: rows.filter(
-        (r) => !r.archived && r.status === 'running' && r.activity === 'monitoring',
+        (r) => !r.archived && r.status === 'running' && (r as any).activity === 'monitoring',
       ).length,
       questions: questions.length,
       reviews: reviews.length,
@@ -436,8 +436,8 @@ export class DashboardReader {
       for (const run of projection.rows) {
         if (
           (run.status !== 'done' && run.status !== 'failed') ||
-          run.autoResumeAt ||
-          run.awaitingAnswerSince ||
+          (run as any).autoResumeAt ||
+          (run as any).awaitingAnswerSince ||
           !run.finishedAt
         )
           continue;

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { SkillsUpdateState, WorkspaceConfigResponse } from '@open-mercato/cezar-api-client'
+import type { SkillsUpdateState, WorkspaceConfigResponse } from '@open-mercato/maestro-api-client'
 import { AppRoutes } from '@/routes'
 
 let requests: Array<{ method: string; url: string; body?: unknown }> = []

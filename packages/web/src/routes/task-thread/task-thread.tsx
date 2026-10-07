@@ -15,7 +15,7 @@ import {
   useRuns,
 } from '@/api/queries'
 import { useRunHistory, type RunHistoryState } from '@/api/run-history'
-import type { ApiRun } from '@open-mercato/cezar-api-client'
+import type { ApiRun } from '@open-mercato/maestro-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { StatusDot } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'

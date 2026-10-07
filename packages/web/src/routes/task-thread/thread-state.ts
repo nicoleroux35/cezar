@@ -1,4 +1,4 @@
-import type { RunEvent, RunStatus } from '@open-mercato/cezar-api-client'
+import type { RunEvent, RunStatus } from '@open-mercato/maestro-api-client'
 import { runItemKey } from '@/api/run-events'
 import {
   toolDisplay,
@@ -8,7 +8,7 @@ import {
   type UiAskQuestion,
   type UiItem,
   type UiToolItem,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 
 /**
  * The thread reducer: folds one run's ordered event list (`useRunEvents` — v1 lines and
@@ -70,7 +70,7 @@ export interface ThreadAsk {
 export interface ThreadProviderAuthRequired {
   kind: 'provider-auth-required'
   id: string
-  provider: 'claude' | 'codex' | 'junie' | 'opencode' | 'cursor' | 'pi' | 'copilot'
+  provider: 'claude' | 'codex' | 'junie' | 'opencode' | 'cursor' | 'pi' | 'copilot' | 'kilo'
   authFailureId: string
 }
 

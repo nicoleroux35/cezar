@@ -10,7 +10,7 @@ import type {
   RunIndexEntry,
   RunRecord,
   Skill,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 import {
   CommandPalette,
   mergeTasks,

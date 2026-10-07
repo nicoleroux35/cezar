@@ -113,8 +113,8 @@ describe('managed layout', () => {
 
   it('tells install kinds apart by where the entry file lives', () => {
     expect(detectInstallKind(versionEntry('0.11.1', env), env)).toBe('managed');
-    expect(detectInstallKind('/Users/x/.npm/_npx/abc123/node_modules/@open-mercato/cezar/dist/index.js', env)).toBe('npx');
-    expect(detectInstallKind('/opt/homebrew/lib/node_modules/@open-mercato/cezar/dist/index.js', env)).toBe('global-npm');
+    expect(detectInstallKind('/Users/x/.npm/_npx/abc123/node_modules/@open-mercato/maestro/dist/index.js', env)).toBe('npx');
+    expect(detectInstallKind('/opt/homebrew/lib/node_modules/@open-mercato/maestro/dist/index.js', env)).toBe('global-npm');
     const checkout = join(home, 'repo', 'packages', 'cezar');
     mkdirSync(join(checkout, 'src'), { recursive: true });
     mkdirSync(join(checkout, 'dist'), { recursive: true });
@@ -134,7 +134,7 @@ describe('restart args', () => {
 
 describe('registry document', () => {
   it('sorts versions newest first, stamps channels and publish dates, and survives a bad payload', async () => {
-    const doc = await fetchPackageDocument('@open-mercato/cezar', (async () =>
+    const doc = await fetchPackageDocument('@open-mercato/maestro', (async () =>
       new Response(
         JSON.stringify({
           'dist-tags': { latest: '0.11.1', nightly: '0.11.1-nightly.20260924.49' },
@@ -155,7 +155,7 @@ describe('registry document', () => {
 
 describe('registryPath', () => {
   it('keeps the scope marker and encodes everything after it', () => {
-    expect(registryPath('@open-mercato/cezar')).toBe('@open-mercato%2Fcezar');
+    expect(registryPath('@open-mercato/maestro')).toBe('@open-mercato%2Fcezar');
     expect(registryPath('cezar-cli')).toBe('cezar-cli');
     expect(registryPath('@a/b@c')).toBe('@a%2Fb%40c');
   });

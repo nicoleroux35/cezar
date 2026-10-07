@@ -42,7 +42,7 @@ import {
   startTodo,
   retryProviderAuth,
 } from './client'
-import { setApiScope } from '@open-mercato/cezar-api-client'
+import { setApiScope } from '@open-mercato/maestro-api-client'
 
 /** The one seam under test: every call must go through `fetch` and nothing else. */
 const fetchMock = vi.fn<typeof fetch>()

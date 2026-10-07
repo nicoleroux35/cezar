@@ -5,7 +5,7 @@ import {
   normalizeSchedule,
   type AutomationSchedule,
   type ScheduleType,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 
 import { BranchChip } from '@/components/branch-chip'
 import { Chip } from '@/components/chip'

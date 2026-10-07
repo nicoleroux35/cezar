@@ -2,7 +2,7 @@ import {
   trackerWatchInputSchema, trackerWatchParamsSchema, trackerWatchQuerySchema,
   trackerCandidatesQuerySchema, trackerListQuerySchema, trackerSearchQuerySchema, trackerItemQuerySchema, trackerReadScope,
   trackerCredentialsSchema, trackerItemParamsSchema, trackerAssociationInputSchema, type TrackerChangedEvent,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 import { createTrackerService } from './tracker/index.ts';
 import { TrackerWatches } from './tracker/watch.ts';
 import { readTrackerAssociation, writeTrackerAssociation, clearTrackerAssociation } from '../tracker-association.ts';
@@ -27,7 +27,7 @@ import {
   isScheduleAutomation,
   type AutomationDefinition,
 } from '../automations/types.ts';
-import { trackerTriggerSchema, trackerAutomationOptionsSchema, trackerAutomationOptionsQuerySchema, automationScheduleSchema, localTimeZone, nextOccurrence } from '@open-mercato/cezar-contract';
+import { trackerTriggerSchema, trackerAutomationOptionsSchema, trackerAutomationOptionsQuerySchema, automationScheduleSchema, localTimeZone, nextOccurrence } from '@open-mercato/maestro-contract';
 import type { IncomingMessage } from 'node:http';
 import { access, constants as fsConstants, mkdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -45,11 +45,10 @@ import {
   setWorkspaceUiStateInputSchema,
   type GroupResponse,
   type GroupVariant,
-  type PickVariantResponse,
   type RunIndexEntry,
   type RunsIndexResponse,
   type StarCountPayload,
-} from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
 // A contract VALUE, like `workspaceUiStateSchema` in workspace/migrations.ts — the request
 // schema this route validates with is the same one the client compiles against.
 import {
@@ -57,8 +56,8 @@ import {
   modelDiscoveryRunnerSchema,
   openProjectInSchema,
   updateProjectInputSchema,
-} from '@open-mercato/cezar-contract';
-import { dispatchInputSchema, dispatchIntentSchema, dispatchReportSchema } from '@open-mercato/cezar-contract';
+} from '@open-mercato/maestro-contract';
+import { dispatchInputSchema, dispatchIntentSchema, dispatchReportSchema } from '@open-mercato/maestro-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { hostUsageSampler, type HostSampler } from '../core/host-usage.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
@@ -95,7 +94,7 @@ import {
 import { planChain, slugify } from '../planner.ts';
 import { discoverSkills } from '../skills.ts';
 import { SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService, type SkillsUpdateState } from '../skills-update.ts';
-import { selfUpdateApplyRequestSchema, selfUpdateChannelRequestSchema, selfUpdateDevelopmentQuerySchema } from '@open-mercato/cezar-contract';
+import { selfUpdateApplyRequestSchema, selfUpdateChannelRequestSchema, selfUpdateDevelopmentQuerySchema } from '@open-mercato/maestro-contract';
 import { SelfUpdateBusyError, SelfUpdateService } from '../self-update/service.ts';
 import { StarCountReader } from './star-count.ts';
 import { getTeamSkillsCached, refreshTeamSkills, waitForTeamSkills } from '../skills-remote.ts';
@@ -130,7 +129,9 @@ import {
   runIdParamSchema,
   setRunDraftInputSchema,
   type DeleteDraftResponse,
-} from '@open-mercato/cezar-contract';
+  forgeKindSchema,
+  forgeConnectInputSchema,
+} from '@open-mercato/maestro-contract';
 import { toPastedContent, type PastedContent, type RunManager } from '../workflows/run.ts';
 import { removeWorktree, worktreeDiff, worktreeDiffStat, worktreeSizeBytes } from '../git-worktree.ts';
 import { isReclaimable, reclaimWorktrees } from '../runs/retention.ts';
@@ -207,6 +208,8 @@ import { createSocketHub, type SocketHub, type WsUpgradeVerdict } from './ws.ts'
 import { browseDirectory, isInsideBrowseRoot, isLexicallyInsideBrowseRoot, resolveBrowseRoot } from './fs-browse.ts';
 import { parseRemote, resolveForge, type ForgeAvailability } from './forge/index.ts';
 import { fetchGithub, fetchGithubChecks, fetchGithubComments, fetchGithubPrDiff, fetchGithubRefStatus, forgetRefStatus, readCachedRefStatuses, refNumberFromUrl, searchGithubItems, GithubPrNotFoundError, GH_CHECKS_MAX, GH_SEARCH_MAX, GH_REF_STATUS_MAX } from './github.ts';
+import { getForgesStatus, buildForgeAuthCommand } from './forge-status.ts';
+import { collectSystemTelemetry, evaluateSystemHealth, getMetricHistory } from '../monitoring/system-telemetry.ts';
 import { ensureLaunchKey } from './launch-key.ts';
 import { openInTerminal } from './open-in-terminal.ts';
 import {
@@ -382,6 +385,26 @@ const selectAgentProfileSchema = z.object({
 const hostedProfileRefusal = {
   error: 'agent accounts are managed from the machine that owns the checkout (this cockpit runs in hosted mode)',
 };
+
+/** Helper to add mediaType to attachments from the wire format before passing to toPastedContent */
+function attachmentWithMediaType(attachment: { name: string; data: string }): {
+  mediaType: string;
+  data: string;
+  name: string;
+} {
+  // Deduce mediaType from filename extension
+  const ext = attachment.name.split('.').pop()?.toLowerCase();
+  const mediaType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+    : ext === 'webp' ? 'image/webp'
+    : ext === 'gif' ? 'image/gif'
+    : 'image/png';
+
+  return {
+    mediaType,
+    data: attachment.data,
+    name: attachment.name,
+  };
+}
 
 /**
  * Allocate a profile id from the label (or, with no label, the folder name).
@@ -707,6 +730,9 @@ const startRunSchema = z
     // dispatch tree, within the user's limits. Dropped — not refused — when the capability is
     // off: the task itself is still perfectly valid as an ordinary run.
     dispatch: dispatchIntentSchema.optional(),
+    // Queue-only mode: when true, the task is added to the queue in a paused state and will not
+    // start automatically. User must manually start it via POST /runs/:id/start-queued.
+    queueOnly: z.boolean().optional(),
   })
   .refine((b) => Boolean(b.workflow) !== Boolean(b.steps), {
     message: 'provide either "workflow" or "steps", not both',
@@ -906,6 +932,10 @@ const queuedMessagePatchSchema = z
   .refine((m) => m.text !== undefined || m.images !== undefined, {
     message: 'message edit needs text or attachments',
   });
+
+const reorderQueueSchema = z.object({
+  runIds: z.array(z.string()).min(1),
+});
 
 // Queued prompt stack bounds (#472). The per-message bounds mirror `messageSchema`
 // above; the one that actually matters is the FOLDED total, because 20 messages of
@@ -1157,7 +1187,8 @@ export function createApp(deps: ServerDeps) {
       opencode: { discover: () => discoverOpencodeModels({ cwd: bootRoot }) },
       junie: { discover: () => discoverJunieModels({ cwd: bootRoot }) },
       cursor: { discover: () => discoverCursorModels() },
-    },
+      kilo: { discover: () => Promise.resolve([]) }, // Kilo runner not yet implemented
+    } as any,
   });
   const providerAuth = deps.providerAuth ?? new ProviderAuthService({ cwd: bootRoot });
   const workspaceConfig = deps.workspaceConfig ?? {
@@ -1218,7 +1249,7 @@ export function createApp(deps: ServerDeps) {
   const selfUpdate =
     deps.selfUpdate ??
     new SelfUpdateService({
-      pkgName: '@open-mercato/cezar',
+      pkgName: '@open-mercato/maestro',
       version: deps.version,
       entry: process.argv[1] ?? '',
       restart: () => {},
@@ -1810,7 +1841,7 @@ export function createApp(deps: ServerDeps) {
     // this validates. A runner absent from it has no discovery path and this 400s.
     .get('/models', queryZodValidator(z.object({ runner: z.union([z.string(), z.array(z.string()).transform((v) => v[0] as string)]).pipe(modelDiscoveryRunnerSchema) }), { message: 'runner must be claude, codex, opencode, cursor, or junie' }), async (c) => {
       const query = { data: c.req.valid('query') };
-      return c.json(await modelCatalog.get(query.data.runner));
+      return c.json(await modelCatalog.get(query.data.runner as any));
     });
 
   /**
@@ -2003,6 +2034,37 @@ export function createApp(deps: ServerDeps) {
       }
       return c.json({ opened: true, command });
     });
+
+  // ---- chained family: forges (workspace-level) ----
+  const forgesRoutes = new Hono<ProjectApiEnv>()
+    .get(
+      '/forges/status',
+      queryZodValidator(z.object({ refresh: queryValue.refine((v) => v === undefined || v === '1') }), { message: 'refresh must be 1 when provided' }),
+      async (c) => {
+        const query = { data: c.req.valid('query') };
+        return c.json(await getForgesStatus({ refresh: query.data.refresh === '1' }));
+      },
+    )
+
+    .post(
+      '/forges/:kind/connect',
+      paramZodValidator(z.object({ kind: forgeKindSchema }), { message: 'forge kind is required' }),
+      jsonZodValidator(forgeConnectInputSchema, { message: 'valid connect input required' }),
+      async (c) => {
+        const { kind } = c.req.valid('param');
+        const { host } = c.req.valid('json');
+
+        const command = buildForgeAuthCommand(kind, host);
+
+        // For now, return the command for manual execution
+        // Future enhancement: could try to open terminal automatically
+        return c.json({
+          opened: false,
+          authenticated: false,
+          command,
+        });
+      },
+    );
 
   // ---- chained family: agent profiles / accounts (workspace-level) ----------
   // Extra config dirs for a SECOND login of the same agent CLI (spec
@@ -3170,7 +3232,7 @@ export function createApp(deps: ServerDeps) {
           if (agentDefaults?.runner === null) delete config.agentDefaults.runner;
           else if (agentDefaults?.runner !== undefined) config.agentDefaults.runner = agentDefaults.runner;
           for (const runner of PROVIDER_IDS) {
-            const model = agentDefaults?.models?.[runner];
+            const model = agentDefaults?.models?.[runner as keyof typeof agentDefaults.models];
             if (model === undefined) continue;
             const models = config.agentDefaults.models ?? {};
             if (model === null) delete models[runner];
@@ -4149,7 +4211,7 @@ export function createApp(deps: ServerDeps) {
           );
         }
       }
-      const images = parsed.data.images?.map((image) => toPastedContent(image));
+      const images = parsed.data.images?.map((image) => toPastedContent(attachmentWithMediaType(image)));
       const input = {
         task: parsed.data.task,
         model: parsed.data.model,
@@ -4166,6 +4228,7 @@ export function createApp(deps: ServerDeps) {
         // CEZ_TODOS_FILE alike (RunManager.agentEnv).
         generateFollowups: capabilities().followups ? parsed.data.generateFollowups : false,
         ...(parsed.data.dispatch && capabilities().dispatch ? { dispatchIntent: parsed.data.dispatch } : {}),
+        queueOnly: parsed.data.queueOnly,
       };
       if (variants > 1) {
         const runs = manager.startVariants(workflow, input, variants);
@@ -4263,6 +4326,39 @@ export function createApp(deps: ServerDeps) {
       return c.json({ cancelled });
     })
 
+    .post('/runs/:id/start-queued', (c) => {
+      const { store, manager } = c.get('project');
+      const id = c.req.param('id');
+      const run = store.getRun(id);
+      if (!run) return c.json({ error: 'not found' }, 404);
+      if (run.status !== 'queued') {
+        return c.json({ error: `run is not queued (status: ${run.status})` }, 409);
+      }
+      if (!run.paused) {
+        return c.json({ error: 'run is not paused' }, 409);
+      }
+      const started = manager.startQueuedRun(id);
+      if (!started) return c.json({ error: 'failed to start run' }, 500);
+      return c.json({ started: true });
+    })
+
+    .post('/runs/reorder-queue', jsonZodValidator(reorderQueueSchema), (c) => {
+      const { store } = c.get('project');
+      const { runIds } = c.req.valid('json');
+      
+      // Validate that all runs exist and are queued
+      for (const id of runIds) {
+        const run = store.getRun(id);
+        if (!run) return c.json({ error: `run not found: ${id}` }, 404);
+        if (run.status !== 'queued') {
+          return c.json({ error: `run ${id} is not queued (status: ${run.status})` }, 409);
+        }
+      }
+      
+      const count = store.reorderQueue(runIds);
+      return c.json({ reordered: true, count });
+    })
+
     // Live-session participation (spec 002): deliver a user message (text +
     // pasted screenshots) into the run's open claude session.
     .post('/runs/:id/messages', jsonZodValidator(messageSchema), async (c) => {
@@ -4281,7 +4377,7 @@ export function createApp(deps: ServerDeps) {
         if (blocked) return c.json({ error: blocked }, 409);
       }
       const content: PastedContent[] = [
-        ...parsed.data.images.map((image) => toPastedContent(image)),
+        ...parsed.data.images.map((image) => toPastedContent(attachmentWithMediaType(image))),
         ...(parsed.data.text.trim() ? [{ type: 'text', text: parsed.data.text } satisfies ContentBlock] : []),
       ];
       // Three-rung delivery ladder (#472). Branch on the ENGINE's answer rather
@@ -4358,7 +4454,7 @@ export function createApp(deps: ServerDeps) {
       }
 
       if (run.status !== 'queued') return c.json({ error: 'run already started' }, 409);
-      const images: PastedContent[] | undefined = parsed.data.images?.map((image) => toPastedContent(image));
+      const images: PastedContent[] | undefined = parsed.data.images?.map((image) => toPastedContent(attachmentWithMediaType(image)));
       const message = manager.editQueuedMessage(id, msgId, {
         ...(parsed.data.text !== undefined ? { text: parsed.data.text } : {}),
         ...(images !== undefined ? { images } : {}),
@@ -4415,7 +4511,7 @@ export function createApp(deps: ServerDeps) {
       }
       const result = manager.continueRun(id, {
         text: parsed.data.text,
-        images: parsed.data.images?.map((image) => toPastedContent(image)),
+        images: parsed.data.images?.map((image) => toPastedContent(attachmentWithMediaType(image))),
         runner: parsed.data.runner,
         model: parsed.data.model,
         agentProfile: parsed.data.agentProfile,
@@ -4915,7 +5011,7 @@ export function createApp(deps: ServerDeps) {
           return c.json({ error: `at most ${DRAFT_MAX_IMAGES} images per draft` }, 400);
         }
         const body = c.req.valid('json');
-        const result = writeRunDraftImage(dataDir, run.id, body);
+        const result = writeRunDraftImage(dataDir, run.id, attachmentWithMediaType(body));
         if (!result.ok) return c.json({ error: result.error }, 400);
         return c.json(result.image);
       },
@@ -4973,7 +5069,6 @@ export function createApp(deps: ServerDeps) {
           variant: r.variant ?? '?',
           title: r.title,
           status: r.status,
-          archived: r.archived,
           tokensUsed: r.tokensUsed,
           ...(r.inputTokens !== undefined ? { inputTokens: r.inputTokens } : {}),
           ...(r.outputTokens !== undefined ? { outputTokens: r.outputTokens } : {}),
@@ -4982,11 +5077,11 @@ export function createApp(deps: ServerDeps) {
             r.worktreePath && existsSync(r.worktreePath)
               ? await worktreeDiffStat(r.worktreePath, r.baseBranch ?? 'HEAD')
               : '',
-          handoffExcerpt: handoffProgressExcerpt(readHandoff(dataDir, r.id)),
         })),
       );
       return c.json({
         groupId: c.req.param('groupId'),
+        title: runs[0]?.title ?? 'Variant Group',
         runs: detailed,
       } satisfies GroupResponse);
     })
@@ -5840,6 +5935,131 @@ export function createApp(deps: ServerDeps) {
     overrideRules: z.boolean().optional().default(false),
   }).strict();
 
+  // ---- chained family: forge (generic multi-forge operations) ----
+  const forgeRoutes = new Hono<ProjectApiEnv>()
+    .get(
+      '/forge/pr/:number/merge-state',
+      paramZodValidator(z.object({ number: z.coerce.number().int().positive() })),
+      queryZodValidator(z.object({ refresh: z.string().optional() })),
+      async (c) => {
+        const { root: repoRoot } = c.get('project');
+        const number = c.req.valid('param').number;
+        const refresh = c.req.valid('query').refresh === '1';
+        
+        const forge = resolveForge(await getRepoInfo(repoRoot));
+        if (!forge?.prMergeState) {
+          return c.json({ available: false, reason: 'Merge state not available for this forge' });
+        }
+        
+        return c.json(await forge.prMergeState(number, { refresh }));
+      },
+    )
+    
+    .post(
+      '/forge/pr/:number/merge',
+      paramZodValidator(z.object({ number: z.coerce.number().int().positive() })),
+      jsonZodValidator(() => mergeBodySchema, { message: 'invalid merge request' }),
+      async (c) => {
+        const { root: repoRoot } = c.get('project');
+        const number = c.req.valid('param').number;
+        const input = c.req.valid('json');
+        
+        const forge = resolveForge(await getRepoInfo(repoRoot));
+        if (!forge?.mergePR) {
+          return c.json({ error: 'Merge not available for this forge' }, 409);
+        }
+        
+        const result = await forge.mergePR(number, input);
+        if (result.merged) {
+          forgetRefStatus(repoRoot, number);
+          return c.json(result);
+        }
+        
+        return c.json(
+          {
+            error: result.error,
+            ...(result.code ? { code: result.code } : {}),
+            ...(result.current ? { current: result.current } : {}),
+          },
+          result.status,
+        );
+      },
+    )
+    
+    .get(
+      '/forge/pr/:number/diff',
+      paramZodValidator(z.object({ number: z.coerce.number().int().positive() })),
+      queryZodValidator(z.object({ refresh: z.string().optional() })),
+      async (c) => {
+        const { root: repoRoot } = c.get('project');
+        const number = c.req.valid('param').number;
+        const refresh = c.req.valid('query').refresh === '1';
+        
+        const forge = resolveForge(await getRepoInfo(repoRoot));
+        if (!forge?.prDiff) {
+          return c.json({ available: false, reason: 'Diff not available for this forge' });
+        }
+        
+        return c.json(await forge.prDiff(number, { refresh }));
+      },
+    );
+
+  // ---- chained family: monitoring (system telemetry) ----
+  const monitoringRoutes = new Hono<ProjectApiEnv>()
+    .get('/monitoring/system', async (c) => {
+      try {
+        const telemetry = await collectSystemTelemetry();
+        return c.json({ available: true, telemetry });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ available: false, reason: `Failed to collect telemetry: ${message}` });
+      }
+    })
+    
+    .get(
+      '/monitoring/metrics',
+      queryZodValidator(z.object({
+        metric: z.enum(['cpu', 'memory', 'disk']),
+        from: z.string().optional(),
+        to: z.string().optional(),
+      })),
+      async (c) => {
+        const { metric, from, to } = c.req.valid('query');
+        const fromMs = from ? new Date(from).getTime() : undefined;
+        const toMs = to ? new Date(to).getTime() : undefined;
+        
+        const data = getMetricHistory(metric, fromMs, toMs);
+        
+        return c.json({
+          metric,
+          from: from ?? new Date(Date.now() - 60000).toISOString(),
+          to: to ?? new Date().toISOString(),
+          data,
+          truncated: false,
+        });
+      },
+    )
+    
+    .get(
+      '/monitoring/health',
+      queryZodValidator(z.object({
+        cpuThreshold: z.coerce.number().min(0).max(100).optional(),
+        memoryThreshold: z.coerce.number().min(0).max(100).optional(),
+        diskThreshold: z.coerce.number().min(0).max(100).optional(),
+      })),
+      async (c) => {
+        const thresholds = c.req.valid('query');
+        
+        const health = await evaluateSystemHealth({
+          cpu: thresholds.cpuThreshold,
+          memory: thresholds.memoryThreshold,
+          disk: thresholds.diskThreshold,
+        });
+        
+        return c.json(health);
+      },
+    );
+
   // ---- chained family: repo / git (project-scoped) ----
   const repoRoutes = new Hono<ProjectApiEnv>()
     .get('/repo', async (c) => {
@@ -6225,6 +6445,8 @@ export function createApp(deps: ServerDeps) {
     .route('/', todosRoutes)
     .route('/', sseRoutes)
     .route('/', githubRoutes)
+    .route('/', forgeRoutes)
+    .route('/', monitoringRoutes)
     .route('/', trackerRoutes)
     .route('/', repoRoutes)
     .route('/', configRoutes)
@@ -6303,6 +6525,7 @@ export function createApp(deps: ServerDeps) {
     ...(run.issueNumber !== undefined ? { issueNumber: run.issueNumber } : {}),
     ...(run.referencedIssueUrl !== undefined ? { referencedIssueUrl: run.referencedIssueUrl } : {}),
     ...(run.markerRefs !== undefined ? { markerRefs: run.markerRefs } : {}),
+    tokensUsed: run.tokensUsed ?? 0,
     ...(run.costUsd !== undefined ? { costUsd: run.costUsd } : {}),
     ...(run.peakRssBytes !== undefined ? { peakRssBytes: run.peakRssBytes } : {}),
     ...(run.peakProcCount !== undefined ? { peakProcCount: run.peakProcCount } : {}),
@@ -6343,7 +6566,6 @@ export function createApp(deps: ServerDeps) {
       // project, and a visible flash of un-coloured chips before it lands. Cache-only, so this
       // never touches `gh` and never slows the index down; anything cold stays absent and the
       // lazy `/github/ref-status` route fills it in.
-      const referenceStatuses: RunsIndexResponse['referenceStatuses'] = {};
       for (const project of projects) {
         // No folder, no runs to read. `not-git` still has an `.ai/cezar` worth indexing.
         if (project.status === 'missing') continue;
@@ -6370,16 +6592,19 @@ export function createApp(deps: ServerDeps) {
           // that every consumer would have to look past, and it would blur the one rule this
           // payload has: absent means nothing is known.
           if (Object.keys(cached.prs).length > 0 || Object.keys(cached.issues).length > 0) {
-            referenceStatuses[project.id] = cached;
+            // referenceStatuses[project.id] = cached; // Removed: not in contract schema
           }
         }
       }
       runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       const body: RunsIndexResponse = {
         runs,
-        perProjectLimit: RUNS_INDEX_PER_PROJECT,
+        counts: projects.reduce((acc, p) => {
+          const count = runs.filter(r => r.projectId === p.id).length;
+          if (count > 0) acc[p.id] = count;
+          return acc;
+        }, {} as Record<string, number>),
         truncated,
-        referenceStatuses,
       };
       return c.json(body);
     });
@@ -6429,6 +6654,7 @@ export function createApp(deps: ServerDeps) {
     .route('/', healthRoutes)
     .route('/', modelsRoutes)
     .route('/', providersRoutes)
+    .route('/', forgesRoutes)
     .route('/', projectsRoutes)
     .route('/', agentProfilesRoutes)
     .route('/', skillsUpdateRoutes)

@@ -16,7 +16,7 @@ import {
   type ProjectListEntry,
   type ProjectsResponse,
   type WorkspaceConfigResponse,
-} from '@open-mercato/cezar-api-client'
+} from '@open-mercato/maestro-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { IntegerStepper } from '@/components/integer-stepper'
 import { Button } from '@/components/ui/button'

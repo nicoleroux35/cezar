@@ -52,6 +52,12 @@ export const KNOWN_PRESETS_BY_RUNNER: Record<RunnerId, readonly string[]> = {
   // `claude-sonnet-4`). Naming them here would make this guard reject a legitimate codex or
   // claude model as "another runner's preset" — the exact failure pi's comment warns about.
   copilot: [],
+  // Kilo lists nothing for the same reason as OpenCode (#794)
+  kilo: [],
+  // Gemini lists nothing: models are discovered from Google's catalog
+  gemini: [],
+  // Antigravity lists nothing: models are discovered from Google's catalog
+  antigravity: [],
 };
 
 /**

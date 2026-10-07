@@ -3,7 +3,7 @@
  *
  *   ~/.cezar/versions/<id>/                       one `npm install --prefix` tree per version
  *   ~/.cezar/versions/<id>/.cezar-install.json    manifest: version, source, installedAt
- *   ~/.cezar/versions/<id>/node_modules/@open-mercato/cezar/dist/index.js   the entry
+ *   ~/.cezar/versions/<id>/node_modules/@open-mercato/maestro/dist/index.js   the entry
  *   ~/.cezar/versions/current  →  <id>            the active version (a symlink; a junction on
  *                                                 Windows)
  *   ~/.cezar/bin/cezar, cez                       launchers that exec `current`'s entry
@@ -12,7 +12,7 @@
  * collides with the registry release it was cut from.
  *
  * A LINKED checkout (`cezar link`, source `link`) is the development variant: instead of a copy,
- * `versions/<version>+<branch>/node_modules/@open-mercato/cezar` is a symlink (a junction on
+ * `versions/<version>+<branch>/node_modules/@open-mercato/maestro` is a symlink (a junction on
  * Windows) to a worktree's `packages/cezar`. Node runs the entry through its realpath, so the
  * checkout's own `node_modules` resolve, and every rebuild of that worktree is live on the next
  * restart. Anything that reads `current` — the launchers, the desktop shell — runs it unchanged.
@@ -27,7 +27,7 @@ import { z } from 'zod';
 
 import { cezarHomeDir } from '../paths.ts';
 
-export const PACKAGE_NAME = '@open-mercato/cezar';
+export const PACKAGE_NAME = '@open-mercato/maestro';
 export const CURRENT_LINK = 'current';
 const MANIFEST_FILE = '.cezar-install.json';
 
@@ -45,7 +45,7 @@ export function binDir(env: NodeJS.ProcessEnv = process.env): string {
  * A version id becomes a DIRECTORY NAME under `versions/`, and `installSpec` `rm -rf`s the path
  * it resolves to — so an id that can climb out of `versions/` is a wipe of whatever it lands on.
  * The wire schema (`selfUpdateApplyRequestSchema`) bounds the charset but still admits `..`, and
- * npm rejecting `@open-mercato/cezar@..` today is a coincidence of npm's parser, not a guard we
+ * npm rejecting `@open-mercato/maestro@..` today is a coincidence of npm's parser, not a guard we
  * own. Require a leading alphanumeric and forbid `..` outright: every real version id
  * (`0.12.0`, `0.12.0+local`, `0.12.0-nightly.20260927.60`) passes untouched.
  */
@@ -211,7 +211,7 @@ export interface LinkResult {
 }
 
 /**
- * Register a built checkout's package root (the directory holding `@open-mercato/cezar`'s
+ * Register a built checkout's package root (the directory holding `@open-mercato/maestro`'s
  * package.json and `dist/index.js`) as a version: a link, not a copy. Re-linking the same
  * checkout replaces its previous entry (the version or branch may have moved since); a
  * DIFFERENT checkout that would get the same id gets a path-derived suffix instead.
@@ -283,7 +283,7 @@ function shortHash(value: string): string {
 /**
  * How the running entry file was installed. Decides what the dialog offers:
  *   managed     → `~/.cezar/versions/…` — self-update works
- *   global-npm  → `npm i -g` prefix (`…/lib/node_modules/@open-mercato/cezar/…`) — update via npm
+ *   global-npm  → `npm i -g` prefix (`…/lib/node_modules/@open-mercato/maestro/…`) — update via npm
  *   npx         → the `_npx` cache — nothing to update in place; offer `cezar install`
  *   checkout    → a git checkout (`packages/cezar/dist/index.js` beside `src/`) — dev mode
  */

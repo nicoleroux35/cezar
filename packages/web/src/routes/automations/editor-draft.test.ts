@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { AutomationDefinition } from '@open-mercato/cezar-api-client'
+import type { AutomationDefinition } from '@open-mercato/maestro-api-client'
 
 import {
   applyTemplate,

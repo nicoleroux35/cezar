@@ -6,7 +6,7 @@ import { resolveClaudeBin } from './claude-bin.ts';
 const exec = promisify(execFile);
 
 export interface BackendCheck {
-  name: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'junie' | 'copilot' | 'gh' | 'git';
+  name: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'junie' | 'copilot' | 'kilo' | 'gemini' | 'antigravity' | 'gh' | 'git';
   available: boolean;
   version?: string;
   hint?: string;
@@ -14,7 +14,7 @@ export interface BackendCheck {
 
 /**
  * Probe the host for everything cez leans on: the agent CLIs (`claude`, and
- * the optional `codex` / `opencode` / `cursor` / `pi` / `junie` / `copilot`
+ * the optional `codex` / `opencode` / `cursor` / `pi` / `junie` / `copilot` / `kilo` / `gemini` / `antigravity`
  * alternatives), `gh` (GitHub auth for PR creation) and `git`. Nothing is required except at
  * least one agent CLI — the GUI degrades gracefully, only offers the
  * runners that are present, and shows the hints for the rest.
@@ -28,6 +28,9 @@ export async function detectEnvironment(): Promise<BackendCheck[]> {
     probePi(),
     probeJunie(),
     probeCopilot(),
+    probeKilo(),
+    probeGemini(),
+    probeAntigravity(),
     probeGh(),
     probeGit(),
   ]);
@@ -211,6 +214,73 @@ async function probeCopilot(): Promise<BackendCheck> {
       name: 'copilot',
       available: false,
       hint: 'optional: install GitHub Copilot CLI (`npm i -g @github/copilot`) and run `copilot login` to use the copilot runner',
+    };
+  }
+}
+
+async function probeKilo(): Promise<BackendCheck> {
+  // Dry-run stands the runner up on the shared mock (kilo uses the same protocol as opencode).
+  if (process.env.CEZ_DRY_RUN === '1') {
+    return { name: 'kilo', available: true, version: 'mock (CEZ_DRY_RUN=1)' };
+  }
+  const bin = process.env.CEZ_KILO_BIN ?? 'kilo';
+  try {
+    const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
+    return {
+      name: 'kilo',
+      available: true,
+      version: stdout.trim(),
+      hint: 'if no provider is configured, run `kilo` once to set one up',
+    };
+  } catch {
+    return {
+      name: 'kilo',
+      available: false,
+      hint: 'optional: install Kilo Code (npm i -g @kilocode/cli or https://kilo.ai) and configure a provider to use the Kilo runner',
+    };
+  }
+}
+
+async function probeGemini(): Promise<BackendCheck> {
+  if (process.env.CEZ_DRY_RUN === '1') {
+    return { name: 'gemini', available: true, version: 'mock (CEZ_DRY_RUN=1)' };
+  }
+  const bin = process.env.CEZ_GEMINI_BIN ?? 'gemini';
+  try {
+    const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
+    return {
+      name: 'gemini',
+      available: true,
+      version: stdout.trim(),
+      hint: 'if not authenticated, run `gemini` to authenticate with your Google account or set GEMINI_API_KEY',
+    };
+  } catch {
+    return {
+      name: 'gemini',
+      available: false,
+      hint: 'optional: install Gemini CLI (npm i -g @google/gemini-cli) to use the Gemini runner — requires API key, Vertex, or Workspace license',
+    };
+  }
+}
+
+async function probeAntigravity(): Promise<BackendCheck> {
+  if (process.env.CEZ_DRY_RUN === '1') {
+    return { name: 'antigravity', available: true, version: 'mock (CEZ_DRY_RUN=1)' };
+  }
+  const bin = process.env.CEZ_ANTIGRAVITY_BIN ?? 'agy';
+  try {
+    const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
+    return {
+      name: 'antigravity',
+      available: true,
+      version: stdout.trim(),
+      hint: 'if not authenticated, run `agy` to sign in with your Google account',
+    };
+  } catch {
+    return {
+      name: 'antigravity',
+      available: false,
+      hint: 'optional: install Antigravity CLI to use the Antigravity runner — free for individuals with Google account',
     };
   }
 }
