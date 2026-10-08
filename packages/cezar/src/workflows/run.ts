@@ -107,6 +107,16 @@ import {
   type WorkflowStepDef,
 } from './types.ts';
 import { freshContinuationContext } from './continuation-context.ts';
+import {
+  createExecutionContext,
+  evaluateCondition,
+  applyTemplating,
+  composeSkillWithIncludes,
+  recordStepResult,
+  captureOutput,
+  extractStepOutput,
+  type ExecutionContext,
+} from './execution-context.ts';
 
 // Attachment utility functions (previously from contract)
 function attachmentExtension(mediaType: string): string {
@@ -646,6 +656,9 @@ export interface StartRunInput {
   /** Queue-only mode: when true, the task is added to the queue in a paused state and will not
    *  start automatically. User must manually start it via POST /runs/:id/start-queued. */
   queueOnly?: boolean;
+  /** Task group assignment: user-defined group for organizing related tasks. */
+  taskGroupId?: string;
+  taskGroupName?: string;
   /** Attachments from the queued prompt stack (#472), re-encoded from disk by
    *  `hydrateQueuedInput` at dequeue. Kept separate from `images` because those
    *  are persisted into `taskImages` by `startRun()` — folding
@@ -1294,6 +1307,8 @@ export class RunManager {
       worktree: !group && !input.dispatchIntent && input.worktree === false ? false : undefined,
       groupId: group?.groupId,
       variant: group?.variant,
+      taskGroupId: input.taskGroupId,
+      taskGroupName: input.taskGroupName,
       steps: workflow.steps.map((s) => ({ id: s.id, name: s.name ?? s.id, kind: stepKind(s) })),
     });
     // Persist the full definition so a queued run survives a restart (#367) —
@@ -4227,6 +4242,10 @@ export class RunManager {
     // twin is in `runContinuation`.
     this.prepareDispatchSession(runId, state);
     this.prepareAutomationsSession(state);
+
+    // Initialize execution context for advanced workflow features (params, outputs, conditionals)
+    const executionContext = createExecutionContext();
+
     const retriesUsed = new Map<string, number>();
     let checkFailure: string | null = null;
     let runError: string | null = null;
@@ -4277,6 +4296,27 @@ export class RunManager {
       const record = this.store.getRun(runId)?.steps.find((s) => s.id === step.id);
       const iteration = (record?.iterations ?? 0) + 1;
 
+      // Evaluate conditional execution (if present)
+      if (step.if) {
+        const shouldExecute = evaluateCondition(step.if, executionContext, i, workflow.steps);
+        if (!shouldExecute) {
+          // Skip this step — condition not met
+          recordStepResult(executionContext, step.id, 'skipped');
+          this.store.updateStep(runId, step.id, {
+            status: 'skipped',
+            startedAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+          });
+          emit({
+            type: 'note',
+            stepId: step.id,
+            message: `step skipped — condition not met: ${step.if}`
+          });
+          i++;
+          continue;
+        }
+      }
+
       this.store.updateRun(runId, { currentStepId: step.id });
       this.store.updateStep(runId, step.id, {
         status: 'running',
@@ -4304,12 +4344,14 @@ export class RunManager {
           extraSystemPrompt,
           chainStepNote(workflow.steps, i),
           startAttachments,
+          executionContext,
         );
         startImages = undefined;
         startAttachments = [];
         checkFailure = null;
         if (state.cancelled) break;
         if (failure) {
+          recordStepResult(executionContext, step.id, 'failed');
           this.finishStep(runId, step.id, 'failed', failure, emit);
           runError = `step "${step.id}" failed: ${failure}`;
           break;
@@ -4322,15 +4364,34 @@ export class RunManager {
           // An abandoned park is the user accepting the step as it stands, so
           // the rail reads like any other finished step. An unanswered one is
           // marked by the settlement, alongside the run it failed.
-          if (state.askPark === 'abandoned') this.finishStep(runId, step.id, 'done', undefined, emit);
+          const stepState = state as ActiveRun & { lastTurnText?: string };
+          if (state.askPark === 'abandoned') {
+            recordStepResult(executionContext, step.id, 'done', undefined, stepState.lastTurnText);
+            this.finishStep(runId, step.id, 'done', undefined, emit);
+          }
           break;
         }
         // The inactivity watchdog closed this step's session without a DONE
         // (#689): the settlement below fails the step with the run, so it is not
         // stamped `done` here first.
         if (await this.idleClosedFails(runId, state)) {
+          recordStepResult(executionContext, step.id, 'failed');
           idleFailed = true;
           break;
+        }
+        // Capture step output if requested
+        const stepState = state as ActiveRun & { lastTurnText?: string };
+        recordStepResult(executionContext, step.id, 'done', undefined, stepState.lastTurnText);
+        if (step.output && stepState.lastTurnText) {
+          const extracted = extractStepOutput(stepState.lastTurnText);
+          if (extracted) {
+            captureOutput(executionContext, step.output, extracted);
+            emit({
+              type: 'note',
+              stepId: step.id,
+              message: `captured output as "${step.output}"`,
+            });
+          }
         }
         this.finishStep(runId, step.id, 'done', undefined, emit);
         i++;
@@ -4340,10 +4401,26 @@ export class RunManager {
       const { ok, output, exitCode } = await this.runCheckStep(state, step, emit);
       if (state.cancelled) break;
       if (ok) {
+        recordStepResult(executionContext, step.id, 'done', exitCode, output);
+        // Capture check step output if requested
+        if (step.output && output) {
+          const extracted = extractStepOutput(output);
+          if (extracted) {
+            captureOutput(executionContext, step.output, extracted);
+            emit({
+              type: 'note',
+              stepId: step.id,
+              message: `captured output as "${step.output}"`,
+            });
+          }
+        }
         this.finishStep(runId, step.id, 'done', undefined, emit);
         i++;
         continue;
       }
+
+      // Record failed check
+      recordStepResult(executionContext, step.id, 'failed', exitCode, output);
 
       // A failure the check itself says is not about the diff (`onFail.retryOn`)
       // ends the run here: looping back would spend a full agent attempt on a
@@ -4495,16 +4572,22 @@ export class RunManager {
      *  paths are appended to `userPrompt` so the agent can operate on the
      *  real files, not just view the inline image blocks. */
     attachments: PersistedAttachment[] = [],
+    /** Execution context for advanced workflow features (params, outputs, conditionals) */
+    executionContext?: ExecutionContext,
   ): Promise<string | null> {
     let systemPrompt: string | undefined;
     if (step.skill) {
       const skill = skills.find((s) => s.name === step.skill);
       if (skill) {
+        // Compose skill with includes if present
+        const composedBody = composeSkillWithIncludes(skill, skills);
+        const composedSkill = { ...skill, body: composedBody };
+
         // The body alone often does not identify the selected skill. Keep its
         // name and catalog description in the normalized runner payload so a
         // numeric task such as "432" still gives the model enough context to
         // describe the work — and therefore derive a useful title (#432).
-        systemPrompt = skillSystemPrompt(skill);
+        systemPrompt = skillSystemPrompt(composedSkill);
         // Directory team skills (SKILL.md + references/) get materialized
         // into <cwd>/.claude/skills/<name>/ — the run's worktree when there
         // is one — so claude sees the companion files on disk; the shared
@@ -4529,6 +4612,12 @@ export class RunManager {
     }
 
     let userPrompt = applyTemplate(step.prompt ?? '{{task}}', input.task);
+
+    // Apply advanced templating for params and outputs
+    if (executionContext) {
+      userPrompt = applyTemplating(userPrompt, executionContext, step.params);
+    }
+
     // A fresh run's OPENING prompt is delivered straight to `startSession`, never through
     // `deliverMessage`, so — like the continuation seam above (#811) — it needs the same
     // delivery-only `/skill` rewrite. Without it a task STARTED with `/om-...` as its first
@@ -4937,6 +5026,8 @@ export class RunManager {
       sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
       if (!state.cancelled && this.active.get(runId) === state) {
         this.store.updateStep(runId, step.id, { tokensUsed: startTokens + result.tokensUsed });
+        // Store turnText in state for output capture
+        (state as ActiveRun & { lastTurnText?: string }).lastTurnText = turnText;
       }
       return null;
     } catch (err) {

@@ -56,6 +56,12 @@ export const workflowStepSchema = z
         retryOn: z.array(z.number().int().positive()).optional(),
       })
       .optional(),
+    // Step parameters (for skills and prompt templating)
+    params: z.record(z.string(), z.unknown()).optional(),
+    // Output capture (named output to pass to subsequent steps)
+    output: z.string().min(1).optional(),
+    // Conditional execution (based on previous step state)
+    if: z.string().min(1).optional(),
   })
   .refine((s) => Boolean(s.command) !== Boolean(s.prompt ?? s.skill), {
     message: 'a step is either an agent step (prompt/skill) or a check step (command), not both',

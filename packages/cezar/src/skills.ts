@@ -34,6 +34,8 @@ export interface Skill {
     /** The exact commit `ref` resolved to when the skill was read (#428). */
     commit?: string;
   };
+  /** Skill composition: other skills to include (their bodies are merged into this one). */
+  includes?: string[];
 }
 
 /* Precedence order — earlier dirs win name collisions. `npx skills` writes
@@ -229,7 +231,10 @@ async function readMarkdownSkills(dir: string, source: Skill['source']): Promise
         ? frontmatter.description.trim()
         : undefined;
     const interactive = frontmatter.interactive === 'true' ? true : undefined;
-    skills.push({ name, description, interactive, body, path: absPath, source });
+    const includes = Array.isArray(frontmatter.includes)
+      ? frontmatter.includes.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+      : undefined;
+    skills.push({ name, description, interactive, body, path: absPath, source, includes });
   }
   return skills;
 }
