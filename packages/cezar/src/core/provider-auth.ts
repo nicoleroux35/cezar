@@ -7,7 +7,7 @@ import { resolveClaudeBin } from './claude-bin.ts';
 import { quoteExecutable, withEnvPrefix } from './shell-env.ts';
 import { probeJunieAuthentication } from './junie-auth-probe.ts';
 
-export const PROVIDER_IDS = ['claude', 'codex', 'opencode', 'cursor', 'pi', 'junie', 'copilot', 'kilo', 'gemini', 'antigravity'] as const;
+export const PROVIDER_IDS = ['claude', 'codex', 'opencode', 'cursor', 'pi', 'junie', 'copilot', 'kilo', 'gemini', 'antigravity', 'http'] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type ProviderConnectionState =
   | 'connected'
@@ -146,7 +146,9 @@ const RUNTIME_AUTH_VERIFY_COOLDOWN_MS = 60_000;
 function cacheTtlFor(rows: readonly ProviderStatus[]): number {
   // Junie deliberately remains `unknown` after a successful handshake, so it must not force
   // every other provider's cached credential result onto the short negative-answer window.
-  return rows.filter((row) => row.provider !== 'junie').every((row) => row.status === 'connected')
+  // HTTP is also excluded: it returns 'disconnected' when CEZ_HTTP_AGENT_CONFIG is unset,
+  // which is the expected state for most users who don't use custom endpoints.
+  return rows.filter((row) => row.provider !== 'junie' && row.provider !== 'http').every((row) => row.status === 'connected')
     ? CONNECTED_TTL_MS
     : UNSETTLED_TTL_MS;
 }
@@ -309,30 +311,140 @@ function parseCopilotStatus(result: ProviderCommandResult): ProviderConnectionSt
   return null;
 }
 
+function parseKiloStatus(result: ProviderCommandResult): ProviderConnectionState | null {
+  // Kilo uses the same auth structure as OpenCode: `kilo auth list`
+  if (result.exitCode !== 0) return null;
+  const lines = normalizedLines(result.stdout);
+  const storedSummaries = lines
+    .map((line) => line.match(/^[^a-z0-9]*(\d+)\s+credentials?$/)?.[1])
+    .filter((count): count is string => count !== undefined);
+  if (storedSummaries.length !== 1) return null;
+  const storedCount = Number(storedSummaries[0]);
+  if (!Number.isSafeInteger(storedCount)) return null;
+
+  const environmentSummaries = lines
+    .map((line) => line.match(/^[^a-z0-9]*(\d+)\s+environment\s+variables?$/)?.[1])
+    .filter((count): count is string => count !== undefined);
+  const hasEnvironmentBlock = lines.some((line) => /^[^a-z0-9]*environment$/.test(line));
+  if (environmentSummaries.length > 1) return null;
+  if (hasEnvironmentBlock !== (environmentSummaries.length === 1)) return null;
+  const environmentCount = environmentSummaries.length === 1
+    ? Number(environmentSummaries[0])
+    : 0;
+  if (!Number.isSafeInteger(environmentCount)) return null;
+
+  return storedCount > 0 || environmentCount > 0 ? 'connected' : 'disconnected';
+}
+
+function parseGeminiStatus(result: ProviderCommandResult): ProviderConnectionState | null {
+  // Gemini auth status check - looking for authentication state
+  // Note: gemini may return non-zero exit code with error messages that still indicate auth state
+  const lines = normalizedLines(result.stdout, result.stderr);
+
+  // Check for positive authentication signals
+  if (lines.some((line) =>
+    line.includes('authenticated') ||
+    line.includes('logged in') ||
+    /^status\s*:\s*authenticated$/.test(line)
+  )) {
+    return 'connected';
+  }
+
+  // Check for negative authentication signals or errors indicating no auth
+  if (lines.some((line) =>
+    line.includes('not authenticated') ||
+    line.includes('not logged in') ||
+    line.includes('error authenticating') ||
+    line.includes('ineligibletier') ||
+    line.includes('run') && line.includes('login') ||
+    /^status\s*:\s*unauthenticated$/.test(line)
+  )) {
+    return 'disconnected';
+  }
+
+  return null;
+}
+
+function parseAntigravityStatus(result: ProviderCommandResult): ProviderConnectionState | null {
+  // Antigravity auth status check
+  if (result.exitCode !== 0) return null;
+  const lines = normalizedLines(result.stdout, result.stderr);
+
+  // Check for positive authentication signals
+  if (lines.some((line) =>
+    line.includes('authenticated') ||
+    line.includes('logged in') ||
+    line.includes('signed in') ||
+    /^status\s*:\s*authenticated$/.test(line)
+  )) {
+    return 'connected';
+  }
+
+  // Check for negative authentication signals
+  if (lines.some((line) =>
+    line.includes('not authenticated') ||
+    line.includes('not logged in') ||
+    line.includes('not signed in') ||
+    line.includes('run') && line.includes('auth') ||
+    /^status\s*:\s*unauthenticated$/.test(line)
+  )) {
+    return 'disconnected';
+  }
+
+  return null;
+}
+
 const DESCRIPTORS: readonly ProviderDescriptor[] = [
   {
     id: 'claude',
     executable: () => resolveClaudeBin(),
     statusArgs: ['auth', 'status', '--json'],
     loginArgs: ['auth', 'login'],
-    installHint: 'Install Claude Code, then run `claude auth login`.',
+    installHint: 'Install Claude Code, then run `claude auth login` (or set ANTHROPIC_API_KEY).',
     parse: parseClaudeStatus,
+    // Claude Code can use ANTHROPIC_API_KEY directly
+    precheck: () => (process.env.ANTHROPIC_API_KEY?.trim() ? 'connected' : undefined),
   },
   {
     id: 'codex',
     executable: () => process.env.CEZ_CODEX_BIN ?? 'codex',
     statusArgs: ['login', 'status'],
     loginArgs: ['login'],
-    installHint: 'Install the Codex CLI, then run `codex login`.',
+    installHint: 'Install the Codex CLI, then run `codex login` (or set OPENAI_API_KEY).',
     parse: parseCodexStatus,
+    // Codex can use OPENAI_API_KEY or AZURE_OPENAI_API_KEY
+    precheck: () => {
+      if (process.env.OPENAI_API_KEY?.trim()) return 'connected';
+      if (process.env.AZURE_OPENAI_API_KEY?.trim()) return 'connected';
+      return undefined;
+    },
   },
   {
     id: 'opencode',
     executable: () => process.env.CEZ_OPENCODE_BIN ?? 'opencode',
     statusArgs: ['auth', 'list'],
     loginArgs: ['auth', 'login'],
-    installHint: 'Install OpenCode, then run `opencode auth login`.',
+    installHint: 'Install OpenCode, then run `opencode auth login` (or set provider API keys).',
     parse: parseOpenCodeStatus,
+    // OpenCode supports multiple provider API keys
+    precheck: () => {
+      const keys = [
+        'OPENAI_API_KEY',
+        'ANTHROPIC_API_KEY',
+        'AZURE_OPENAI_API_KEY',
+        'OPENROUTER_API_KEY',
+        'GROQ_API_KEY',
+        'MISTRAL_API_KEY',
+        'GEMINI_API_KEY',
+        'GOOGLE_GENERATIVE_AI_API_KEY',
+        'DEEPSEEK_API_KEY',
+        'XAI_API_KEY',
+        'PERPLEXITY_API_KEY',
+        'TOGETHER_API_KEY',
+        'FIREWORKS_API_KEY',
+      ];
+      return keys.some((key) => process.env[key]?.trim()) ? 'connected' : undefined;
+    },
   },
   {
     id: 'cursor',
@@ -350,8 +462,27 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     executable: () => process.env.CEZ_PI_BIN ?? 'pi',
     statusArgs: ['--list-models'],
     loginArgs: ['/login'],
-    installHint: 'Install pi, then run `pi /login`.',
+    installHint: 'Install pi, then run `pi /login` (or set provider API keys).',
     parse: parsePiStatus,
+    // Pi supports multiple provider API keys (same as OpenCode)
+    precheck: () => {
+      const keys = [
+        'OPENAI_API_KEY',
+        'ANTHROPIC_API_KEY',
+        'AZURE_OPENAI_API_KEY',
+        'OPENROUTER_API_KEY',
+        'GROQ_API_KEY',
+        'MISTRAL_API_KEY',
+        'GEMINI_API_KEY',
+        'GOOGLE_GENERATIVE_AI_API_KEY',
+        'DEEPSEEK_API_KEY',
+        'XAI_API_KEY',
+        'PERPLEXITY_API_KEY',
+        'TOGETHER_API_KEY',
+        'FIREWORKS_API_KEY',
+      ];
+      return keys.some((key) => process.env[key]?.trim()) ? 'connected' : undefined;
+    },
   },
   {
     id: 'junie',
@@ -369,6 +500,70 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     installHint: 'Install GitHub Copilot CLI (`npm i -g @github/copilot`), then run `copilot login`.',
     parse: parseCopilotStatus,
     stdin: copilotAcpProbeStdin,
+  },
+  {
+    id: 'kilo',
+    executable: () => process.env.CEZ_KILO_BIN ?? 'kilo',
+    statusArgs: ['auth', 'list'],
+    loginArgs: ['auth', 'login'],
+    installHint: 'Install Kilo Code (npm i -g @kilocode/cli or https://kilo.ai), then run `kilo auth login` (or set provider API keys).',
+    parse: parseKiloStatus,
+    // Kilo supports multiple provider API keys (same as OpenCode)
+    precheck: () => {
+      const keys = [
+        'OPENAI_API_KEY',
+        'ANTHROPIC_API_KEY',
+        'AZURE_OPENAI_API_KEY',
+        'OPENROUTER_API_KEY',
+        'GROQ_API_KEY',
+        'MISTRAL_API_KEY',
+        'GEMINI_API_KEY',
+        'GOOGLE_GENERATIVE_AI_API_KEY',
+        'DEEPSEEK_API_KEY',
+        'XAI_API_KEY',
+        'PERPLEXITY_API_KEY',
+        'TOGETHER_API_KEY',
+        'FIREWORKS_API_KEY',
+      ];
+      return keys.some((key) => process.env[key]?.trim()) ? 'connected' : undefined;
+    },
+  },
+  {
+    id: 'gemini',
+    executable: () => process.env.CEZ_GEMINI_BIN ?? 'gemini',
+    statusArgs: ['--version'],
+    loginArgs: [],
+    installHint: 'Install Gemini CLI (npm i -g @google/gemini-cli), then authenticate with your Google account or set GEMINI_API_KEY.',
+    parse: parseGeminiStatus,
+    precheck: () => (process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? 'connected' : undefined),
+  },
+  {
+    id: 'antigravity',
+    executable: () => process.env.CEZ_ANTIGRAVITY_BIN ?? 'agy',
+    statusArgs: ['--version'],
+    loginArgs: [],
+    installHint: 'Install Antigravity CLI, then run `agy` to sign in with your Google account (or set GOOGLE_GENERATIVE_AI_API_KEY).',
+    parse: parseAntigravityStatus,
+    precheck: () => (process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? 'connected' : undefined),
+  },
+  {
+    id: 'http',
+    executable: () => 'node', // dummy, never called
+    statusArgs: [],
+    loginArgs: [],
+    installHint: 'HTTP agent requires no installation. Configure via CEZ_HTTP_AGENT_CONFIG environment variable with endpoint URL and optional API key.',
+    parse: () => null,
+    // HTTP agent status is determined by configuration presence
+    precheck: () => {
+      const config = process.env.CEZ_HTTP_AGENT_CONFIG?.trim();
+      if (!config) return 'disconnected';
+      try {
+        const parsed = JSON.parse(config) as { endpoint?: string };
+        return parsed.endpoint ? 'connected' : 'disconnected';
+      } catch {
+        return 'disconnected';
+      }
+    },
   },
 ];
 

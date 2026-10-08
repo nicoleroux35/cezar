@@ -64,6 +64,32 @@ const connectedResults: Record<string, ProviderCommandResult> = {
     stderr: '',
     exitCode: 0,
   },
+  kilo: {
+    stdout: [
+      '┌  Credentials ~/.local/share/kilo/auth.json',
+      '│',
+      '●  Anthropic oauth',
+      '│',
+      '└  1 credential',
+    ].join('\n'),
+    stderr: '',
+    exitCode: 0,
+  },
+  gemini: {
+    stdout: 'Status: authenticated',
+    stderr: '',
+    exitCode: 0,
+  },
+  antigravity: {
+    stdout: 'Status: authenticated',
+    stderr: '',
+    exitCode: 0,
+  },
+  http: {
+    stdout: '',
+    stderr: '',
+    exitCode: 0,
+  },
 };
 
 const originalEnv = {
@@ -75,6 +101,11 @@ const originalEnv = {
   CEZ_PI_BIN: process.env.CEZ_PI_BIN,
   CURSOR_API_KEY: process.env.CURSOR_API_KEY,
   CEZ_COPILOT_BIN: process.env.CEZ_COPILOT_BIN,
+  CEZ_HTTP_AGENT_CONFIG: process.env.CEZ_HTTP_AGENT_CONFIG,
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
 };
 
 beforeEach(() => {
@@ -86,6 +117,11 @@ beforeEach(() => {
   delete process.env.CEZ_PI_BIN;
   delete process.env.CURSOR_API_KEY;
   delete process.env.CEZ_COPILOT_BIN;
+  delete process.env.CEZ_HTTP_AGENT_CONFIG;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 });
 
 afterEach(() => {
@@ -98,8 +134,9 @@ afterEach(() => {
 /** One status command per provider — the size of a full probe round. Derived rather than
  *  written out so adding runner #6 does not mean editing a dozen literal counts in this file.
  *  Junie is the exception: `probe()` routes it through `probeJunieAuthentication`, never
- *  `runCommand`, so it is a status row but not a status command. */
-const PROBE_ROUND = PROVIDER_IDS.filter((provider) => provider !== 'junie').length;
+ *  `runCommand`, so it is a status row but not a status command. HTTP also has a precheck
+ *  that returns before calling runCommand. */
+const PROBE_ROUND = PROVIDER_IDS.filter((provider) => provider !== 'junie' && provider !== 'http').length;
 
 function resultFor(executable: string): ProviderCommandResult {
   if (executable === 'claude') return connectedResults.claude!;
@@ -107,6 +144,10 @@ function resultFor(executable: string): ProviderCommandResult {
   if (executable === 'agent' || executable.includes('cursor')) return connectedResults.cursor!;
   if (executable.includes('opencode')) return connectedResults.opencode!;
   if (executable.includes('copilot')) return connectedResults.copilot!;
+  if (executable.includes('kilo')) return connectedResults.kilo!;
+  if (executable.includes('gemini')) return connectedResults.gemini!;
+  if (executable === 'agy' || executable.includes('antigravity')) return connectedResults.antigravity!;
+  if (executable === 'node') return connectedResults.http!;
   return connectedResults.pi!;
 }
 
@@ -625,6 +666,10 @@ describe('ProviderAuthService', () => {
         { provider: 'pi' },
         { provider: 'junie', status: 'connected' },
         { provider: 'copilot' },
+        { provider: 'kilo' },
+        { provider: 'gemini' },
+        { provider: 'antigravity' },
+        { provider: 'http', status: 'disconnected' }, // precheck returns disconnected when no config
       ],
     });
   });
@@ -649,6 +694,9 @@ describe('ProviderAuthService', () => {
       { executable: 'agent', args: ['status', '--format', 'json'], timeoutMs: 10_000 },
       { executable: 'pi', args: ['--list-models'], timeoutMs: 10_000 },
       { executable: 'copilot', args: ['--acp'], timeoutMs: 10_000 },
+      { executable: 'kilo', args: ['auth', 'list'], timeoutMs: 10_000 },
+      { executable: 'gemini', args: ['--version'], timeoutMs: 10_000 },
+      { executable: 'agy', args: ['--version'], timeoutMs: 10_000 },
     ]);
     release();
     await expect(pending).resolves.toBeDefined();
@@ -1105,6 +1153,10 @@ describe('ProviderAuthService', () => {
         { provider: 'pi', status: 'connected' },
         { provider: 'junie', status: 'connected' },
         { provider: 'copilot', status: 'connected' },
+        { provider: 'kilo', status: 'connected' },
+        { provider: 'gemini', status: 'connected' },
+        { provider: 'antigravity', status: 'connected' },
+        { provider: 'http', status: 'connected' },
       ],
     });
     expect(runCommand).not.toHaveBeenCalled();
@@ -1218,6 +1270,10 @@ describe('ProviderAuthService', () => {
         { provider: 'pi', status: 'connected' },
         { provider: 'junie', status: 'connected' },
         { provider: 'copilot', status: 'connected' },
+        { provider: 'kilo', status: 'connected' },
+        { provider: 'gemini', status: 'connected' },
+        { provider: 'antigravity', status: 'connected' },
+        { provider: 'http', status: 'connected' },
       ],
     });
     expect(runCommand).not.toHaveBeenCalled();
@@ -1385,6 +1441,178 @@ describe('ProviderAuthService', () => {
     it('adds nothing for OpenCode, whose credentials do not follow its config dir', () => {
       expect(new ProviderAuthService({ platform: 'linux' }).loginCommand('opencode', '/oc-work'))
         .toBe("'opencode' auth login");
+    });
+  });
+
+  describe('API key authentication (precheck)', () => {
+    const savedEnv = {
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      AZURE_OPENAI_API_KEY: process.env.AZURE_OPENAI_API_KEY,
+      CURSOR_API_KEY: process.env.CURSOR_API_KEY,
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+      GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+      GROQ_API_KEY: process.env.GROQ_API_KEY,
+      CEZ_HTTP_AGENT_CONFIG: process.env.CEZ_HTTP_AGENT_CONFIG,
+    };
+
+    beforeEach(() => {
+      for (const key of Object.keys(savedEnv)) {
+        delete process.env[key];
+      }
+    });
+
+    afterEach(() => {
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+
+    it('detects Claude via ANTHROPIC_API_KEY without calling CLI', async () => {
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-test123';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const claude = providers.find((p) => p.provider === 'claude');
+      expect(claude?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('claude'), expect.anything(), expect.anything());
+    });
+
+    it('detects Codex via OPENAI_API_KEY without calling CLI', async () => {
+      process.env.OPENAI_API_KEY = 'sk-test123';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const codex = providers.find((p) => p.provider === 'codex');
+      expect(codex?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('codex'), expect.anything(), expect.anything());
+    });
+
+    it('detects Codex via AZURE_OPENAI_API_KEY without calling CLI', async () => {
+      process.env.AZURE_OPENAI_API_KEY = 'azure-test123';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const codex = providers.find((p) => p.provider === 'codex');
+      expect(codex?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('codex'), expect.anything(), expect.anything());
+    });
+
+    it('detects OpenCode via any supported provider API key', async () => {
+      process.env.GROQ_API_KEY = 'gsk-test123';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const opencode = providers.find((p) => p.provider === 'opencode');
+      expect(opencode?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('opencode'), expect.anything(), expect.anything());
+    });
+
+    it('detects Kilo via any supported provider API key', async () => {
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-test123';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const kilo = providers.find((p) => p.provider === 'kilo');
+      expect(kilo?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('kilo'), expect.anything(), expect.anything());
+    });
+
+    it('detects pi via any supported provider API key', async () => {
+      process.env.OPENAI_API_KEY = 'sk-test123';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const pi = providers.find((p) => p.provider === 'pi');
+      expect(pi?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('pi'), expect.anything(), expect.anything());
+    });
+
+    it('detects Gemini via GEMINI_API_KEY without calling CLI', async () => {
+      process.env.GEMINI_API_KEY = 'test-gemini-key';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const gemini = providers.find((p) => p.provider === 'gemini');
+      expect(gemini?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('gemini'), expect.anything(), expect.anything());
+    });
+
+    it('detects Gemini via GOOGLE_GENERATIVE_AI_API_KEY without calling CLI', async () => {
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-google-key';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const gemini = providers.find((p) => p.provider === 'gemini');
+      expect(gemini?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('gemini'), expect.anything(), expect.anything());
+    });
+
+    it('detects Antigravity via GOOGLE_GENERATIVE_AI_API_KEY without calling CLI', async () => {
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-google-key';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const antigravity = providers.find((p) => p.provider === 'antigravity');
+      expect(antigravity?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('agy'), expect.anything(), expect.anything());
+    });
+
+    it('detects HTTP agent via CEZ_HTTP_AGENT_CONFIG', async () => {
+      process.env.CEZ_HTTP_AGENT_CONFIG = '{"endpoint":"https://api.example.com/v1/chat/completions","apiKey":"test"}';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const http = providers.find((p) => p.provider === 'http');
+      expect(http?.status).toBe('connected');
+    });
+
+    it('shows HTTP agent as disconnected when CEZ_HTTP_AGENT_CONFIG is missing', async () => {
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const http = providers.find((p) => p.provider === 'http');
+      expect(http?.status).toBe('disconnected');
+    });
+
+    it('falls back to CLI check when API key is empty', async () => {
+      process.env.ANTHROPIC_API_KEY = '   '; // whitespace only
+      const runCommand = runner((executable) => executable === 'claude'
+        ? { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 }
+        : resultFor(executable));
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const claude = providers.find((p) => p.provider === 'claude');
+      expect(claude?.status).toBe('disconnected');
+      expect(runCommand).toHaveBeenCalledWith('claude', ['auth', 'status', '--json'], 10_000);
+    });
+
+    it('supports multiple providers with API keys simultaneously', async () => {
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+      process.env.OPENAI_API_KEY = 'sk-test';
+      process.env.GROQ_API_KEY = 'gsk-test';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'claude')?.status).toBe('connected');
+      expect(providers.find((p) => p.provider === 'codex')?.status).toBe('connected');
+      expect(providers.find((p) => p.provider === 'opencode')?.status).toBe('connected');
+      expect(providers.find((p) => p.provider === 'kilo')?.status).toBe('connected');
+      expect(providers.find((p) => p.provider === 'pi')?.status).toBe('connected');
     });
   });
 });
