@@ -106,6 +106,14 @@ const originalEnv = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+  ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+  OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+  AZURE_OPENAI_ENDPOINT: process.env.AZURE_OPENAI_ENDPOINT,
+  CURSOR_BASE_URL: process.env.CURSOR_BASE_URL,
+  GOOGLE_API_BASE_URL: process.env.GOOGLE_API_BASE_URL,
+  OPENROUTER_BASE_URL: process.env.OPENROUTER_BASE_URL,
+  GROQ_BASE_URL: process.env.GROQ_BASE_URL,
+  MISTRAL_BASE_URL: process.env.MISTRAL_BASE_URL,
 };
 
 beforeEach(() => {
@@ -122,6 +130,14 @@ beforeEach(() => {
   delete process.env.OPENAI_API_KEY;
   delete process.env.GEMINI_API_KEY;
   delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  delete process.env.ANTHROPIC_BASE_URL;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.AZURE_OPENAI_ENDPOINT;
+  delete process.env.CURSOR_BASE_URL;
+  delete process.env.GOOGLE_API_BASE_URL;
+  delete process.env.OPENROUTER_BASE_URL;
+  delete process.env.GROQ_BASE_URL;
+  delete process.env.MISTRAL_BASE_URL;
 });
 
 afterEach(() => {
@@ -1454,6 +1470,14 @@ describe('ProviderAuthService', () => {
       GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
       GROQ_API_KEY: process.env.GROQ_API_KEY,
       CEZ_HTTP_AGENT_CONFIG: process.env.CEZ_HTTP_AGENT_CONFIG,
+      ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+      AZURE_OPENAI_ENDPOINT: process.env.AZURE_OPENAI_ENDPOINT,
+      CURSOR_BASE_URL: process.env.CURSOR_BASE_URL,
+      GOOGLE_API_BASE_URL: process.env.GOOGLE_API_BASE_URL,
+      OPENROUTER_BASE_URL: process.env.OPENROUTER_BASE_URL,
+      GROQ_BASE_URL: process.env.GROQ_BASE_URL,
+      MISTRAL_BASE_URL: process.env.MISTRAL_BASE_URL,
     };
 
     beforeEach(() => {
@@ -1604,6 +1628,87 @@ describe('ProviderAuthService', () => {
       process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
       process.env.OPENAI_API_KEY = 'sk-test';
       process.env.GROQ_API_KEY = 'gsk-test';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'claude')?.status).toBe('connected');
+      expect(providers.find((p) => p.provider === 'codex')?.status).toBe('connected');
+      expect(providers.find((p) => p.provider === 'opencode')?.status).toBe('connected');
+      expect(providers.find((p) => p.provider === 'kilo')?.status).toBe('connected');
+      expect(providers.find((p) => p.provider === 'pi')?.status).toBe('connected');
+    });
+
+    it('detects Claude via ANTHROPIC_BASE_URL without calling CLI', async () => {
+      process.env.ANTHROPIC_BASE_URL = 'https://custom-endpoint.com';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const claude = providers.find((p) => p.provider === 'claude');
+      expect(claude?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('claude'), expect.anything(), expect.anything());
+    });
+
+    it('detects Codex via OPENAI_BASE_URL without calling CLI', async () => {
+      process.env.OPENAI_BASE_URL = 'https://custom-endpoint.com';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const codex = providers.find((p) => p.provider === 'codex');
+      expect(codex?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('codex'), expect.anything(), expect.anything());
+    });
+
+    it('detects Codex via AZURE_OPENAI_ENDPOINT without calling CLI', async () => {
+      process.env.AZURE_OPENAI_ENDPOINT = 'https://custom.openai.azure.com';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const codex = providers.find((p) => p.provider === 'codex');
+      expect(codex?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('codex'), expect.anything(), expect.anything());
+    });
+
+    it('detects OpenCode via base URL without calling CLI', async () => {
+      process.env.OPENROUTER_BASE_URL = 'https://custom-openrouter.com';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const opencode = providers.find((p) => p.provider === 'opencode');
+      expect(opencode?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('opencode'), expect.anything(), expect.anything());
+    });
+
+    it('detects Cursor via CURSOR_BASE_URL without calling CLI', async () => {
+      process.env.CURSOR_BASE_URL = 'https://custom-cursor.com';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const cursor = providers.find((p) => p.provider === 'cursor');
+      expect(cursor?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('agent'), expect.anything(), expect.anything());
+    });
+
+    it('detects Gemini via GOOGLE_API_BASE_URL without calling CLI', async () => {
+      process.env.GOOGLE_API_BASE_URL = 'https://custom-google-api.com';
+      const runCommand = runner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      const gemini = providers.find((p) => p.provider === 'gemini');
+      expect(gemini?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('gemini'), expect.anything(), expect.anything());
+    });
+
+    it('supports API keys and custom endpoints simultaneously', async () => {
+      process.env.ANTHROPIC_BASE_URL = 'https://custom1.com';
+      process.env.OPENAI_API_KEY = 'sk-test';
+      process.env.GROQ_BASE_URL = 'https://custom2.com';
       const runCommand = runner();
       const service = new ProviderAuthService({ runCommand });
 

@@ -400,22 +400,28 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     executable: () => resolveClaudeBin(),
     statusArgs: ['auth', 'status', '--json'],
     loginArgs: ['auth', 'login'],
-    installHint: 'Install Claude Code, then run `claude auth login` (or set ANTHROPIC_API_KEY).',
+    installHint: 'Install Claude Code, then run `claude auth login` (or set ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL).',
     parse: parseClaudeStatus,
-    // Claude Code can use ANTHROPIC_API_KEY directly
-    precheck: () => (process.env.ANTHROPIC_API_KEY?.trim() ? 'connected' : undefined),
+    // Claude Code can use ANTHROPIC_API_KEY directly, or custom endpoint via ANTHROPIC_BASE_URL
+    precheck: () => {
+      if (process.env.ANTHROPIC_API_KEY?.trim()) return 'connected';
+      if (process.env.ANTHROPIC_BASE_URL?.trim()) return 'connected';
+      return undefined;
+    },
   },
   {
     id: 'codex',
     executable: () => process.env.CEZ_CODEX_BIN ?? 'codex',
     statusArgs: ['login', 'status'],
     loginArgs: ['login'],
-    installHint: 'Install the Codex CLI, then run `codex login` (or set OPENAI_API_KEY).',
+    installHint: 'Install the Codex CLI, then run `codex login` (or set OPENAI_API_KEY / OPENAI_BASE_URL).',
     parse: parseCodexStatus,
-    // Codex can use OPENAI_API_KEY or AZURE_OPENAI_API_KEY
+    // Codex can use OPENAI_API_KEY or AZURE_OPENAI_API_KEY, or custom endpoints
     precheck: () => {
       if (process.env.OPENAI_API_KEY?.trim()) return 'connected';
       if (process.env.AZURE_OPENAI_API_KEY?.trim()) return 'connected';
+      if (process.env.OPENAI_BASE_URL?.trim()) return 'connected';
+      if (process.env.AZURE_OPENAI_ENDPOINT?.trim()) return 'connected';
       return undefined;
     },
   },
@@ -424,9 +430,9 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     executable: () => process.env.CEZ_OPENCODE_BIN ?? 'opencode',
     statusArgs: ['auth', 'list'],
     loginArgs: ['auth', 'login'],
-    installHint: 'Install OpenCode, then run `opencode auth login` (or set provider API keys).',
+    installHint: 'Install OpenCode, then run `opencode auth login` (or set provider API keys / base URLs).',
     parse: parseOpenCodeStatus,
-    // OpenCode supports multiple provider API keys
+    // OpenCode supports multiple provider API keys and custom endpoints
     precheck: () => {
       const keys = [
         'OPENAI_API_KEY',
@@ -443,7 +449,17 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
         'TOGETHER_API_KEY',
         'FIREWORKS_API_KEY',
       ];
-      return keys.some((key) => process.env[key]?.trim()) ? 'connected' : undefined;
+      const endpoints = [
+        'OPENAI_BASE_URL',
+        'ANTHROPIC_BASE_URL',
+        'AZURE_OPENAI_ENDPOINT',
+        'OPENROUTER_BASE_URL',
+        'GROQ_BASE_URL',
+        'MISTRAL_BASE_URL',
+      ];
+      return keys.some((key) => process.env[key]?.trim()) || endpoints.some((ep) => process.env[ep]?.trim())
+        ? 'connected'
+        : undefined;
     },
   },
   {
@@ -452,19 +468,23 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: ['status', '--format', 'json'],
     loginArgs: ['login'],
     installHint:
-      'Install the Cursor CLI (`curl https://cursor.com/install -fsS | bash`), then run `agent login` (or set CURSOR_API_KEY).',
+      'Install the Cursor CLI (`curl https://cursor.com/install -fsS | bash`), then run `agent login` (or set CURSOR_API_KEY / CURSOR_BASE_URL).',
     parse: parseCursorStatus,
     // `agent status` doesn't itself know about CURSOR_API_KEY — see the `precheck` field's doc.
-    precheck: () => (process.env.CURSOR_API_KEY?.trim() ? 'connected' : undefined),
+    precheck: () => {
+      if (process.env.CURSOR_API_KEY?.trim()) return 'connected';
+      if (process.env.CURSOR_BASE_URL?.trim()) return 'connected';
+      return undefined;
+    },
   },
   {
     id: 'pi',
     executable: () => process.env.CEZ_PI_BIN ?? 'pi',
     statusArgs: ['--list-models'],
     loginArgs: ['/login'],
-    installHint: 'Install pi, then run `pi /login` (or set provider API keys).',
+    installHint: 'Install pi, then run `pi /login` (or set provider API keys / base URLs).',
     parse: parsePiStatus,
-    // Pi supports multiple provider API keys (same as OpenCode)
+    // Pi supports multiple provider API keys (same as OpenCode) and custom endpoints
     precheck: () => {
       const keys = [
         'OPENAI_API_KEY',
@@ -481,7 +501,17 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
         'TOGETHER_API_KEY',
         'FIREWORKS_API_KEY',
       ];
-      return keys.some((key) => process.env[key]?.trim()) ? 'connected' : undefined;
+      const endpoints = [
+        'OPENAI_BASE_URL',
+        'ANTHROPIC_BASE_URL',
+        'AZURE_OPENAI_ENDPOINT',
+        'OPENROUTER_BASE_URL',
+        'GROQ_BASE_URL',
+        'MISTRAL_BASE_URL',
+      ];
+      return keys.some((key) => process.env[key]?.trim()) || endpoints.some((ep) => process.env[ep]?.trim())
+        ? 'connected'
+        : undefined;
     },
   },
   {
@@ -506,9 +536,9 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     executable: () => process.env.CEZ_KILO_BIN ?? 'kilo',
     statusArgs: ['auth', 'list'],
     loginArgs: ['auth', 'login'],
-    installHint: 'Install Kilo Code (npm i -g @kilocode/cli or https://kilo.ai), then run `kilo auth login` (or set provider API keys).',
+    installHint: 'Install Kilo Code (npm i -g @kilocode/cli or https://kilo.ai), then run `kilo auth login` (or set provider API keys / base URLs).',
     parse: parseKiloStatus,
-    // Kilo supports multiple provider API keys (same as OpenCode)
+    // Kilo supports multiple provider API keys (same as OpenCode) and custom endpoints
     precheck: () => {
       const keys = [
         'OPENAI_API_KEY',
@@ -525,7 +555,17 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
         'TOGETHER_API_KEY',
         'FIREWORKS_API_KEY',
       ];
-      return keys.some((key) => process.env[key]?.trim()) ? 'connected' : undefined;
+      const endpoints = [
+        'OPENAI_BASE_URL',
+        'ANTHROPIC_BASE_URL',
+        'AZURE_OPENAI_ENDPOINT',
+        'OPENROUTER_BASE_URL',
+        'GROQ_BASE_URL',
+        'MISTRAL_BASE_URL',
+      ];
+      return keys.some((key) => process.env[key]?.trim()) || endpoints.some((ep) => process.env[ep]?.trim())
+        ? 'connected'
+        : undefined;
     },
   },
   {
@@ -533,18 +573,27 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     executable: () => process.env.CEZ_GEMINI_BIN ?? 'gemini',
     statusArgs: ['--version'],
     loginArgs: [],
-    installHint: 'Install Gemini CLI (npm i -g @google/gemini-cli), then authenticate with your Google account or set GEMINI_API_KEY.',
+    installHint: 'Install Gemini CLI (npm i -g @google/gemini-cli), then authenticate with your Google account or set GEMINI_API_KEY / GOOGLE_API_BASE_URL.',
     parse: parseGeminiStatus,
-    precheck: () => (process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? 'connected' : undefined),
+    precheck: () => {
+      if (process.env.GEMINI_API_KEY?.trim()) return 'connected';
+      if (process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()) return 'connected';
+      if (process.env.GOOGLE_API_BASE_URL?.trim()) return 'connected';
+      return undefined;
+    },
   },
   {
     id: 'antigravity',
     executable: () => process.env.CEZ_ANTIGRAVITY_BIN ?? 'agy',
     statusArgs: ['--version'],
     loginArgs: [],
-    installHint: 'Install Antigravity CLI, then run `agy` to sign in with your Google account (or set GOOGLE_GENERATIVE_AI_API_KEY).',
+    installHint: 'Install Antigravity CLI, then run `agy` to sign in with your Google account (or set GOOGLE_GENERATIVE_AI_API_KEY / GOOGLE_API_BASE_URL).',
     parse: parseAntigravityStatus,
-    precheck: () => (process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? 'connected' : undefined),
+    precheck: () => {
+      if (process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()) return 'connected';
+      if (process.env.GOOGLE_API_BASE_URL?.trim()) return 'connected';
+      return undefined;
+    },
   },
   {
     id: 'http',
