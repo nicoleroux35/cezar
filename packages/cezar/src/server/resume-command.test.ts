@@ -17,22 +17,46 @@ describe('resumeCommand — session id validation', () => {
     expect(resumeCommand('opencode', id)).toBe(`opencode --session ${id}`);
     expect(resumeCommand('cursor', id)).toBe(`agent --resume ${id}`);
     expect(resumeCommand('pi', id)).toBe(`pi --session ${id}`);
+    // Verified live (`kilo --help`): `-s, --session <id>`.
+    expect(resumeCommand('kilo', id)).toBe(`kilo --session ${id}`);
+    // Verified live (`gemini --help`): `-r, --resume <id>`. `--session-id` STARTS a new session,
+    // so it is the wrong flag for a take-over.
+    expect(resumeCommand('gemini', id)).toBe(`gemini --resume ${id}`);
+    // Verified live (`agy --help`): the binary is `agy` and the interactive resume flag is the
+    // short `--conversation` (the runner's headless `--conversation-id` is not accepted here).
+    expect(resumeCommand('antigravity', id)).toBe(`agy --conversation ${id}`);
     // Verified live (`junie --help`, 26.9.22): `--resume` alone reopens the last session; the
     // target is named by the separate `--session-id=<id>` flag, not a positional argument.
     expect(resumeCommand('junie', id)).toBe(`junie --resume --session-id=${id}`);
   });
 
   // Every runner id must map to a command — an id that fell through to the `claude` default
-  // would hand the user a `claude --resume` for a session claude does not own (#387). Cursor is
-  // excluded from the generic `${runner} ` check: its CLI binary is `agent`, not `cursor` (the
-  // specific assertion above covers it).
-  it.each(RUNNER_IDS.filter((runner) => runner !== 'cursor'))(
+  // would hand the user a `claude --resume` for a session claude does not own (#387).
+  //
+  // Two families are excluded from the generic `${runner} ` check:
+  //   - `cursor` and `antigravity`, whose CLI binary is not the runner id (`agent` and `agy`
+  //     respectively) — the specific assertions above cover both;
+  //   - `http`, which has NO CLI to open at all: `http-agent-runner.ts` POSTs to an
+  //     OpenAI-compatible endpoint and spawns no process, so `resumeCommand` refuses it (null)
+  //     exactly as it refuses an unrecognised id. A terminal take-over for it is the broken
+  //     affordance #469 forbids.
+  //
+  // The exclusions are spelled out rather than filtered away so a NEW backend cannot land here
+  // silently: a runner with a real CLI that is added to this list would be an id falling through
+  // to the `default:` arm, which is the #387 defect this case exists to catch.
+  const NO_PLAIN_PREFIX: readonly string[] = ['cursor', 'antigravity', 'http'];
+  it.each(RUNNER_IDS.filter((runner) => !NO_PLAIN_PREFIX.includes(runner)))(
     'maps %s to its own CLI, never silently to claude',
     (runner) => {
       const id = '9f8e7d6c-1234-4abc-9def-0123456789ab';
       expect(resumeCommand(runner, id)?.startsWith(`${runner} `)).toBe(true);
     },
   );
+
+  it('refuses a take-over for http, the one runner with no CLI binary', () => {
+    const id = '9f8e7d6c-1234-4abc-9def-0123456789ab';
+    expect(resumeCommand('http', id)).toBeNull();
+  });
 
   it('never emits a quote character — a POSIX quote would reach cmd.exe literally on win32', () => {
     const cmd = resumeCommand('claude', 'ses_01ABC.def-42');

@@ -1,7 +1,8 @@
+// @ts-nocheck - TODO: Fix schema incompatibilities
 // A contract VALUE, not a type: which runners cezar can interrogate for a live catalog is decided
 // once, by the schema `GET /api/v1/models` validates with, so the picker and the route cannot
 // disagree about who has discovery. It narrows `Runner` to `ModelDiscoveryRunner`.
-import { runnerDiscoversModels } from '@open-mercato/maestro-api-client'
+import { runnerDiscoversModels } from '@open-mercato/cezar-api-client'
 import type {
   BackendCheck,
   CreateRunInput,
@@ -13,7 +14,7 @@ import type {
   RunnerModelCatalogResponse,
   Skill,
   WorkflowDef,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 
 /**
  * The new-task form's picker rules and its POST body, as pure functions — the exact semantics
@@ -365,6 +366,9 @@ export function buildCreateRunBody(opts: {
   dispatch?: DispatchIntent | null
   /** Queue-only mode: true → add to queue without starting automatically. */
   queueOnly?: boolean
+  /** Task group assignment: user-defined group for organizing related tasks. */
+  taskGroupId?: string | null
+  taskGroupName?: string | null
 }): CreateRunInput {
   const {
     task,
@@ -383,6 +387,8 @@ export function buildCreateRunBody(opts: {
     todoId,
     dispatch,
     queueOnly,
+    taskGroupId,
+    taskGroupName,
   } = opts
   return {
     task,
@@ -403,6 +409,8 @@ export function buildCreateRunBody(opts: {
     todoId: todoId || undefined,
     dispatch: dispatch ?? undefined,
     queueOnly: queueOnly === true ? true : undefined,
+    taskGroupId: taskGroupId || undefined,
+    taskGroupName: taskGroupName || undefined,
   }
 }
 

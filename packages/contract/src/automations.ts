@@ -109,8 +109,14 @@ export const automationDispatchSchema = z.object({
 export type AutomationDispatch = z.infer<typeof automationDispatchSchema>;
 
 /**
- * The task a match launches: `POST /runs`' own body minus the three keys an automation owns
- * itself — `task` (the rendered prompt), `images` and `todoId` — plus the prompt TEMPLATE.
+ * The task a match launches: `POST /runs`' own body minus the keys an automation owns itself —
+ * `task` (the rendered prompt), `images`, `title` and `todoId`. The prompt TEMPLATE arrives as
+ * `prompt` instead.
+ *
+ * `title` is one of the keys the automation owns: a launched run is named from the automation's
+ * own `name` and the rendered prompt, so nothing here carries a per-task title and the contract
+ * must not demand one. `createRunInputKeys.title` is REQUIRED, so inheriting it made every
+ * automation response fail to parse (#1258).
  *
  * Two keys are re-spelled rather than inherited, because the automation schema really does differ
  * from the composer's and the contract has to describe the automation route:
@@ -123,7 +129,7 @@ export type AutomationDispatch = z.infer<typeof automationDispatchSchema>;
  *    stores and answers it plainly, so it stays optional.
  */
 export const automationTaskSchema = createRunInputKeys
-  .omit({ task: true, images: true })
+  .omit({ task: true, images: true, title: true })
   .extend({
     /** The prompt template. `{{github.number}}`, `{{github.title}}`, `{{github.url}}` and
      *  `{{github.labels}}` are substituted per match; GitHub content is appended as untrusted

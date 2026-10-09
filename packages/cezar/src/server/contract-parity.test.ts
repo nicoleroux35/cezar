@@ -6,7 +6,7 @@ import type {
   healthResponseSchema,
   runHistoryContextSchema,
   runHistoryPageSchema,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 import type { AppType } from './app-type.ts';
 
 /**

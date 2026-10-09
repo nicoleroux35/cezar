@@ -1,10 +1,42 @@
-import type { ProviderStatus, ProviderStatusResponse, Runner } from '@open-mercato/maestro-api-client'
+import { runnerSchema } from '@open-mercato/cezar-api-client'
+import type { ProviderStatus, ProviderStatusResponse, Runner } from '@open-mercato/cezar-api-client'
 
 /** The cockpit's canonical runner order, exported so a surface that renders one row per
  *  provider derives it instead of keeping a fifth hand-written copy — the copy in
  *  `accounts-section.tsx` silently dropped Copilot when #582 added it, and nothing in the
- *  type system noticed, because a `ProviderId[]` literal is under-wide, never wrong. */
+ *  type system noticed, because a `ProviderId[]` literal is under-wide, never wrong.
+ *
+ *  This is the order of the surfaces that render a LOGIN — the runner pills, the usable-runner
+ *  list, the provider banner — and `http` is deliberately ABSENT from it. http is a real runner
+ *  and a real `ProviderId`, so this list is a strict subset of {@link PROVIDER_ORDER}; the
+ *  difference is that this omission is the point rather than an oversight. It has no CLI to sign
+ *  into, no version and no per-CLI hook: it is configured, not connected. Putting it in the
+ *  runner pills would offer a backend whose "login" is a JSON object.
+ *
+ *  It is NOT "every provider" — see {@link PROVIDER_ORDER} for that, and use it for anything
+ *  that lists agents rather than logins. */
 export const RUNNER_ORDER: readonly Runner[] = ['claude', 'codex', 'junie', 'opencode', 'cursor', 'pi', 'copilot', 'kilo', 'gemini', 'antigravity']
+
+/**
+ * EVERY agent backend in the cockpit's display order: the login order above, then whatever it does
+ * not name (`http` today, and any backend a future contract adds).
+ *
+ * The tail is derived from the contract's own enum rather than spelled out, so a new provider is
+ * listed the moment its schema lands and the two sides cannot drift — the exact failure the note
+ * on `RUNNER_ORDER` records. This is the list for surfaces that list AGENTS (the Agent accounts
+ * tabs, each with its own install state and config), the allowlist a `/providers/status` row is
+ * validated against, and the order those rows are normalized into.
+ *
+ * Two lists rather than one because the two questions are genuinely different, and collapsing them
+ * broke both ways round: gating the status parser on `RUNNER_ORDER` made the server's own http row
+ * invalidate the entire response (blanking every provider surface at once), while putting http in
+ * `RUNNER_ORDER` would offer it where only a login can go.
+ */
+export const PROVIDER_ORDER: readonly Runner[] = [
+  ...RUNNER_ORDER,
+  ...runnerSchema.options.filter((id) => !(RUNNER_ORDER as readonly string[]).includes(id)),
+]
+
 const PROVIDER_STATES = new Set(['connected', 'disconnected', 'not-installed', 'unknown'])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -21,7 +53,7 @@ function parseProviderStatusRow(
   const { provider, status, enabled, hint, authFailureId } = value
   if (
     typeof provider !== 'string'
-    || !RUNNER_ORDER.includes(provider as Runner)
+    || !PROVIDER_ORDER.includes(provider as Runner)
     || typeof status !== 'string'
     || !PROVIDER_STATES.has(status)
     || (requireEnabled && typeof enabled !== 'boolean')
@@ -67,7 +99,12 @@ function completeProviderRows(value: unknown): ProviderStatus[] | null {
   const rows = safeProviderRows(value, true)
   if (rows === null || rows.length === 0) return null
   const byProvider = new Map(rows.map((row) => [row.provider, row]))
-  return RUNNER_ORDER.flatMap((provider) => {
+  // Ordered by PROVIDER_ORDER, not RUNNER_ORDER: this is the list the cockpit reads back, and a
+  // row it does not name (`http`) is still a row it must be able to find. Dropping them was the
+  // bug this replaces — the server emits an http row, `providerStatusFor` is what the HTTP Agent's
+  // provider card reads to say "Credentials found", and the parse threw for the WHOLE response.
+  // It still cannot reach the runner pills: `usableRunners` filters back through RUNNER_ORDER.
+  return PROVIDER_ORDER.flatMap((provider) => {
     const row = byProvider.get(provider)
     return row ? [row as ProviderStatus] : []
   })

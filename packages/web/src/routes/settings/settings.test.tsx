@@ -130,6 +130,9 @@ const GLOBAL_SECTIONS = [
   // Agent accounts (spec 2026-07-29-agent-profiles) sit beside Projects: both describe the
   // machine and the person at it, not any one repo.
   'accounts',
+  // Forges (workspace-level): GitHub, GitLab, Gitea and Forgejo auth. Global like the rest —
+  // which forge CLIs this machine has is a property of the machine, not of a repo.
+  'forges',
   'projects',
 ]
 
@@ -157,7 +160,7 @@ describe('the section registry', () => {
     // Accounts survives: a single-project cockpit still runs on ONE of possibly several logins,
     // so "which account" is orthogonal to "how many projects".
     expect(visibleSettingsSections('global', { singleProject: true }).map((s) => s.id)).toEqual([
-      'appearance', 'notifications', 'resources', 'skills', 'accounts',
+      'appearance', 'notifications', 'resources', 'skills', 'accounts', 'forges',
     ])
     expect(visibleSettingsSections('global', { singleProject: false }).map((s) => s.id)).toEqual(GLOBAL_SECTIONS)
     expect(visibleSettingsSections('global').map((s) => s.id)).toEqual(GLOBAL_SECTIONS)
@@ -301,7 +304,7 @@ describe('the appearance section (global scope)', () => {
     // `{ accent }` would silently drop the stored density.
     await waitFor(() => {
       expect(requests.find((r) => r.method === 'PUT' && r.url === '/api/v1/workspace/ui-state')?.body).toEqual({
-        appearance: { accent: 'violet', density: 'compact', width: 'narrow' },
+        appearance: { accent: 'violet', density: 'compact', width: 'narrow', language: 'en' },
       })
     })
     expect(localStorage.getItem('cez-accent')).toBe('violet')
@@ -318,7 +321,7 @@ describe('the appearance section (global scope)', () => {
     expect(document.documentElement.hasAttribute('data-density')).toBe(false)
     await waitFor(() => {
       expect(requests.find((r) => r.method === 'PUT' && r.url === '/api/v1/workspace/ui-state')?.body).toEqual({
-        appearance: { accent: 'lime', density: 'comfortable', width: 'narrow' },
+        appearance: { accent: 'lime', density: 'comfortable', width: 'narrow', language: 'en' },
       })
     })
   })
@@ -338,7 +341,7 @@ describe('the appearance section (global scope)', () => {
     expect(document.documentElement.dataset.width).toBe('wide')
     await waitFor(() => {
       expect(requests.find((r) => r.method === 'PUT' && r.url === '/api/v1/workspace/ui-state')?.body).toEqual({
-        appearance: { accent: 'violet', density: 'comfortable', width: 'wide' },
+        appearance: { accent: 'violet', density: 'comfortable', width: 'wide', language: 'en' },
       })
     })
 
@@ -386,7 +389,7 @@ describe('the settings split writes the right store', () => {
 
     await waitFor(() => expect(putsTo('/api/v1/workspace/ui-state')).toHaveLength(1))
     expect(putsTo('/api/v1/workspace/ui-state')[0]?.body).toEqual({
-      appearance: { accent: 'violet', density: 'comfortable', width: 'narrow' },
+      appearance: { accent: 'violet', density: 'comfortable', width: 'narrow', language: 'en' },
     })
     expect(putsTo('/api/v1/ui-state')).toHaveLength(0)
   })

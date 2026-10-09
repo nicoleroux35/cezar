@@ -9,15 +9,18 @@ import {
   TicketIcon,
 } from 'lucide-react'
 import type { ComponentType, SVGProps } from 'react'
-import type { TrackerKind } from '@open-mercato/maestro-api-client'
+import type { TrackerKind } from '@open-mercato/cezar-api-client'
 
 import { TRACKER_PROVIDERS } from '@/lib/tracker-providers'
 import { GithubIcon } from '@/components/icons'
+import type { TranslationKey } from '@/i18n/translations'
 
 export type NavItem = {
   /** Where the item navigates. Also its identity — `activeNavPath` returns this. */
   to: string
   label: string
+  /** Translation key for the label */
+  labelKey: TranslationKey
   icon: ComponentType<SVGProps<SVGSVGElement>>
   /** Path prefixes that light this item up. See `activeNavPath` for the longest-prefix rule. */
   match: string[]
@@ -46,15 +49,15 @@ export type NavItem = {
  *  compare (`/compare/:groupId`) is open.
  */
 export const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Tasks', icon: ListChecksIcon, match: ['/', '/tasks', '/compare'], badge: 'tasks-unread' },
-  { to: '/inbox', label: 'Inbox', icon: InboxIcon, match: ['/inbox'], badge: 'inbox-count', inbox: true },
-  { to: '/git', label: 'Git', icon: GitBranchIcon, match: ['/git'] },
-  { to: '/github', label: 'GitHub', icon: GithubIcon, match: ['/github'], forge: true },
-  { to: '/tracker', label: 'Tracker', icon: TicketIcon, match: ['/tracker'], tracker: true },
-  { to: '/automations', label: 'Automations', icon: ZapIcon, match: ['/automations'], automations: true },
-  { to: '/skills', label: 'Skills', icon: SparklesIcon, match: ['/skills'], badge: 'skills-update' },
-  { to: '/workflows', label: 'Workflows', icon: WorkflowIcon, match: ['/workflows'] },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon, match: ['/settings'] },
+  { to: '/', label: 'Tasks', labelKey: 'nav.tasks', icon: ListChecksIcon, match: ['/', '/tasks', '/compare'], badge: 'tasks-unread' },
+  { to: '/inbox', label: 'Inbox', labelKey: 'nav.inbox', icon: InboxIcon, match: ['/inbox'], badge: 'inbox-count', inbox: true },
+  { to: '/git', label: 'Git', labelKey: 'nav.git', icon: GitBranchIcon, match: ['/git'] },
+  { to: '/github', label: 'GitHub', labelKey: 'nav.github', icon: GithubIcon, match: ['/github'], forge: true },
+  { to: '/tracker', label: 'Tracker', labelKey: 'nav.tracker', icon: TicketIcon, match: ['/tracker'], tracker: true },
+  { to: '/automations', label: 'Automations', labelKey: 'nav.automations', icon: ZapIcon, match: ['/automations'], automations: true },
+  { to: '/skills', label: 'Skills', labelKey: 'nav.skills', icon: SparklesIcon, match: ['/skills'], badge: 'skills-update' },
+  { to: '/workflows', label: 'Workflows', labelKey: 'nav.workflows', icon: WorkflowIcon, match: ['/workflows'] },
+  { to: '/settings', label: 'Settings', labelKey: 'nav.settings', icon: SettingsIcon, match: ['/settings'] },
 ]
 
 /** What `/api/health` says exists. All default to `false` — see `visibleNavItems`. */

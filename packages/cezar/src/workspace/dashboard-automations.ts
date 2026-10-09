@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { localTimeZone, type DashboardAutomations } from '@open-mercato/maestro-contract';
+import { localTimeZone, type DashboardAutomations } from '@open-mercato/cezar-contract';
 import {
   automationDefinitionSchema,
   automationDefinitionsFileSchema,

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type {
   TrackerAssociation,
   TrackerAutomationEvent,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 import {
   candidate,
   createEventScanner,

@@ -2034,10 +2034,11 @@ describe('RunStore — the legacy `claude-cli` runner id (#547)', () => {
 
   it('still rejects a runner id that is not a legacy spelling of a real backend', () => {
     // Widening the READ side is not an invitation to accept anything: an unknown id is still
-    // a parse failure, which is what keeps the enum meaningful.
+    // a parse failure, which is what keeps the enum meaningful. `gemini` played this part until
+    // `f5190c7b` registered it, at which point the fixture stopped being unknown at all.
     writeFileSync(
       join(dataDir, 'runs.json'),
-      JSON.stringify([{ ...LEGACY_RUN, runner: 'gemini' }]),
+      JSON.stringify([{ ...LEGACY_RUN, runner: 'not-a-runner' }]),
       'utf8',
     );
     expect(RunStore.open(dataDir).getRun('legacy-1')).toBeUndefined();

@@ -12,7 +12,7 @@ import { activate, activeId, branchSlug, currentEntry, linkCheckout, linkId, lis
 function fakeCheckout(root: string, version = '0.13.0', built = true): string {
   const pkg = join(root, 'packages', 'cezar');
   mkdirSync(pkg, { recursive: true });
-  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@open-mercato/maestro', version }));
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@open-mercato/cezar', version }));
   if (built) {
     mkdirSync(join(pkg, 'dist'), { recursive: true });
     writeFileSync(join(pkg, 'dist', 'index.js'), '// entry\n');
@@ -72,7 +72,7 @@ describe('linked checkouts', () => {
   it('re-linking a checkout replaces its old entry; another checkout with the same id gets its own', () => {
     const pkg = fakeCheckout(join(home, 'a'));
     linkCheckout(pkg, 'feature', env);
-    writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@open-mercato/maestro', version: '0.14.0' }));
+    writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@open-mercato/cezar', version: '0.14.0' }));
     const again = linkCheckout(pkg, 'feature', env);
     expect(again.id).toBe('0.14.0+feature');
     expect(listLinks(env).map((entry) => entry.id)).toEqual(['0.14.0+feature']);
@@ -104,7 +104,7 @@ describe('linked checkouts', () => {
     expect(realpathSync(cezarPackageRoot(mono)!)).toBe(mono);
     const flat = join(home, 'flat');
     mkdirSync(flat, { recursive: true });
-    writeFileSync(join(flat, 'package.json'), JSON.stringify({ name: '@open-mercato/maestro', version: '0.9.0' }));
+    writeFileSync(join(flat, 'package.json'), JSON.stringify({ name: '@open-mercato/cezar', version: '0.9.0' }));
     expect(cezarPackageRoot(flat)).toBe(flat);
     expect(cezarPackageRoot(home)).toBeNull();
   });
@@ -231,7 +231,7 @@ describe('linked checkouts', () => {
     expect(before.get(b)).toMatch(/^0\.13\.0\+main\.[0-9a-z]+$/);
 
     const svc = new SelfUpdateService({
-      pkgName: '@open-mercato/maestro',
+      pkgName: '@open-mercato/cezar',
       version: '0.13.0',
       entry: join(versionsDir(env), 'current', 'node_modules', '@open-mercato', 'cezar', 'dist', 'index.js'),
       restart: () => {},
@@ -267,7 +267,7 @@ describe('linked checkouts', () => {
     const built: string[] = [];
     let restarted = false;
     const svc = new SelfUpdateService({
-      pkgName: '@open-mercato/maestro',
+      pkgName: '@open-mercato/cezar',
       version: '0.13.0',
       entry: join(versionsDir(env), 'current', 'node_modules', '@open-mercato', 'cezar', 'dist', 'index.js'),
       restart: () => (restarted = true),

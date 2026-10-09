@@ -1,11 +1,11 @@
 {
-  "name": "@open-mercato/maestro-mcp-server",
+  "name": "@open-mercato/cezar-mcp-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "MCP server exposing maestro's orchestration capabilities",
+  "description": "MCP server exposing cezar's orchestration capabilities",
   "bin": {
-    "maestro-mcp": "./dist/index.js"
+    "cezar-mcp": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -14,11 +14,12 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
-    "@open-mercato/maestro-api-client": "workspace:*",
-    "@open-mercato/maestro-contract": "workspace:*",
+    "@open-mercato/cezar-api-client": "workspace:*",
+    "@open-mercato/cezar-contract": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/node": "^20.14.0",
     "typescript": "^5.7.2"
   }
 }

@@ -12,12 +12,16 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MASKED_AGENT_API_KEY } from '@open-mercato/cezar-contract';
 import { agentAccountsPath, workspaceConfigPath } from '../paths.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import {
   defaultAgentAccountStore,
   isAbsoluteConfigDir,
+  isHttpJsonConfig,
   loadAgentAccounts,
+  maskHttpAccountConfig,
+  mergeHttpAccountSecret,
   mergeWriteAgentAccounts,
   selectionFor,
 } from './agent-accounts.ts';
@@ -259,6 +263,76 @@ describe('agent accounts store', () => {
       const store = await loadAgentAccounts();
       // Last-writer-wins only inside the read→rename window; neither write is lost outright.
       expect(store.accounts.length + Object.keys(store.selections).length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  /**
+   * The http agent (spec `2026-07-29-agent-profiles`) is unlike every other account: its
+   * `configDir` holds the `{endpoint, apiKey, model}` JSON object, not a directory. The schema
+   * refuses the path spelling rather than salvaging it (a path can never work — `profileEnv`
+   * exports it and the runner fails to parse it), and the mask/merge pair is what keeps the key
+   * out of the listing while still letting the editor change one field.
+   */
+  describe('http accounts (configDir is JSON, not a path)', () => {
+    const httpConfig = (over: Record<string, unknown> = {}) =>
+      JSON.stringify({
+        endpoint: 'https://api.example.com/v1/chat/completions',
+        apiKey: 'sk-live-secret',
+        model: 'gpt-4o',
+        ...over,
+      });
+
+    const httpAccount = (over: Record<string, unknown> = {}) =>
+      account('http-work', { provider: 'http', configDir: httpConfig(), ...over });
+
+    it('stores an http account whose configDir is the endpoint JSON', async () => {
+      write({ accounts: [httpAccount()] });
+      const [row] = (await loadAgentAccounts()).accounts;
+      expect(row?.provider).toBe('http');
+      expect(isHttpJsonConfig(row?.configDir ?? '')).toBe(true);
+    });
+
+    it('refuses an http account whose configDir is a PATH — it would list as configured and never run', async () => {
+      // The one degradation that could mislead: `profileEnv` would export the path into
+      // CEZ_HTTP_AGENT_CONFIG and the runner would fail to JSON.parse it on every run, while the
+      // pane showed the account as ready.
+      write({ accounts: [httpAccount({ configDir: '~/.http-work' }), account('work')] });
+      expect((await loadAgentAccounts()).accounts.map((a) => a.id)).toEqual(['work']);
+    });
+
+    it('refuses JSON with no endpoint, which configures nothing', async () => {
+      write({ accounts: [httpAccount({ configDir: JSON.stringify({ apiKey: 'sk-live-secret' }) })] });
+      expect((await loadAgentAccounts()).accounts).toEqual([]);
+    });
+
+    it('maskHttpAccountConfig replaces only the key, and the endpoint and model still read', async () => {
+      const masked = maskHttpAccountConfig(httpAccount().configDir);
+      expect(isHttpJsonConfig(masked)).toBe(true);
+      const parsed = JSON.parse(masked) as Record<string, unknown>;
+      expect(parsed.endpoint).toBe('https://api.example.com/v1/chat/completions');
+      expect(parsed.model).toBe('gpt-4o');
+      // Never the live key — this string is what the pane, the TanStack cache and devtools see.
+      expect(masked).not.toContain('sk-live-secret');
+      expect(parsed.apiKey).toBe(MASKED_AGENT_API_KEY);
+    });
+
+    it('merges a POSTed mask back into the stored key, so editing the model does not wipe it', async () => {
+      const stored = httpAccount().configDir;
+      const posted = JSON.stringify({ ...JSON.parse(maskHttpAccountConfig(stored)), model: 'gpt-4o-mini' });
+      const merged = JSON.parse(mergeHttpAccountSecret(posted, stored)) as Record<string, unknown>;
+      expect(merged.apiKey).toBe('sk-live-secret');
+      expect(merged.model).toBe('gpt-4o-mini');
+      // The stored value is COMPACT, like the mask: one shape for both sides of the round trip.
+      expect(mergeHttpAccountSecret(posted, stored)).toBe(JSON.stringify(merged));
+    });
+
+    it('takes a genuinely new key at its word, and clearing one clears it', async () => {
+      const stored = httpAccount().configDir;
+      const replaced = JSON.stringify({ endpoint: 'https://api.example.com/v1/chat/completions', apiKey: 'sk-rotated', model: 'gpt-4o' });
+      expect((JSON.parse(mergeHttpAccountSecret(replaced, stored)) as Record<string, unknown>).apiKey).toBe('sk-rotated');
+
+      const cleared = JSON.stringify({ endpoint: 'https://api.example.com/v1/chat/completions', model: 'gpt-4o' });
+      expect(mergeHttpAccountSecret(cleared, stored)).toBe(cleared);
     });
   });
 

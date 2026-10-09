@@ -116,6 +116,15 @@ npm run dev
 cezar serve
 ```
 
+### When cc-switch writes the config file instead of exporting
+
+cc-switch can also switch providers by writing the endpoint into the agent's OWN config file — `~/.claude/settings.json`'s `env` block, or a `[model_providers.<id>]` entry in `~/.codex/config.toml` — and never exports anything. Cezar reads those files too, so a setup configured that way still shows as "Connected" with nothing in the environment:
+
+- **Claude**: an `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY` in the `env` block of `~/.claude/settings.json`.
+- **Codex**: the `model_provider` selected in `~/.codex/config.toml` must name a `[model_providers.<id>]` entry that carries its own endpoint and credential — `requires_openai_auth = false`, an `experimental_bearer_token`, or an `env_key` whose variable is set. A `base_url` alone is not enough, because the built-in `openai` provider keeps its ChatGPT login even when pointed elsewhere. (For such a custom provider `codex login status` answers "Not logged in" while the CLI runs fine, so cezar would otherwise call a working setup disconnected.)
+
+A named agent account (Settings → Agent accounts) is probed against its OWN config directory, not the default one.
+
 ## Using Other Proxies or Custom Infrastructure
 
 The same pattern works for any proxy or custom gateway:
@@ -138,7 +147,7 @@ export OPENAI_API_KEY=local-key
 
 ## Zero Configuration
 
-Cezar automatically detects both API keys and custom endpoints in your environment. When either is present:
+Cezar automatically detects both API keys and custom endpoints — in your environment, or written into the coding agents' own config files by a provider switcher such as cc-switch. When either is present:
 
 - The provider shows as "Connected" in Settings → Providers
 - No CLI authentication is required

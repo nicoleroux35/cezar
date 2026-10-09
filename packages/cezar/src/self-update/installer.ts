@@ -3,7 +3,7 @@
  * integrity check, dependency resolution — through `npm install --prefix <dir> <spec>`, which is
  * what `npx` does too, only into a directory cezar owns. Two sources:
  *
- *   registry  `<spec>` = `@open-mercato/maestro@<version>`
+ *   registry  `<spec>` = `@open-mercato/cezar@<version>`
  *   local     `<spec>` = a tarball from `npm pack` of the running package (a checkout or the npx
  *             cache) — how a PoC build, or an npx user pressing "install permanently", lands in
  *             `~/.cezar/versions` without a publish.

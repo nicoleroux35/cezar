@@ -2,7 +2,7 @@ import { realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { posix, resolve, win32 } from 'node:path';
 import { z } from 'zod';
-import { DEFAULT_AGENT_ACCOUNT_ID } from '@open-mercato/maestro-contract';
+import { DEFAULT_AGENT_ACCOUNT_ID, MASKED_AGENT_API_KEY } from '@open-mercato/cezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { supportsProfiles } from '../core/agent-profiles.ts';
 import { agentAccountsPath, workspaceConfigPath } from '../paths.ts';
@@ -82,6 +82,96 @@ export function isAbsoluteConfigDir(
 export const CONTROL_CHARS_RE = /[\u0000-\u001f\u007f]/;
 
 /**
+ * Does this `configDir` hold a usable http account config? The gate `agentAccountSchema` refines
+ * on, and the one the routes ask before storing: an http account whose `configDir` is a PATH can
+ * never work, so it is refused rather than salvaged.
+ */
+export function isHttpJsonConfig(configDir: string): boolean {
+  const parsed = parseHttpAccountConfig(configDir);
+  return parsed !== null && typeof parsed.endpoint === 'string' && parsed.endpoint.trim() !== '';
+}
+
+/**
+ * `{endpoint, apiKey, model}` — the shape `http-agent-runner.ts` parses out of
+ * `CEZ_HTTP_AGENT_CONFIG`, and therefore the shape an http account's `configDir` IS.
+ *
+ * Returns `null` for anything else (not JSON, not an object, no endpoint), which is what makes it
+ * usable as both the schema's refinement and the store's own reader. The runner does its own
+ * narrowing of apiKey/model/temperature; only `endpoint` is load-bearing here.
+ */
+export function parseHttpAccountConfig(configDir: string): { endpoint: string; apiKey?: string } | null {
+  try {
+    const parsed = JSON.parse(configDir) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const { endpoint, apiKey } = parsed as { endpoint?: unknown; apiKey?: unknown };
+    if (typeof endpoint !== 'string' || endpoint.trim() === '') return null;
+    return {
+      endpoint,
+      ...(typeof apiKey === 'string' && apiKey !== '' ? { apiKey } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The same config with its credential replaced — what `GET /api/v1/workspace/agent-profiles`
+ * answers, and never what `.ai/cezar/agent-accounts.json` stores.
+ *
+ * An http account is unusual among accounts in that its `configDir` IS a credential: a provider
+ * API key sits inside the string the pane renders as "the folder this account uses". Serving it
+ * verbatim would put a live key in the response body, the TanStack cache and devtools for every
+ * account listed — the same disclosure `account-identity.ts` exists to keep out. Masked, not
+ * withheld: the endpoint and model are what make the row readable, and `apiKey`'s PRESENCE is
+ * what the editor needs to leave a saved key alone when the user only edits the model. The marker
+ * itself is the contract's `MASKED_AGENT_API_KEY`, one spelling for both sides of that round trip.
+ *
+ * COMPACT, not pretty-printed: the masked config stands in for a config dir on a row that renders
+ * it as a path, so its newlines would be a multi-line value in a one-line slot (and in that row's
+ * `title`). The editor parses the JSON either way — the whitespace was never load-bearing.
+ */
+export function maskHttpAccountConfig(configDir: string): string {
+  const parsed = parseHttpAccountConfig(configDir);
+  if (parsed === null) return configDir;
+  let full: Record<string, unknown>;
+  try {
+    full = JSON.parse(configDir) as Record<string, unknown>;
+  } catch {
+    return configDir; // unreachable: parseHttpAccountConfig already proved it parses
+  }
+  return JSON.stringify(
+    { ...full, ...(parsed.apiKey === undefined ? {} : { apiKey: MASKED_AGENT_API_KEY }) },
+  );
+}
+
+/**
+ * Put a stored http account's real credential back into a `configDir` a client sent, so that
+ * editing the model (or the endpoint) does not silently wipe the API key.
+ *
+ * The mask is a two-sided value, not a display detail: the editor is seeded with
+ * `maskHttpAccountConfig`'s output, so posting the field back is the normal way to change one
+ * field — and an http account whose key became eight bullets would fail on its next run with no
+ * visible reason. Only the sentinel is substituted, and only when the sender actually kept it:
+ * a user who types a new key, or clears it, is taken at their word.
+ *
+ * The result is COMPACT, like `maskHttpAccountConfig`'s: this is the value that lands in
+ * `~/.cezar/agent-accounts.json`, a file a person opens by hand, and the runner only ever
+ * `JSON.parse`s it. Two shapes for one value would mean the round trip rewrites the row.
+ */
+export function mergeHttpAccountSecret(next: string, previous: string): string {
+  if (!next.includes(MASKED_AGENT_API_KEY)) return next;
+  const stored = parseHttpAccountConfig(previous);
+  const sent = parseHttpAccountConfig(next);
+  if (stored?.apiKey === undefined || sent === null) return next;
+  try {
+    const full = JSON.parse(next) as Record<string, unknown>;
+    return JSON.stringify({ ...full, apiKey: stored.apiKey });
+  } catch {
+    return next; // unreachable: parseHttpAccountConfig already proved it parses
+  }
+}
+
+/**
  * One extra config dir for a provider — a second login of the same CLI
  * (`CLAUDE_CONFIG_DIR=~/.claude-klaudiusz claude`), see `src/core/agent-profiles.ts`.
  *
@@ -113,7 +203,17 @@ const agentAccountSchema = z
     label: z.string().max(200).catch(''),
     addedAt: z.string().max(64).catch(''),
   })
-  .passthrough();
+  .passthrough()
+  .refine((row) => row.provider !== 'http' || isHttpJsonConfig(row.configDir), {
+    // http is the one provider whose `configDir` is not a directory at all: it is the JSON object
+    // `CEZ_HTTP_AGENT_CONFIG` carries (`{endpoint, apiKey, model}`). Everywhere else an
+    // unrecognised dir degrades honestly (the CLI creates it on login), but an http account whose
+    // configDir is a PATH can never work — `profileEnv` would export a path the runner fails to
+    // parse, and the account would be listed as configured while every run refused to start. So
+    // this one shape is refused rather than salvaged, and the message names the fix.
+    path: ['configDir'],
+    message: 'an http account stores its endpoint config as JSON in "configDir", e.g. {"endpoint":"https://api.example.com/v1/chat/completions","apiKey":"…","model":"…"}',
+  });
 
 export type AgentAccount = z.infer<typeof agentAccountSchema>;
 
@@ -128,6 +228,7 @@ const selectionSchema = z
     pi: z.string().max(64).optional().catch(undefined),
     junie: z.string().max(64).optional().catch(undefined),
     copilot: z.string().max(64).optional().catch(undefined),
+    http: z.string().max(64).optional().catch(undefined),
   })
   .passthrough();
 

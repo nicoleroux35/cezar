@@ -61,12 +61,12 @@ describe('the self-update API', () => {
     const stubFetch = (async () =>
       new Response(JSON.stringify(registryDocument), { status: 200 })) as unknown as typeof fetch;
     const selfUpdate = new SelfUpdateService({
-      pkgName: '@open-mercato/maestro',
+      pkgName: '@open-mercato/cezar',
       version: RUNNING,
       entry: join(home, 'somewhere', 'dist', 'index.js'),
       restart: () => {},
       env: { ...process.env, CEZ_HOME: home },
-      registry: new RegistryCache('@open-mercato/maestro', stubFetch),
+      registry: new RegistryCache('@open-mercato/cezar', stubFetch),
     });
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: RUNNING, selfUpdate });
   });

@@ -1,6 +1,6 @@
 import { ChevronRightIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { Link as RouterLink, NavLink as RouterNavLink } from 'react-router'
-import type { Capabilities } from '@open-mercato/maestro-api-client'
+import type { Capabilities } from '@open-mercato/cezar-api-client'
 import { Link as ScopedLink, NavLink as ScopedNavLink } from '@/lib/project-router'
 import { cn } from '@/lib/utils'
 import { ProjectGeneral } from './project-general'

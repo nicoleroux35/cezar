@@ -13,7 +13,34 @@ import { RunNotifications } from './components/run-notifications'
 import { StarPromo } from './components/star-promo'
 import { ThemeProvider } from './components/theme-provider'
 import { Toaster } from './components/ui/toaster'
+import { TranslationProvider } from './i18n/use-translations'
+import { useAppearance } from './components/appearance-provider'
 import { AppRoutes } from './routes'
+
+/** Wraps the app routes with the translation provider, reading language from appearance. */
+function TranslatedApp() {
+  const { language } = useAppearance()
+
+  return (
+    <TranslationProvider language={language}>
+      <BrowserRouter>
+        <LastLocationController />
+        {/* At the root for the same reason the event stream is: the sidebar, the task table
+            and an open run header all paint PR/issue chips, often the SAME ones, and each
+            asking for itself was several round trips and a staggered wave of colour. They
+            register what they are painting here instead, and it goes out as one request per
+            project. */}
+        <ReferenceStatusRegistry>
+          <AppShellContainer>
+            <AppRoutes />
+          </AppShellContainer>
+        </ReferenceStatusRegistry>
+        {/* One toast outlet for the whole app — `toast()` is a module-level call. */}
+        <Toaster />
+      </BrowserRouter>
+    </TranslationProvider>
+  )
+}
 
 /** Real URLs, no basename: the cockpit is always mounted at the origin root, and the server
  *  serves index.html for every non-/api GET (src/server/static-ui.ts), so a deep link like
@@ -53,21 +80,7 @@ export function App() {
             {/* Beside ThemeProvider on purpose: appearance (accent/density) is the ui-state.json
                 half of the same boot contract — mirror pre-paints, server truth reconciles. */}
             <AppearanceProvider>
-              <BrowserRouter>
-                <LastLocationController />
-                {/* At the root for the same reason the event stream is: the sidebar, the task table
-                    and an open run header all paint PR/issue chips, often the SAME ones, and each
-                    asking for itself was several round trips and a staggered wave of colour. They
-                    register what they are painting here instead, and it goes out as one request per
-                    project. */}
-                <ReferenceStatusRegistry>
-                  <AppShellContainer>
-                    <AppRoutes />
-                  </AppShellContainer>
-                </ReferenceStatusRegistry>
-                {/* One toast outlet for the whole app — `toast()` is a module-level call. */}
-                <Toaster />
-              </BrowserRouter>
+              <TranslatedApp />
             </AppearanceProvider>
           </ThemeProvider>
         </HostUsageProvider>

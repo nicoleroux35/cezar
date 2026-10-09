@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RunRecord, RunStatus } from '@open-mercato/maestro-api-client'
+import type { RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
 import {
   CEZAR_REPO_URL,
   STAR_ASK_KEY,

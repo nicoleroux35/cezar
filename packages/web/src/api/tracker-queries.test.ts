@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { setApiScope } from '@open-mercato/maestro-api-client'
+import { setApiScope } from '@open-mercato/cezar-api-client'
 
 import { queryKeys } from './queries'
 

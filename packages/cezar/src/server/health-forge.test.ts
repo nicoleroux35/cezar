@@ -154,8 +154,22 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     expect(body.forge).toEqual({ kind: 'github', available: true });
   });
 
-  it('reports forge:null for a non-GitHub remote', async () => {
+  // The seam stopped being github-only when the multi-forge drivers landed (#698): health names
+  // the KIND from the remote, and the availability probe is a separate, cache-served fact.
+  it('reports the GitLab forge for a gitlab.com remote', async () => {
     initRepo('git@gitlab.com:acme/demo.git');
+    const body = await health();
+    expect(body.forge?.kind).toBe('gitlab');
+  });
+
+  it('reports the Forgejo forge for a codeberg.org remote', async () => {
+    initRepo('git@codeberg.org:acme/demo.git');
+    const body = await health();
+    expect(body.forge?.kind).toBe('forgejo');
+  });
+
+  it('reports forge:null for a remote on a host that is no forge at all', async () => {
+    initRepo('git@example.com:acme/demo.git');
     const body = await health();
     expect(body.forge).toBeNull();
   });

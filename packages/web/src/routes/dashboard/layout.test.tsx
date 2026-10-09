@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   dashboardPreferencesInputSchema,
   dashboardPreferencesSchema,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 import { normalizeOrder, resetViewOrder } from './preferences'
 
 describe('dashboard layout persistence', () => {

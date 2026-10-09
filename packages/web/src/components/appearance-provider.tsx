@@ -13,15 +13,18 @@ import {
   type Appearance,
   type Density,
   type Width,
+  type Language,
 } from '@/lib/appearance'
 
 type AppearanceContextValue = {
   accent: Accent
   density: Density
   width: Width
+  language: Language
   setAccent: (accent: Accent) => void
   setDensity: (density: Density) => void
   setWidth: (width: Width) => void
+  setLanguage: (language: Language) => void
 }
 
 const AppearanceContext = React.createContext<AppearanceContextValue | null>(null)
@@ -93,17 +96,23 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
     (width: Width) => save({ ...appearance, width }),
     [save, appearance],
   )
+  const setLanguage = React.useCallback(
+    (language: Language) => save({ ...appearance, language }),
+    [save, appearance],
+  )
 
   const value = React.useMemo<AppearanceContextValue>(
     () => ({
       accent: appearance.accent,
       density: appearance.density,
       width: appearance.width,
+      language: appearance.language,
       setAccent,
       setDensity,
       setWidth,
+      setLanguage,
     }),
-    [appearance, setAccent, setDensity, setWidth],
+    [appearance, setAccent, setDensity, setWidth, setLanguage],
   )
 
   return <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>

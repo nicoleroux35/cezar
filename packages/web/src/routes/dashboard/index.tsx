@@ -10,7 +10,7 @@ import type {
   DashboardFeed,
   DashboardGroup,
   DashboardSnapshot,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 import { useDashboard, useDashboardTelemetry } from '@/api/dashboard'
 import { useDashboardLive } from '@/api/dashboard-live'
 import { Button } from '@/components/ui/button'
@@ -43,6 +43,7 @@ import {
   useStagedRows,
 } from './state'
 import { useDashboardPage, useDisplacedRows } from './pages'
+import { useTranslations } from '@/i18n/use-translations'
 
 const views = [
   ['overview', 'Overview'],
@@ -58,6 +59,7 @@ export function DashboardRoute() {
 }
 
 function DashboardView({ entryKey }: { entryKey: string }) {
+  const { t } = useTranslations()
   const location = useLocation()
   const [search, setSearch] = useSearchParams()
   const restored = useRef(readEntry(entryKey)).current
@@ -75,7 +77,10 @@ function DashboardView({ entryKey }: { entryKey: string }) {
       : search.get('view') === 'automations'
         ? 'automations'
         : 'overview'
-  const viewLabel = views.find(([id]) => id === view)![1]
+  const viewLabel =
+    view === 'overview' ? t('dashboard.view.overview')
+    : view === 'costs' ? t('dashboard.view.costs')
+    : t('dashboard.view.automations')
   const viewTiles =
     view === 'costs'
       ? (['usage', 'trends'] as const)
@@ -262,12 +267,12 @@ function DashboardView({ entryKey }: { entryKey: string }) {
                       />
                       {
                         {
-                          automations: 'Automations',
-                          fleet: 'Queue & scheduling',
-                          needsYou: 'Needs you',
-                          recent: 'Recent results & GitHub',
-                          usage: 'Usage & cost',
-                          trends: 'Trends',
+                          automations: t('dashboard.tile.automations'),
+                          fleet: t('dashboard.tile.fleet'),
+                          needsYou: t('dashboard.tile.needsYou'),
+                          recent: t('dashboard.tile.recent'),
+                          usage: t('dashboard.tile.usage'),
+                          trends: t('dashboard.tile.trends'),
                         }[key]
                       }
                     </label>

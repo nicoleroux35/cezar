@@ -4,7 +4,7 @@
  * no token-budget circuit breaker, no zod response schemas — one run is one
  * agent-CLI session streaming normalized events.
  *
- * Seven interchangeable backends implement this seam, each as a persistent
+ * Eleven interchangeable backends implement this seam, each as a persistent
  * process so multi-turn follow-ups, `waiting`, interrupt and resume all work:
  *  - `claude`       — Claude Code CLI, stream-json over stdin/stdout;
  *  - `codex`        — `codex app-server`, JSON-RPC 2.0 (JSONL) over stdin/stdout;
@@ -18,6 +18,7 @@
  *  - `kilo`         — Kilo Code CLI (fork of OpenCode), `kilo serve`, HTTP + SSE.
  *  - `gemini`       — Google Gemini CLI, ACP over stdin/stdout.
  *  - `antigravity`  — Google Antigravity CLI, JSON-structured events over stdout.
+ *  - `http`         — Any OpenAI-compatible HTTP endpoint (Groq, Ollama, etc.), no CLI needed.
  */
 
 import type { UiEvent } from './ui-events.ts';
@@ -28,7 +29,7 @@ import type { UiEvent } from './ui-events.ts';
  * server-install "at least one agent CLI" gate, the CLI-handoff registry) rather than repeating
  * the literals, so adding runner #7 is a one-line change here and typecheck finds the rest.
  */
-export const RUNNER_IDS = ['claude', 'codex', 'opencode', 'cursor', 'pi', 'junie', 'copilot', 'kilo', 'gemini', 'antigravity'] as const;
+export const RUNNER_IDS = ['claude', 'codex', 'opencode', 'cursor', 'pi', 'junie', 'copilot', 'kilo', 'gemini', 'antigravity', 'http'] as const;
 
 /** The user-selectable runners (what config/GUI expose). */
 export type RunnerId = (typeof RUNNER_IDS)[number];

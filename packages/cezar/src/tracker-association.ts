@@ -6,7 +6,7 @@ import {
   trackerSourceSchema,
   type TrackerAssociation,
   type TrackerKind,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 
 const persistedSchema = trackerAssociationSchema.extend({ source: trackerSourceSchema.passthrough() }).passthrough();
 

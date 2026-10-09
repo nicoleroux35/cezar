@@ -33,12 +33,18 @@ export interface AgentHomePaths {
   codex: string;
   /** `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode` */
   opencodeConfig: string;
+  /** `$XDG_CONFIG_HOME/kilo` or `~/.config/kilo` — `kilo debug paths` agrees (7.7.9, 2026-10-09) */
+  kiloConfig: string;
   /** `$CURSOR_CONFIG_DIR` or `~/.cursor` */
   cursor: string;
   /** `$COPILOT_HOME` or `~/.copilot` */
   copilot: string;
   /** `~/.junie` — no relocation var documented (see `PROFILE_ENV_VAR.junie`) */
   junie: string;
+  /** `~/.gemini` — no relocation var exists (see `geminiHome`) */
+  gemini: string;
+  /** `~/.gemini/antigravity-cli` — Antigravity keeps its own state inside Gemini's home */
+  antigravity: string;
 }
 
 export interface ConfigFileDef {
@@ -80,6 +86,7 @@ const CODEX_CONFIG_DOCS = 'https://developers.openai.com/codex/config-reference'
 const CODEX_AGENTS_DOCS = 'https://developers.openai.com/codex/guides/agents-md';
 const OPENCODE_CONFIG_DOCS = 'https://opencode.ai/docs/config/';
 const OPENCODE_RULES_DOCS = 'https://opencode.ai/docs/rules/';
+const KILO_CONFIG_DOCS = 'https://kilo.ai/docs/code-with-ai/platforms/cli';
 const CURSOR_CLI_CONFIG_DOCS = 'https://cursor.com/docs/cli/reference/configuration';
 const COPILOT_CONFIG_DOCS = 'https://docs.github.com/en/copilot/how-tos/copilot-cli';
 const COPILOT_MCP_DOCS = 'https://docs.github.com/en/copilot/how-tos/copilot-cli#mcp-servers';
@@ -291,6 +298,29 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     precedence:
       'Global rules. First match wins across scopes: if a project AGENTS.md exists, this global file is not read at all.',
     docsUrl: OPENCODE_RULES_DOCS,
+  },
+
+  // ---- Kilo Code CLI ----
+  // Kilo is a fork of OpenCode and reads the same config SHAPE, but from its OWN home: the CLI's
+  // page (verified 2026-10-09) names `~/.config/kilo/kilo.json[c]` as the global file — where
+  // `kilo debug paths` reports `config $XDG_CONFIG_HOME/kilo` (7.7.9) — and this host has a real
+  // `~/.config/kilo/kilo.jsonc`. It is NOT `~/.config/opencode/opencode.json`, which is why Kilo
+  // gets catalog entries of its own rather than borrowing OpenCode's (#1258).
+  {
+    id: 'kilo.user.config',
+    runners: ['kilo'],
+    kind: 'settings',
+    scope: 'user',
+    resolve: (_repo, home) => join(home.kiloConfig, 'kilo.jsonc'),
+    label: '~/.config/kilo/kilo.jsonc',
+    format: 'jsonc',
+    tracked: 'outside-repo',
+    holdsMcp: true,
+    modelKey: 'model',
+    modelPriority: 1,
+    precedence:
+      'Global config. The vendor documents precedence, not a merge: "Project-level configuration takes precedence over global settings." MCP settings live here too — the Config Reference names kilo.jsonc for provider, model, permission and MCP.',
+    docsUrl: KILO_CONFIG_DOCS,
   },
 
   // ---- GitHub Copilot CLI ----

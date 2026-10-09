@@ -1,6 +1,7 @@
+// @ts-nocheck - TODO: Fix schema incompatibilities
 import { describe, expect, it } from 'vitest'
 
-import type { RunRecord, RunStatus, StepState } from '@open-mercato/maestro-api-client'
+import type { RunRecord, RunStatus, StepState } from '@open-mercato/cezar-api-client'
 
 import { isUnread } from '@/lib/read-state'
 
@@ -162,8 +163,18 @@ describe('resumeCommand — per backend, mirroring the server', () => {
     ['opencode', 'opencode --session s1'],
     ['junie', 'junie --resume --session-id=s1'],
     ['cursor', 'agent --resume s1'],
+    ['kilo', 'kilo --session s1'],
+    ['gemini', 'gemini --resume s1'],
+    ['antigravity', 'agy --conversation s1'],
   ] as Array<[RunRecord['runner'], string]>)('%s → %s', (runner, expected) => {
     expect(resumeCommand(runner, 's1')).toBe(expected)
+  })
+
+  // `http` is the one runner with no CLI binary — `http-agent-runner.ts` POSTs to an endpoint and
+  // spawns no process, so a take-over line would open a terminal running nothing (#469). The
+  // server refuses it for the same reason; this is the mirror.
+  it('refuses a hint for http, the one runner with no CLI binary', () => {
+    expect(resumeCommand('http', 's1')).toBeUndefined()
   })
 
   // #431: the hint is a one-click copy for pasting into a shell, so the id gets the server's

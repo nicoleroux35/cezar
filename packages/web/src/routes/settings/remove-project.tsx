@@ -1,5 +1,5 @@
 import { useRemoveProject } from '@/api/queries'
-import type { ProjectListEntry } from '@open-mercato/maestro-api-client'
+import type { ProjectListEntry } from '@open-mercato/cezar-api-client'
 import {
   AlertDialog,
   AlertDialogAction,

@@ -27,6 +27,22 @@ import { providerIdSchema, providerStatusSchema } from './workspace.ts';
 export const DEFAULT_AGENT_ACCOUNT_ID = 'default';
 
 /**
+ * What cezar renders in place of an http account's API key.
+ *
+ * An http account is the one account whose `configDir` is a CREDENTIAL rather than a path (it holds
+ * the `{endpoint, apiKey, model}` JSON that `CEZ_HTTP_AGENT_CONFIG` carries), so the server masks
+ * the key before it reaches any client — see `maskHttpAccountConfig` in
+ * `packages/cezar/src/workspace/agent-accounts.ts`.
+ *
+ * It lives in the CONTRACT, and not beside that function, because it is a two-sided protocol
+ * value, not a rendering choice: the editor seeds its field with the masked JSON, and posting that
+ * field back unchanged must mean "keep the stored key" rather than "overwrite my credential with
+ * eight bullets". One spelling, defined once, so the two sides cannot drift into a round-trip that
+ * silently destroys an API key.
+ */
+export const MASKED_AGENT_API_KEY = '••••••••';
+
+/**
  * One of the agent's OWN config files, resolved against THIS account's folder.
  *
  * Addressed by the catalog's stable, opaque `id` — never a path the client composes, which is what
@@ -55,15 +71,29 @@ export const agentProfileSchema = z.object({
   id: z.string(),
   provider: providerIdSchema,
   label: z.string(),
-  /** As the user wrote it — a literal `~` is preserved, matching `browseRoot`/`projectsDir`. */
+  /** As the user wrote it — a literal `~` is preserved, matching `browseRoot`/`projectsDir`.
+   *
+   *  For an `http` account this is not a path at all: it is the `{endpoint, apiKey, model}` JSON
+   *  that `CEZ_HTTP_AGENT_CONFIG` carries, and its `apiKey` is replaced by `MASKED_AGENT_API_KEY`
+   *  before it is served. A client that sends a `configDir` back carrying that mask is asking to
+   *  keep the stored key. */
   configDir: z.string(),
-  /** Expanded absolute path. Same-origin route, like `ProjectListEntry.root`. */
+  /** Expanded absolute path. Same-origin route, like `ProjectListEntry.root`.
+   *
+   *  For `http` this is `configDir` run through the server's own `~` expansion and nothing more —
+   *  it is not a location on disk, and no route ever stats it. */
   path: z.string(),
   /** False for a dir the CLI has not created yet — legitimate, and NOT a reason to fall back
-   *  to another account at run time (that would silently bill the wrong subscription). */
+   *  to another account at run time (that would silently bill the wrong subscription).
+   *
+   *  For `http`, the equivalent question is whether the inline config names an endpoint, since
+   *  there is no directory to create. */
   exists: z.boolean(),
   /** Whether the dir carries this agent's own marker files. ADVISORY: an unrecognised dir is
-   *  still accepted, because "add profile → Connect → the CLI creates it" is the real flow. */
+   *  still accepted, because "add profile → Connect → the CLI creates it" is the real flow.
+   *
+   *  Always true for `http`: it has no directory to recognise, so there is nothing to warn about
+   *  and `false` would paint a warning on every configured account. */
   looksValid: z.boolean(),
   /** True for the profile cezar discovers from the environment. Never stored, never deletable. */
   isDefault: z.boolean(),
@@ -106,6 +136,7 @@ export const agentAccountSelectionSchema = z.object({
   kilo: z.string().optional(),
   gemini: z.string().optional(),
   antigravity: z.string().optional(),
+  http: z.string().optional(),
 });
 export type AgentAccountSelection = z.infer<typeof agentAccountSelectionSchema>;
 

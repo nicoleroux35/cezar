@@ -109,6 +109,7 @@ const RUNNER_LABEL: Record<RunnerId, string> = {
   kilo: 'Kilo',
   gemini: 'Gemini',
   antigravity: 'Antigravity',
+  http: 'HTTP Agent',
 };
 
 function unavailableReason(runner: RunnerId): string {

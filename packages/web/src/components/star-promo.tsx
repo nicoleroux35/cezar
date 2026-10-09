@@ -4,7 +4,7 @@ import { ArrowUpRightIcon, StarIcon } from 'lucide-react'
 
 import { queryKeys, useStarCount } from '@/api/queries'
 import { useDashboardInsights } from '@/api/dashboard-insights'
-import type { ApiRun, RunStatus } from '@open-mercato/maestro-api-client'
+import type { ApiRun, RunStatus } from '@open-mercato/cezar-api-client'
 import {
   CEZAR_REPO_URL,
   STAR_ASK_MIN_SUCCESSES,

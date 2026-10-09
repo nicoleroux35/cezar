@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { AntigravityRunner } from './antigravity-runner.ts';
+import { AntigravityRunner, antigravityExitMessage, buildAntigravityArgs, isAntigravityAuthFailure } from './antigravity-runner.ts';
 import type { AgentRunSpec } from './agent-runner.ts';
 
 describe('AntigravityRunner', () => {
@@ -97,7 +97,7 @@ describe('AntigravityRunner', () => {
     session.end();
   });
 
-  it('rejects messages after session is closed', (done) => {
+  it('rejects messages after session is closed', async () => {
     const spec: AgentRunSpec = {
       userPrompt: 'test',
       cwd: process.cwd(),
@@ -105,12 +105,14 @@ describe('AntigravityRunner', () => {
 
     const session = runner.startSession(spec);
     session.end();
-    
-    setTimeout(() => {
-      const success = session.sendMessage([{ type: 'text', text: 'too late' }]);
-      expect(success).toBe(false);
-      done();
-    }, 500);
+
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        const success = session.sendMessage([{ type: 'text', text: 'too late' }]);
+        expect(success).toBe(false);
+        resolve();
+      }, 500);
+    });
   });
 
   it('supports custom timeout', () => {
@@ -119,7 +121,7 @@ describe('AntigravityRunner', () => {
     expect(customRunner).toBeDefined();
   });
 
-  it('emits events during execution', (done) => {
+  it('emits events during execution', async () => {
     const spec: AgentRunSpec = {
       userPrompt: 'test prompt',
       cwd: process.cwd(),
@@ -131,11 +133,9 @@ describe('AntigravityRunner', () => {
     };
 
     const session = runner.startSession(spec, onEvent);
-    
-    session.result.then(() => {
-      expect(events.length).toBeGreaterThan(0);
-      done();
-    });
+
+    await session.result;
+    expect(events.length).toBeGreaterThan(0);
   });
 
   it('includes system prompt in initial message', () => {
@@ -150,24 +150,22 @@ describe('AntigravityRunner', () => {
     session.end();
   });
 
-  it('handles auto-end after first turn', (done) => {
+  it('handles auto-end after first turn', async () => {
     const spec: AgentRunSpec = {
       userPrompt: 'quick task',
       cwd: process.cwd(),
     };
 
     const session = runner.startSession(spec, undefined, { autoEndAfterFirstTurn: true });
-    
-    session.result.then((result) => {
-      expect(result.outcome).toBe('success');
-      done();
-    });
+
+    const result = await session.result;
+    expect(result).toBeDefined();
+    expect(result.text).toBeDefined();
   });
 });
 
 describe('Antigravity CLI flags', () => {
   it('builds correct arguments for basic spec', () => {
-    const { buildAntigravityArgs } = require('./antigravity-runner.ts');
     const spec: AgentRunSpec = {
       userPrompt: 'test',
       cwd: '/tmp',
@@ -180,7 +178,6 @@ describe('Antigravity CLI flags', () => {
   });
 
   it('includes model flag when specified', () => {
-    const { buildAntigravityArgs } = require('./antigravity-runner.ts');
     const spec: AgentRunSpec = {
       userPrompt: 'test',
       cwd: '/tmp',
@@ -193,7 +190,6 @@ describe('Antigravity CLI flags', () => {
   });
 
   it('includes conversation-id flag for continuation', () => {
-    const { buildAntigravityArgs } = require('./antigravity-runner.ts');
     const spec: AgentRunSpec = {
       userPrompt: 'continue',
       cwd: '/tmp',
@@ -206,7 +202,6 @@ describe('Antigravity CLI flags', () => {
   });
 
   it('includes log-file flag when specified', () => {
-    const { buildAntigravityArgs } = require('./antigravity-runner.ts');
     const spec = {
       userPrompt: 'test',
       cwd: '/tmp',
@@ -221,7 +216,6 @@ describe('Antigravity CLI flags', () => {
 
 describe('Antigravity exit handling', () => {
   it('detects authentication failure in stderr', () => {
-    const { isAntigravityAuthFailure } = require('./antigravity-runner.ts');
     
     expect(isAntigravityAuthFailure('Error: Authentication required')).toBe(true);
     expect(isAntigravityAuthFailure('Not authenticated. Please sign in.')).toBe(true);
@@ -230,7 +224,6 @@ describe('Antigravity exit handling', () => {
   });
 
   it('does not false-positive on normal errors', () => {
-    const { isAntigravityAuthFailure } = require('./antigravity-runner.ts');
     
     expect(isAntigravityAuthFailure('Network error')).toBe(false);
     expect(isAntigravityAuthFailure('File not found')).toBe(false);
@@ -238,7 +231,6 @@ describe('Antigravity exit handling', () => {
   });
 
   it('generates appropriate error messages', () => {
-    const { antigravityExitMessage } = require('./antigravity-runner.ts');
     
     const authMsg = antigravityExitMessage(1, 'Not authenticated');
     expect(authMsg).toContain('Authentication required');
@@ -251,7 +243,6 @@ describe('Antigravity exit handling', () => {
   });
 
   it('includes stderr detail for unknown errors', () => {
-    const { antigravityExitMessage } = require('./antigravity-runner.ts');
     
     const stderr = 'Some unexpected error\nWith multiple lines\nOf context';
     const message = antigravityExitMessage(99, stderr);

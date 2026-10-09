@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-import { runnerSchema, type OpenTarget, type Runner } from '@open-mercato/maestro-api-client'
+import { runnerSchema, type OpenTarget, type Runner } from '@open-mercato/cezar-api-client'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -78,6 +78,9 @@ const OPEN_IN_ICONS: Record<string, LucideIcon> = {
   opencode: BotIcon,
   pi: BotIcon,
   copilot: BotIcon,
+  kilo: BotIcon,
+  gemini: BotIcon,
+  antigravity: BotIcon,
 }
 
 /** The icon component for a target — `target.icon` when it's one the UI knows, else the

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { TrackerWatches } from './watch.ts';
-import type { TrackerAssociation, TrackerItemsResponse } from '@open-mercato/maestro-contract';
+import type { TrackerAssociation, TrackerItemsResponse } from '@open-mercato/cezar-contract';
 
 const association: TrackerAssociation = { kind: 'jira', source: { id: 's', webUrl: 'https://example.com' }, externalId: '1', externalName: 'One' };
 const page: TrackerItemsResponse = { available: true, items: [], truncated: false };

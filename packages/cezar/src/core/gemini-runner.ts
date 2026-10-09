@@ -286,7 +286,7 @@ class GeminiAcpSession implements AgentSession {
 
   private async bootstrap(): Promise<void> {
     // Initialize ACP connection
-    await (this.client as any).call('initialize', { clientInfo: { name: 'cezar', version: '1.0.0' } }, HANDSHAKE_TIMEOUT_MS);
+    await this.client.initialize(HANDSHAKE_TIMEOUT_MS);
 
     // Start or load session
     if (this.spec.sessionId) {
@@ -309,25 +309,21 @@ class GeminiAcpSession implements AgentSession {
   }
 
   private async newSession(): Promise<void> {
-    const result = await (this.client as any).call('session/new', {}, HANDSHAKE_TIMEOUT_MS);
-    this.acpSessionId = result?.sessionId as string | undefined;
+    const result = await this.client.newSession(this.spec.cwd, HANDSHAKE_TIMEOUT_MS);
+    this.acpSessionId = typeof result.sessionId === 'string' ? result.sessionId : undefined;
     this.loadSupported = true;
     this.imagesSupported = true;
   }
 
   private async loadSession(): Promise<void> {
     if (!this.spec.sessionId) return;
-    
+
     try {
-      const result = await (this.client as any).call(
-        'session/load',
-        { sessionId: this.spec.sessionId },
-        HANDSHAKE_TIMEOUT_MS,
-      );
-      
+      await this.client.loadSession(this.spec.sessionId, this.spec.cwd, HANDSHAKE_TIMEOUT_MS);
+
       this.acpSessionId = this.spec.sessionId;
       this.loadSupported = true;
-      
+
       // Wait for replay to complete
       await this.waitForReplayEnd();
     } catch (err) {
@@ -359,10 +355,17 @@ class GeminiAcpSession implements AgentSession {
   }
 
   private startTurn(content: AcpContentBlock[]): void {
-    this.turnInFlight = true;
+    if (!this.acpSessionId) {
+      this.emitError('Gemini ACP session is not ready');
+      this.end();
+      return;
+    }
 
-    (this.client as any).call('session/prompt', { content }, 0).then(
-      (result: any) => {
+    this.turnInFlight = true;
+    const sessionId = this.acpSessionId;
+
+    this.client.prompt(sessionId, content).then(
+      () => {
         this.turnInFlight = false;
         this.turnsCompleted++;
 
@@ -377,7 +380,7 @@ class GeminiAcpSession implements AgentSession {
           this.startTurn(next);
         }
       },
-      (err: any) => {
+      (err: unknown) => {
         this.turnInFlight = false;
         this.emitError('Prompt failed', err);
         this.end();

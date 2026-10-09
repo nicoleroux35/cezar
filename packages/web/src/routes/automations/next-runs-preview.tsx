@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { occurrencesBetween, type AutomationKind, type AutomationSchedule } from '@open-mercato/maestro-api-client'
+import { occurrencesBetween, type AutomationKind, type AutomationSchedule } from '@open-mercato/cezar-api-client'
 import { Card } from '@/components/ui/card'
 import { dayTime, relativeIn } from '@/lib/automation-format'
 

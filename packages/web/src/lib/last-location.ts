@@ -1,7 +1,7 @@
 import type {
   ProjectsResponse,
   WorkspaceLastLocation,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 
 import { orderProjects } from './project-order'
 import { pathnameProjectId } from './project-router'

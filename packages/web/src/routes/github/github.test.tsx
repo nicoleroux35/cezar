@@ -14,7 +14,7 @@ import type {
   Runner,
   Skill,
   WorkflowsResponse,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { githubTaskRef } from '@/lib/github-task'
 

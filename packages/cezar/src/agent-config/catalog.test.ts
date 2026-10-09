@@ -5,9 +5,12 @@ const HOME: AgentHomePaths = {
   claude: '/home/u/.claude',
   codex: '/home/u/.codex',
   opencodeConfig: '/home/u/.config/opencode',
+  kiloConfig: '/home/u/.config/kilo',
   cursor: '/home/u/.cursor',
   copilot: '/home/u/.copilot',
   junie: '/home/u/.junie',
+  gemini: '/home/u/.gemini',
+  antigravity: '/home/u/.gemini/antigravity-cli',
 };
 
 describe('agent-config catalog', () => {
@@ -73,6 +76,8 @@ describe('agent-config catalog', () => {
       'copilot.user.mcp',
       'cursor.project.mcp',
       'cursor.user.mcp',
+      // Kilo (an OpenCode fork) documents `mcp` as a key of its settings file.
+      'kilo.user.config',
       'opencode.project.config',
       'opencode.user.config',
     ]);

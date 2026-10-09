@@ -2,7 +2,7 @@
 
 ## 🎯 Objectif Accompli
 
-Permettre à **tous les providers** de cezar/maestro d'accepter **à la fois les configurations officielles ET les endpoints personnalisés** via des variables d'environnement.
+Permettre à **tous les providers** de cezar d'accepter **à la fois les configurations officielles ET les endpoints personnalisés** via des variables d'environnement.
 
 ## ✨ Ce qui a été ajouté
 

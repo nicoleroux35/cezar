@@ -246,6 +246,8 @@ const BACKEND_ALLOW_PREFIXES: Record<AgentBackend, readonly string[]> = {
   gemini: ['GEMINI_', 'GOOGLE_GENERATIVE_AI_', 'GOOGLE_CLOUD_', 'GCLOUD_'],
   // Antigravity uses Google account via system keyring or browser OAuth
   antigravity: ['ANTIGRAVITY_', 'AGY_', 'GOOGLE_CLOUD_', 'GCLOUD_'],
+  // HTTP agent needs only its configuration
+  http: ['CEZ_HTTP_AGENT_CONFIG'],
 };
 
 /** `gh` handoff (draft PRs) works in every backend — the one credential the

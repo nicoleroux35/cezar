@@ -6,9 +6,10 @@ import { useAppearance } from '@/components/appearance-provider'
 import { useTheme } from '@/components/theme-provider'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { Accent, Density, Width } from '@/lib/appearance'
+import type { Accent, Density, Width, Language } from '@/lib/appearance'
 import type { Theme } from '@/lib/theme'
 import { useProjectOrder } from '@/lib/use-project-order'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * Settings → Appearance (R6 Step 1.3, spec §"Settings").
@@ -47,6 +48,11 @@ const DENSITY_OPTIONS: Array<{ value: Density; label: string }> = [
 const WIDTH_OPTIONS: Array<{ value: Width; label: string }> = [
   { value: 'narrow', label: 'Narrow' },
   { value: 'wide', label: 'Wide' },
+]
+
+const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
+  { value: 'en', label: 'English' },
+  { value: 'fr', label: 'Français' },
 ]
 
 /** One segmented radio group — the shared chassis of all three controls. */
@@ -125,13 +131,14 @@ function Field({ title, hint, children }: { title: string; hint: string; childre
 function ProjectOrderField() {
   const projects = useProjects()
   const { order, canReorder, reset } = useProjectOrder()
+  const { t } = useTranslations()
   const multiProject = (projects.data?.projects.length ?? 0) > 1
   if (!multiProject || order.length === 0) return null
 
   return (
     <Field
-      title="Project order"
-      hint="The sidebar is in the order you dragged it into. Reset puts it back to most-recently-opened first. Shared with every browser signed in to this cezar."
+      title={t('settings.appearance.projectOrder')}
+      hint={t('settings.appearance.projectOrder.hint')}
     >
       <Button
         type="button"
@@ -142,7 +149,7 @@ function ProjectOrderField() {
         onClick={reset}
         className="w-fit"
       >
-        Reset order
+        {t('settings.appearance.projectOrder.reset')}
       </Button>
     </Field>
   )
@@ -150,33 +157,86 @@ function ProjectOrderField() {
 
 export function AppearanceSection() {
   const { theme, setTheme } = useTheme()
-  const { accent, density, width, setAccent, setDensity, setWidth } = useAppearance()
+  const { accent, density, width, language, setAccent, setDensity, setWidth, setLanguage } = useAppearance()
+  const { t } = useTranslations()
 
   return (
     <div
       data-slot="appearance-section"
       className="mx-auto flex w-full max-w-2xl flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
-      <Field title="Theme" hint="System follows your OS preference. Applies to this browser.">
-        <Segmented slot="appearance-theme" label="Theme" value={theme} options={THEME_OPTIONS} onChange={setTheme} />
+      <Field title={t('settings.appearance.theme')} hint={t('settings.appearance.theme.hint')}>
+        <Segmented
+          slot="appearance-theme"
+          label={t('settings.appearance.theme')}
+          value={theme}
+          options={THEME_OPTIONS.map(opt => ({
+            ...opt,
+            label: t(`settings.appearance.theme.${opt.value}` as any)
+          }))}
+          onChange={setTheme}
+        />
       </Field>
 
-      <Field title="Accent" hint="The primary action color. Saved with this repo's cockpit state.">
-        <Segmented slot="appearance-accent" label="Accent" value={accent} options={ACCENT_OPTIONS} onChange={setAccent} />
+      <Field title={t('settings.appearance.accent')} hint={t('settings.appearance.accent.hint')}>
+        <Segmented
+          slot="appearance-accent"
+          label={t('settings.appearance.accent')}
+          value={accent}
+          options={ACCENT_OPTIONS.map(opt => ({
+            ...opt,
+            label: t(`settings.appearance.accent.${opt.value}` as any)
+          }))}
+          onChange={setAccent}
+        />
       </Field>
 
       <Field
-        title="Density"
-        hint="Compact tightens spacing across the cockpit — text stays the same size."
+        title={t('settings.appearance.density')}
+        hint={t('settings.appearance.density.hint')}
       >
-        <Segmented slot="appearance-density" label="Density" value={density} options={DENSITY_OPTIONS} onChange={setDensity} />
+        <Segmented
+          slot="appearance-density"
+          label={t('settings.appearance.density')}
+          value={density}
+          options={DENSITY_OPTIONS.map(opt => ({
+            ...opt,
+            label: t(`settings.appearance.density.${opt.value}` as any)
+          }))}
+          onChange={setDensity}
+        />
       </Field>
 
       <Field
-        title="Reading width"
-        hint="Wide lets a task's session and commits use more of the screen. Narrow keeps a comfortable reading column. The Changes tab is always full-width."
+        title={t('settings.appearance.width')}
+        hint={t('settings.appearance.width.hint')}
       >
-        <Segmented slot="appearance-width" label="Reading width" value={width} options={WIDTH_OPTIONS} onChange={setWidth} />
+        <Segmented
+          slot="appearance-width"
+          label={t('settings.appearance.width')}
+          value={width}
+          options={WIDTH_OPTIONS.map(opt => ({
+            ...opt,
+            label: t(`settings.appearance.width.${opt.value}` as any)
+          }))}
+          onChange={setWidth}
+        />
+      </Field>
+
+      <Field
+        title={t('settings.appearance.language')}
+        hint={t('settings.appearance.language.hint')}
+      >
+        <Segmented
+          slot="appearance-language"
+          label={t('settings.appearance.language')}
+          value={language}
+          options={LANGUAGE_OPTIONS.map(opt => ({
+            ...opt,
+            label: t(`settings.appearance.language.${opt.value}` as any)
+          }))}
+          onChange={setLanguage}
+        />
       </Field>
 
       <ProjectOrderField />

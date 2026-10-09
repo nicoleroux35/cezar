@@ -1,4 +1,4 @@
-import { nextOccurrence, occurrencesBetween } from '@open-mercato/maestro-contract';
+import { nextOccurrence, occurrencesBetween } from '@open-mercato/cezar-contract';
 import type { AutomationStore } from './store.ts';
 import type { AutomationLogRecord, AutomationReceipt, ScheduleAutomationDefinition } from './types.ts';
 

@@ -151,8 +151,16 @@ export function serverLockPath(instance: string = DEFAULT_SERVER_INSTANCE): stri
  * Where each coding agent keeps its per-user config, honouring the env vars the
  * vendors document: `$CLAUDE_CONFIG_DIR` relocates Claude Code's home;
  * `$CODEX_HOME` relocates Codex's; `$CURSOR_CONFIG_DIR` relocates Cursor Agent's
- * home (default `~/.cursor`); `$XDG_CONFIG_HOME` relocates OpenCode's config
- * dir (falling back to `~/.config`). Read per call so tests and ops can set env live.
+ * home (default `~/.cursor`); `$XDG_CONFIG_HOME` relocates OpenCode's AND Kilo's
+ * config dir (falling back to `~/.config`). Read per call so tests and ops can set
+ * env live.
+ *
+ * `gemini` / `antigravity` have no relocation variable at all — `gemini-cli`'s own
+ * `GEMINI_DIR` symbol is the directory NAME joined onto `homedir()`, not an override —
+ * so their entries are `$HOME`-derived and cannot be moved by anything but `HOME`
+ * itself. Antigravity keeps its state in a SUBDIRECTORY of Gemini's home
+ * (`~/.gemini/antigravity-cli`, where its `antigravity-oauth-token` lives), which is
+ * why it earns a slot of its own rather than sharing one.
  *
  * These are the DEFAULT profile's dirs. A second login of the same CLI is an
  * agent profile (`src/core/agent-profiles.ts`) and resolves through
@@ -166,9 +174,12 @@ export function agentHomePaths(env: NodeJS.ProcessEnv = process.env): AgentHomeP
     claude: env.CLAUDE_CONFIG_DIR?.trim() || join(home, '.claude'),
     codex: env.CODEX_HOME?.trim() || join(home, '.codex'),
     opencodeConfig: join(xdgConfig, 'opencode'),
+    kiloConfig: join(xdgConfig, 'kilo'),
     cursor: env.CURSOR_CONFIG_DIR?.trim() || join(home, '.cursor'),
     copilot: env.COPILOT_HOME?.trim() || join(home, '.copilot'),
     junie: join(home, '.junie'),
+    gemini: join(home, '.gemini'),
+    antigravity: join(home, '.gemini', 'antigravity-cli'),
   };
 }
 

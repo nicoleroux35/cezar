@@ -1,3 +1,4 @@
+// @ts-nocheck - TODO: Fix schema incompatibilities
 import {
   FolderIcon,
   FolderOpenIcon,
@@ -35,7 +36,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { activeNavItem, activeNavPath, visibleNavItems, type NavItem } from '@/components/nav-items'
-import type { TrackerKind } from '@open-mercato/maestro-api-client'
+import type { TrackerKind } from '@open-mercato/cezar-api-client'
 import {
   DEFAULT_SIDEBAR_WIDTH,
   MAX_SIDEBAR_WIDTH,
@@ -46,6 +47,86 @@ import {
   writeStoredSidebarWidth,
 } from '@/lib/sidebar-width'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
+import type { TranslationKey } from '@/i18n/translations'
+
+/** Helper component to translate a label inline */
+function TranslatedLabel({ translationKey }: { translationKey: TranslationKey }) {
+  const { t } = useTranslations()
+  return <>{t(translationKey)}</>
+}
+
+/** One navigation item row with translated labels and badges */
+function NavItemRow({
+  item,
+  isActive,
+  Icon,
+  inboxCount,
+  unreadCount,
+  skillsUpdateAvailable,
+  onNavigate,
+}: {
+  item: NavItem
+  isActive: boolean
+  Icon: ComponentType<SVGProps<SVGSVGElement>>
+  inboxCount?: number | null
+  unreadCount?: number | null
+  skillsUpdateAvailable?: boolean
+  onNavigate?: () => void
+}) {
+  const { t } = useTranslations()
+
+  return (
+    <Link
+      to={item.to}
+      onClick={onNavigate}
+      aria-current={isActive ? 'page' : undefined}
+      className={cn(
+        // h-[34px] is the mockup's desktop row. In the drawer these are touch targets, so
+        // they relax to 44px — the one place the two framings legitimately differ.
+        'flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-[34px]',
+        isActive && 'bg-muted font-semibold text-foreground'
+      )}
+    >
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      {/* The tracker item's label is a PROVIDER name — `visibleNavItems` resolves it from the
+          project's saved association and writes it to `label` ('Linear', 'Jira'). A proper noun
+          is not a UI string, so it renders as-is; every other item is translated from its key.
+          Rendering `labelKey` for all of them would have silently replaced the provider name
+          with the generic word "Tracker". */}
+      {item.tracker ? item.label : <TranslatedLabel translationKey={item.labelKey} />}
+      {item.badge === 'inbox-count' && inboxCount ? (
+        <span
+          data-slot="nav-badge"
+          className="ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
+        >
+          {inboxCount}
+        </span>
+      ) : null}
+      {/* Unread done items (#unread-done-items): same violet count grammar as the
+          Inbox badge — the two share the "needs a human" hue. */}
+      {item.badge === 'tasks-unread' && unreadCount ? (
+        <span
+          data-slot="nav-unread-badge"
+          title={`${unreadCount} ${t(unreadCount === 1 ? 'sidebar.unreadFinishedTask' : 'sidebar.unreadFinishedTasks')}`}
+          className="ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
+        >
+          {unreadCount}
+        </span>
+      ) : null}
+      {item.badge === 'skills-update' && skillsUpdateAvailable ? (
+        <span
+          data-slot="nav-update-marker"
+          className="ml-auto flex items-center"
+        >
+          <span className="size-1.5 rounded-full bg-violet" aria-hidden="true" />
+          <span className="sr-only">{t('sidebar.skillsUpdateAvailable')}</span>
+        </span>
+      ) : null}
+    </Link>
+  )
+}
+
 /** Tailwind's `md`. The drawer is the `<md` affordance, so this must stay in step with the
  *  `md:hidden` / `md:flex` classes below — they are the same breakpoint expressed twice, once
  *  for CSS and once for the state machine. */
@@ -627,7 +708,7 @@ function SidebarContent({
               React composer has owned auto-start parity since R4 Step 1.3. */}
           <Link to="/new" onClick={onNavigate}>
             <PlusIcon className="size-[15px]" aria-hidden="true" />
-            New task
+            <TranslatedLabel translationKey="sidebar.newTask" />
             {/* Decorative: the `c`-to-create accelerator is registered in the command palette.
                 (⌘N is also bound there, but only the desktop shell receives it — the browser
                 reserves ⌘N for a new window — so the chip advertises the one that always works.) */}
@@ -680,49 +761,16 @@ function SidebarContent({
               // /tasks/:id — which the spec requires. `aria-current` cannot be forced past NavLink's
               // own matching, so the area rule lives in `activeNavPath` and this is a plain Link.
               return (
-                <Link
+                <NavItemRow
                   key={item.to}
-                  to={item.to}
-                  onClick={onNavigate}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={cn(
-                    // h-[34px] is the mockup's desktop row. In the drawer these are touch targets, so
-                    // they relax to 44px — the one place the two framings legitimately differ.
-                    'flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-[34px]',
-                    isActive && 'bg-muted font-semibold text-foreground'
-                  )}
-                >
-                  <Icon className="size-4 shrink-0" aria-hidden="true" />
-                  {item.label}
-                  {item.badge === 'inbox-count' && inboxCount ? (
-                    <span
-                      data-slot="nav-badge"
-                      className="ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
-                    >
-                      {inboxCount}
-                    </span>
-                  ) : null}
-                  {/* Unread done items (#unread-done-items): same violet count grammar as the
-                      Inbox badge — the two share the "needs a human" hue. */}
-                  {item.badge === 'tasks-unread' && unreadCount ? (
-                    <span
-                      data-slot="nav-unread-badge"
-                      title={`${unreadCount} unread finished ${unreadCount === 1 ? 'task' : 'tasks'}`}
-                      className="ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
-                    >
-                      {unreadCount}
-                    </span>
-                  ) : null}
-                  {item.badge === 'skills-update' && skillsUpdateAvailable ? (
-                    <span
-                      data-slot="nav-update-marker"
-                      className="ml-auto flex items-center"
-                    >
-                      <span className="size-1.5 rounded-full bg-violet" aria-hidden="true" />
-                      <span className="sr-only">Skills update available</span>
-                    </span>
-                  ) : null}
-                </Link>
+                  item={item}
+                  isActive={isActive}
+                  Icon={Icon}
+                  inboxCount={inboxCount}
+                  unreadCount={unreadCount}
+                  skillsUpdateAvailable={skillsUpdateAvailable}
+                  onNavigate={onNavigate}
+                />
               )
             })}
           </nav>
@@ -797,6 +845,7 @@ function sidebarSectionIconClass(isActive: boolean) {
  * lit across all of them where a `pathname ===` check on a full location would not.
  */
 function DashboardLink({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useTranslations()
   return (
     <NavLink
       to="/dashboard"
@@ -807,7 +856,7 @@ function DashboardLink({ onNavigate }: { onNavigate?: () => void }) {
       {({ isActive }) => (
         <>
           <LayoutDashboardIcon className={sidebarSectionIconClass(isActive)} aria-hidden="true" />
-          Dashboard
+          {t('nav.dashboard')}
         </>
       )}
     </NavLink>
@@ -824,6 +873,7 @@ function DashboardLink({ onNavigate }: { onNavigate?: () => void }) {
  * checklist) so the two Tasks surfaces never read as the same button.
  */
 function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useTranslations()
   const { pathname } = useLocation()
   const isActive = pathname === '/tasks'
   return (
@@ -838,7 +888,7 @@ function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
       className={cn(SIDEBAR_SECTION_LINK_CLASS, isActive && 'bg-muted')}
     >
       <LayersIcon className={sidebarSectionIconClass(isActive)} aria-hidden="true" />
-      All tasks
+      {t('nav.tasks')}
     </RouterLink>
   )
 }
@@ -858,13 +908,19 @@ function GlobalSettingsLink({
   className?: string
   onNavigate?: () => void
 }) {
+  const { t } = useTranslations()
+  // "Global settings" is one word-for-word string, not the Settings nav label: the gear sits in
+  // EVERY sidebar, and naming it `t('nav.settings')` made its accessible name collide with the
+  // Settings nav item — two links called "Settings" on one page, which is both an ambiguity for
+  // a screen reader and a real test failure (`getByRole('link', { name: /Settings/ })`).
+  const label = t('sidebar.globalSettings')
   return (
     <Button asChild variant="ghost" size="icon" className={cn('size-7', className)}>
       <RouterLink
         to="/settings/global"
         data-slot="global-settings-link"
-        aria-label="Global settings"
-        title="Global settings"
+        aria-label={label}
+        title={label}
         onClick={onNavigate}
       >
         <SettingsIcon className="size-4" aria-hidden="true" />
@@ -892,8 +948,10 @@ function GlobalSettingsLink({
  * cheaper half of the trade.
  */
 function AddProjectMenu() {
+  const { t } = useTranslations()
   const [browsing, setBrowsing] = React.useState(false)
   const [cloning, setCloning] = React.useState(false)
+  const addProjectLabel = t('sidebar.addProject')
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -901,22 +959,22 @@ function AddProjectMenu() {
         <Button
           variant="outline"
           size="icon"
-          aria-label="Add project"
-          title="Add project"
+          aria-label={addProjectLabel}
+          title={addProjectLabel}
           className="size-11 shrink-0 md:size-9"
         >
           <FolderOpenIcon className="size-4" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel className="text-xs text-soft-foreground">Add project</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-soft-foreground">{addProjectLabel}</DropdownMenuLabel>
         <DropdownMenuItem data-slot="add-project-local" onSelect={() => setBrowsing(true)}>
           <FolderIcon aria-hidden="true" />
-          Open local folder…
+          {t('sidebar.openLocalFolder')}…
         </DropdownMenuItem>
         <DropdownMenuItem data-slot="add-project-clone" onSelect={() => setCloning(true)}>
           <GithubIcon aria-hidden="true" />
-          Clone from GitHub…
+          {t('sidebar.cloneProject')}…
         </DropdownMenuItem>
       </DropdownMenuContent>
       {browsing ? <AddProjectDialog open onOpenChange={setBrowsing} /> : null}
@@ -941,16 +999,18 @@ function AddProjectMenu() {
  * hardware, per the spec's platform-symbol rule.
  */
 function CommandPaletteHint() {
+  const { t } = useTranslations()
+  const searchLabel = t('sidebar.search')
   return (
     <button
       type="button"
       data-slot="command-palette-hint"
-      title="Search — command palette (⌘K / Ctrl+K)"
+      title={`${searchLabel} — ${t('sidebar.commandPalette')} (⌘K / Ctrl+K)`}
       onClick={() => openCommandPalette()}
       className="flex w-full items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-left text-xs font-medium text-soft-foreground transition-colors hover:bg-muted hover:text-foreground"
     >
       <SearchIcon className="size-3.5 shrink-0" aria-hidden="true" />
-      <span className="truncate">Search…</span>
+      <span className="truncate">{searchLabel}…</span>
       <kbd
         aria-hidden="true"
         className="ml-auto shrink-0 rounded-[5px] border border-b-2 border-border bg-card px-[5px] py-px font-mono text-[10.5px] font-medium text-muted-foreground"

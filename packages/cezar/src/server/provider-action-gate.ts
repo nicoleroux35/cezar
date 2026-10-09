@@ -18,6 +18,7 @@ const LABEL: Record<ProviderId, string> = {
   kilo: 'Kilo',
   gemini: 'Gemini',
   antigravity: 'Antigravity',
+  http: 'HTTP Agent',
 };
 
 export function providersRequiredByWorkflow(

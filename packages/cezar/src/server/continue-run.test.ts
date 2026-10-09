@@ -151,7 +151,10 @@ describe('POST /api/v1/runs/:id/continue override', () => {
   });
 
   it('rejects an unknown runner with a 400 and never reaches the manager', async () => {
-    const res = await post({ runner: 'gemini' });
+    // `gemini` was the stand-in here until `f5190c7b` registered it as a real backend — the
+    // fixture silently became a happy-path test. A runner id the contract's enum does not know
+    // is what this case is actually about.
+    const res = await post({ runner: 'not-a-runner' });
     expect(res.status).toBe(400);
     expect(captured).toBeUndefined();
   });

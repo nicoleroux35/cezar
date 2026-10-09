@@ -10,6 +10,7 @@ import { PiRunner } from './pi-runner.ts';
 import { KiloRunner } from './kilo-runner.ts';
 import { GeminiRunner } from './gemini-runner.ts';
 import { AntigravityRunner } from './antigravity-runner.ts';
+import { HttpAgentRunner } from './http-agent-runner.ts';
 import { detectOpencodeVersion } from './opencode-version-detect.ts';
 
 /**
@@ -39,6 +40,8 @@ export async function createRunner(backend: AgentBackend | RunnerId | undefined)
       return new GeminiRunner();
     case 'antigravity':
       return new AntigravityRunner();
+    case 'http':
+      return new HttpAgentRunner();
     case 'claude':
     case 'claude-cli':
     default:

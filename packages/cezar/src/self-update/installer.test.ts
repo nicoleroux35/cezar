@@ -45,7 +45,7 @@ describe('installing into the managed layout', () => {
       },
     });
     expect(result).toEqual({ id: '0.12.1', version: '0.12.1', entry: versionEntry('0.12.1', env) });
-    expect(seen[0]?.at(-1)).toBe('@open-mercato/maestro@0.12.1');
+    expect(seen[0]?.at(-1)).toBe('@open-mercato/cezar@0.12.1');
     expect(existsSync(versionEntry('0.12.1', env))).toBe(true);
     expect(readManifest('0.12.1', env)).toMatchObject({ version: '0.12.1', source: 'registry' });
     expect(staged()).toEqual([]);
@@ -137,7 +137,7 @@ describe('a read-only service', () => {
     try {
       const env = { ...process.env, CEZ_HOME: home };
       const entry = join(versionsDir(env), 'current', 'node_modules', '@open-mercato', 'cezar', 'dist', 'index.js');
-      const base = { pkgName: '@open-mercato/maestro', version: '0.12.0', entry, restart: () => {}, env };
+      const base = { pkgName: '@open-mercato/cezar', version: '0.12.0', entry, restart: () => {}, env };
       expect(new SelfUpdateService(base).capability().canSelfUpdate).toBe(true);
       const readOnly = new SelfUpdateService({ ...base, readOnly: true });
       expect(readOnly.capability()).toMatchObject({ canSelfUpdate: false });

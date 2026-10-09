@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { TrackerFailure, TrackerWatchInput, TrackerWatchHandle, TrackerWatchSnapshot } from '@open-mercato/maestro-contract';
+import type { TrackerFailure, TrackerWatchInput, TrackerWatchHandle, TrackerWatchSnapshot } from '@open-mercato/cezar-contract';
 import type { SocketHub } from '../ws.ts';
 import type { TrackerDriver } from './types.ts';
 

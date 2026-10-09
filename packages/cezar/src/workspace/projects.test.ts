@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync,
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@open-mercato/maestro-contract';
+import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@open-mercato/cezar-contract';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import { TrackerConnections } from '../server/tracker/connections.ts';
 import { writeTrackerAssociation } from '../tracker-association.ts';
@@ -198,14 +198,24 @@ describe('workspace projects', () => {
       expect(entry).toMatchObject({ status: 'ok', forge: 'github' });
     });
 
-    it('omits forge for a non-github remote and for a remote-less repo', async () => {
-      const gitlab = makeRepo('lab');
-      execFileSync('git', ['remote', 'add', 'origin', 'git@gitlab.com:acme/lab.git'], { cwd: gitlab });
+    it('classifies gitlab.com and codeberg.org remotes, and leaves the rest unclassified', async () => {
+      const lab = makeRepo('lab');
+      execFileSync('git', ['remote', 'add', 'origin', 'git@gitlab.com:acme/lab.git'], { cwd: lab });
+      const berg = makeRepo('berg');
+      execFileSync('git', ['remote', 'add', 'origin', 'git@codeberg.org:acme/berg.git'], { cwd: berg });
+      // Not a forge host at all — plain git, exactly like the remote-less repo below.
+      const plain = makeRepo('plain');
+      execFileSync('git', ['remote', 'add', 'origin', 'git@example.com:acme/plain.git'], { cwd: plain });
       const bare = makeRepo('loner');
-      await registerProject(gitlab);
+      await registerProject(lab);
+      await registerProject(berg);
+      await registerProject(plain);
       await registerProject(bare);
-      const entries = await listProjects();
-      expect(entries.every((entry) => entry.forge === undefined)).toBe(true);
+      const byId = new Map((await listProjects()).map((entry) => [entry.id, entry]));
+      expect(byId.get('lab')?.forge).toBe('gitlab');
+      expect(byId.get('berg')?.forge).toBe('forgejo');
+      expect(byId.get('plain')?.forge).toBeUndefined();
+      expect(byId.get('loner')?.forge).toBeUndefined();
     });
 
     it('reports a deleted root as missing (after the probe TTL cache is cleared)', async () => {

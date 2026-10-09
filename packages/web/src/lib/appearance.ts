@@ -14,6 +14,7 @@
 export const ACCENT_STORAGE_KEY = 'cez-accent'
 export const DENSITY_STORAGE_KEY = 'cez-density'
 export const WIDTH_STORAGE_KEY = 'cez-width'
+export const LANGUAGE_STORAGE_KEY = 'cez-language'
 
 /** The two accents the token sheet can express today: `lime` is `--primary` as shipped;
  *  `violet` swaps the `--primary` family onto the existing `--violet` tokens (index.css
@@ -30,14 +31,19 @@ export type Density = 'comfortable' | 'compact' | 'ultra'
  *  to 1180px so long transcripts use more of the screen. Type size and spacing stay untouched. */
 export type Width = 'narrow' | 'wide'
 
+/** Language selects the UI localization. */
+export type Language = 'en' | 'fr'
+
 export const DEFAULT_ACCENT: Accent = 'lime'
 export const DEFAULT_DENSITY: Density = 'comfortable'
 export const DEFAULT_WIDTH: Width = 'narrow'
+export const DEFAULT_LANGUAGE: Language = 'en'
 
 export interface Appearance {
   accent: Accent
   density: Density
   width: Width
+  language: Language
 }
 
 /** Coerce anything (missing key, a future value, garbage) into an Accent. */
@@ -53,6 +59,10 @@ export function normalizeWidth(raw: unknown): Width {
   return raw === 'narrow' || raw === 'wide' ? raw : DEFAULT_WIDTH
 }
 
+export function normalizeLanguage(raw: unknown): Language {
+  return raw === 'en' || raw === 'fr' ? raw : DEFAULT_LANGUAGE
+}
+
 /** The `appearance` key of a ui-state payload, defaults filled in. Defensive about shape —
  *  the server passes unknown keys through, so this can meet anything. */
 export function normalizeAppearance(raw: unknown): Appearance {
@@ -61,6 +71,7 @@ export function normalizeAppearance(raw: unknown): Appearance {
     accent: normalizeAccent(obj.accent),
     density: normalizeDensity(obj.density),
     width: normalizeWidth(obj.width),
+    language: normalizeLanguage(obj.language),
   }
 }
 
@@ -71,9 +82,10 @@ export function readStoredAppearance(): Appearance {
       accent: normalizeAccent(localStorage.getItem(ACCENT_STORAGE_KEY)),
       density: normalizeDensity(localStorage.getItem(DENSITY_STORAGE_KEY)),
       width: normalizeWidth(localStorage.getItem(WIDTH_STORAGE_KEY)),
+      language: normalizeLanguage(localStorage.getItem(LANGUAGE_STORAGE_KEY)),
     }
   } catch {
-    return { accent: DEFAULT_ACCENT, density: DEFAULT_DENSITY, width: DEFAULT_WIDTH }
+    return { accent: DEFAULT_ACCENT, density: DEFAULT_DENSITY, width: DEFAULT_WIDTH, language: DEFAULT_LANGUAGE }
   }
 }
 
@@ -82,6 +94,7 @@ export function writeStoredAppearance(appearance: Appearance): void {
     localStorage.setItem(ACCENT_STORAGE_KEY, appearance.accent)
     localStorage.setItem(DENSITY_STORAGE_KEY, appearance.density)
     localStorage.setItem(WIDTH_STORAGE_KEY, appearance.width)
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, appearance.language)
   } catch {
     // Private mode / storage disabled — the appearance still applies for this page.
   }
@@ -96,4 +109,6 @@ export function applyAppearance(root: HTMLElement, appearance: Appearance): void
   else root.dataset.density = appearance.density
   if (appearance.width === DEFAULT_WIDTH) delete root.dataset.width
   else root.dataset.width = appearance.width
+  if (appearance.language === DEFAULT_LANGUAGE) delete root.dataset.language
+  else root.dataset.language = appearance.language
 }

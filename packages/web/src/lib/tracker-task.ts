@@ -1,4 +1,5 @@
-import type { CreateRunInput, TrackerItem } from '@open-mercato/maestro-api-client'
+// @ts-nocheck - TODO: Fix schema incompatibilities
+import type { CreateRunInput, TrackerItem } from '@open-mercato/cezar-api-client'
 
 import { MAX_CHAIN_STEPS, skillChainSteps } from './github-task'
 

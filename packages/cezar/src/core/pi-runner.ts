@@ -304,20 +304,18 @@ function piTools(tools: string[], bashAllowlist: string[] | undefined, emit?: (t
   
   // Emit warning if bash is restricted but allowlist has entries
   if (includesBash && hasBashAllowlist && emit) {
-    emit('⚠️  Warning: pi cannot enforce bash command prefixes - all bash commands are allowed when Bash tool is enabled');
+    emit('⚠️  Warning: pi cannot enforce bash command prefixes - bash is disabled for this step');
   }
   
   return [
     ...new Set(
       tools
-        // Include bash if:
-        // 1. Bash is in tools, AND
-        // 2. Either no allowlist OR allowlist is empty (all bash) OR we accept the limitation
-        .filter((tool) => {
-          if (tool !== 'Bash') return true;
-          // Always include bash if requested (with warning if allowlist exists)
-          return true;
-        })
+        // Pi can allow/deny the whole bash tool but has no command-prefix equivalent. Fail closed
+        // when a workflow requests that narrower mode: running unrestricted bash under a step that
+        // asked for two allowed commands silently voids the restriction the workflow author wrote.
+        // `f5190c7b` briefly replaced this with "always include bash, emit a warning" — a warning in
+        // an NDJSON event is not a guard, and the step still ran every command the allowlist forbade.
+        .filter((tool) => tool !== 'Bash' || !bashAllowlist || bashAllowlist.length === 0)
         .map((tool) => map[tool] ?? tool.toLowerCase()),
     ),
   ];

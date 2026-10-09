@@ -22,7 +22,7 @@ import {
   type TrackerNotFound,
   type TrackerSearchQuery,
   type TrackerSearchQueryInput,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 
 const item = {
   kind: 'issue' as const,

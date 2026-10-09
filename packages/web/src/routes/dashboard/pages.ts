@@ -3,7 +3,7 @@ import type {
   DashboardSnapshot,
   DashboardGroup,
   DashboardTaskRow,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 import { dashboardKeys, getDashboard, getDashboardTasks } from '@/api/dashboard'
 import { ApiError } from '@/api/client'
 export function useDashboardPage(

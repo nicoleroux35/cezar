@@ -16,7 +16,7 @@ import type {
   ProcessMetrics,
   RunResource,
   SystemHealth,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 
 const exec = promisify(execFile);
 

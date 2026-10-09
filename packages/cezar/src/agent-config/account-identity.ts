@@ -58,6 +58,7 @@ const UNSUPPORTED_IDENTITY_REASON: Record<Exclude<ProviderId, 'claude' | 'codex'
   kilo: 'cezar does not yet read Kilo account details from its config folder.',
   gemini: 'cezar does not yet read Gemini account details from its config folder.',
   antigravity: 'cezar does not yet read Antigravity account details from its config folder.',
+  http: 'HTTP agent stores configuration inline, not in a separate file.',
 };
 
 /** Read a JSON file under the cap. `null` for absent, unreadable, oversized or malformed. */

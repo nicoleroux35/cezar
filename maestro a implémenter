@@ -1,0 +1,68 @@
+Plan de Vérification Indépendant (de Claw Orchestrator)
+
+Ce qu'ils font : Le runtime exécute les tests d'acceptation séparément de l'agent, empêchant les fausses déclarations "tous les tests passent ✓".
+
+Pourquoi c'est important pour Cezar : Les étapes check actuelles font confiance à la sortie de l'agent. À la place :
+- Exécuter les commandes de vérification avec timeout/sandbox isolé
+- Enregistrer à la fois la déclaration de l'agent (agentReport) et le verdict du runtime (verified/refuted)
+- Réfuter automatiquement si l'agent a modifié les fichiers de test pendant l'exécution
+- Montrer clairement la divergence dans l'UI quand déclarations ≠ réalité
+
+Implémentation : Étendre les étapes check du workflow avec verificationPolicy, stocker les verdicts doubles dans le journal d'événements, ajouter un badge "Verdict Runtime" aux cartes d'exécution.
+
+
+---
+
+Agent Orchestrateur au Niveau Projet (de Orchestrator.inc)
+
+Ce qu'ils font : Agent de planification persistant qui découpe des objectifs ambigus en DAG de tâches, conscient des exécutions actives, PRs et état CI.
+
+Pourquoi c'est important pour Cezar : Les workflows actuels sont statiques. Un méta-agent pourrait :
+- Prendre des objectifs de haut niveau ("implémenter l'auth") → générer 5 tâches ciblées
+- Comprendre les dépendances (impossible de tester l'auth avant que la migration DB soit exécutée)
+- Renvoyer les retours de revue vers la tâche propriétaire
+- Créer automatiquement des tâches de suivi quand la CI échoue
+
+Implémentation : Nouveau endpoint /orchestrate dans l'API, backend agent avec injection de contexte projet, génère des tâches via l'API existante POST /runs.
+
+---
+
+
+Projection de Mémoire Unifiée (de Loom)
+
+Ce qu'ils font : Importer la mémoire native de chaque agent (CLAUDE.md, AGENTS.md, etc.) dans un store unifié, projeter vers le backend qui s'exécute ensuite.
+
+Pourquoi c'est important pour Cezar : Quand on change de backend en cours de tâche (handoff Claude → Codex), le contexte est perdu. À la place :
+- Extraire la mémoire de .claude/, .codex/, .ai/ dans un schéma normalisé
+- Injecter la mémoire fusionnée comme prompt système quand la tâche continue sur un backend différent
+- Suivre "ce que cette tâche a appris" à travers les changements d'agent
+
+Implémentation : Module src/core/memory-projection.ts, s'exécute avant chaque tour, respecte les formats de mémoire par backend.
+
+---
+
+Orchestration Fan-Out avec Synthèse (de Claw)
+
+Ce qu'ils font : Exécuter la même tâche sur N backends/modèles en parallèle, puis synthétiser la meilleure réponse ou voter.
+
+Pourquoi c'est important pour Cezar : Les changements critiques bénéficient de perspectives multiples. Ajouter :
+- Type de nœud workflow fanout avec engines: ['claude', 'codex', 'gemini']
+- Exécution parallèle dans des worktrees séparés
+- Étape de synthèse : l'humain choisit le meilleur, ou un LLM fusionne les approches
+- Affiche toutes les tentatives côte à côte dans un onglet "Variantes"
+
+Implémentation : Nouveau nœud workflow dans workflows/types.ts, dispatch parallèle dans workflows/run.ts, nouvelle route UI pour la synthèse.
+
+---
+
+Curseur de Niveau d'Autonomie (de AI Orchestrator)
+
+Ce qu'ils font : 5 niveaux : 0=Observer, 1=Suggérer, 2=Exécuter, 3=Dév Auto, 4=Déploiement Auto. Chaque niveau déverrouille plus de permissions.
+
+Pourquoi c'est important pour Cezar : Le modèle de permission actuel est binaire. Des niveaux granulaires permettent :
+- Niveau 0-1 : L'agent rédige le code mais fait une pause auto à la porte de revue
+- Niveau 2 : Commit sur la branche, attend l'approbation PR
+- Niveau 3 : Crée automatiquement une draft PR
+- Niveau 4 : Peut merger si la CI est verte (avec killswitch)
+
+Implémentation : autonomyLevel dans la config workspace, appliquer dans runs/execute.ts, afficher comme icône bouclier dans l'UI.

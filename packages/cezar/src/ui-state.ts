@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { UiState } from '@open-mercato/maestro-contract';
+import type { UiState } from '@open-mercato/cezar-contract';
 
 /**
  * `.ai/cezar/ui-state.json` — small GUI preferences the cockpit persists (files, not a DB).

@@ -1,4 +1,4 @@
-import type { RunRecord } from '@open-mercato/maestro-api-client'
+import type { RunRecord } from '@open-mercato/cezar-api-client'
 
 /**
  * The one canonical attention function (spec, "Design system" → status grammar).

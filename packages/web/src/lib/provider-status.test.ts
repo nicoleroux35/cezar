@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ProviderStatusResponse } from '@open-mercato/maestro-api-client'
+import type { ProviderStatusResponse } from '@open-mercato/cezar-api-client'
 import {
   applyProviderStatusRow,
   mergeProviderStatusResponse,
@@ -221,6 +221,36 @@ describe('parseProviderStatusResponse', () => {
         { provider: 'cursor', status: 'not-installed', enabled: true },
       ],
     })
+  })
+
+  it('keeps a row the display order does not name, such as http, instead of rejecting the answer', () => {
+    // The server emits one row per provider id its schema knows, `http` included — it is a real
+    // backend whose card in Settings → Providers reads `providerStatusFor` to say "Credentials
+    // found". Validating the row against the LOGIN order made this whole response invalid, which
+    // blanked every provider surface in the cockpit: pills, banner and settings pane together.
+    expect(
+      parseProviderStatusResponse({
+        providers: [
+          { provider: 'claude', status: 'connected', enabled: true },
+          { provider: 'http', status: 'disconnected', enabled: true },
+          { provider: 'codex', status: 'disconnected', enabled: true },
+        ],
+      }),
+    ).toEqual({
+      providers: [
+        { provider: 'claude', status: 'connected', enabled: true },
+        { provider: 'codex', status: 'disconnected', enabled: true },
+        { provider: 'http', status: 'disconnected', enabled: true },
+      ],
+    })
+    // ...and it stays out of the login surfaces, which is why the order is separate from the
+    // allowlist in the first place.
+    expect(usableRunners(parseProviderStatusResponse({
+      providers: [
+        { provider: 'claude', status: 'connected', enabled: true },
+        { provider: 'http', status: 'connected', enabled: true },
+      ],
+    }))).toEqual(['claude'])
   })
 
   it.each([

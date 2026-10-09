@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { ForgeKind, ForgeStatus, ForgesStatusResponse } from '@open-mercato/maestro-contract';
+import type { ForgeKind, ForgeStatus, ForgesStatusResponse } from '@open-mercato/cezar-contract';
 
 /**
  * Forge CLI detection and authentication status service.

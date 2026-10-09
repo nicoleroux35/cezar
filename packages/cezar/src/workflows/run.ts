@@ -1,4 +1,4 @@
-import type { TrackerAssociation } from '@open-mercato/maestro-contract';
+import type { TrackerAssociation } from '@open-mercato/cezar-contract';
 import { TrackerAgentBindingError } from '../server/tracker/agent-credentials.ts';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -36,6 +36,12 @@ import { todosPath } from '../todos.ts';
 // Contract VALUES, like `workspaceUiStateSchema` in workspace/migrations.ts: the attachment
 // vocabulary the routes validate with is the same one the engine stores and re-reads by, so the
 // wire and the disk can never disagree about what counts as an image (#950).
+import {
+  attachmentExtension,
+  isImageAttachmentName,
+  isImageMediaType,
+  sanitizeAttachmentName,
+} from '@open-mercato/cezar-contract';
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import { discoverSkills, type Skill } from '../skills.ts';
 import { automationsReachable } from '../automations/builtin-skill.ts';
@@ -51,7 +57,7 @@ import type { QueuedMessage, RunRecord, RunStore, StepState } from '../runs/stor
 // Task dispatch (spec 2026-09-10-dispatch). Every import below is inert unless the feature is
 // ON *and* the run carries a `dispatch`: `dispatchOf()` is the single gate, and a run without one
 // takes byte-for-byte the path it took before this feature existed.
-import type { DispatchInput, DispatchIntent, DispatchReport, RunDispatch } from '@open-mercato/maestro-contract';
+import type { DispatchInput, DispatchIntent, DispatchReport, RunDispatch } from '@open-mercato/cezar-contract';
 import { resolveCapabilities } from '../server/capabilities.ts';
 import { composeDispatchPrompt } from '../dispatch/prompts.ts';
 import {
@@ -117,35 +123,6 @@ import {
   extractStepOutput,
   type ExecutionContext,
 } from './execution-context.ts';
-
-// Attachment utility functions (previously from contract)
-function attachmentExtension(mediaType: string): string {
-  if (mediaType === 'image/jpeg') return 'jpg';
-  if (mediaType === 'image/webp') return 'webp';
-  if (mediaType === 'image/gif') return 'gif';
-  return 'png';
-}
-
-function isImageMediaType(mediaType: string): boolean {
-  return mediaType.startsWith('image/');
-}
-
-function isImageAttachmentName(name: string): boolean {
-  const ext = name.split('.').pop()?.toLowerCase();
-  return ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || ext === 'gif';
-}
-
-function sanitizeAttachmentName(name: string, mediaType: string): string {
-  // Remove any path separators and keep only the basename
-  const basename = name.split(/[/\\]/).pop() || 'attachment';
-  // Remove any potentially dangerous characters
-  const sanitized = basename.replace(/[^a-zA-Z0-9._-]/g, '_');
-  // Ensure it has an extension
-  if (!sanitized.includes('.')) {
-    return `${sanitized}.${attachmentExtension(mediaType)}`;
-  }
-  return sanitized;
-}
 
 const CHECK_OUTPUT_CAP = 20_000;
 

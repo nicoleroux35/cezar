@@ -49,6 +49,12 @@ import type { ProviderId } from './provider-auth.ts';
  *   `GITHUB_TOKEN` ahead of any stored credential regardless. `null` until a test proves one
  *   variable moves both (spec 2026-09-19-runner-seam-native-backends Q14) — being wrong here
  *   bills the wrong account.
+ * - **http** → `CEZ_HTTP_AGENT_CONFIG`, which is cezar's OWN variable rather than a vendor one:
+ *   this backend has no CLI and no home directory at all. Its whole configuration is one JSON
+ *   object (`{endpoint, apiKey, model}`), so the "config dir" an http account carries IS that
+ *   JSON, and this variable is how `http-agent-runner.ts` receives it. That makes http the one
+ *   provider whose profiles work by construction rather than by vendor support — and the reason
+ *   it belongs in this table instead of a special case beside it.
  */
 export const PROFILE_ENV_VAR: Record<ProviderId, string | null> = {
   claude: 'CLAUDE_CONFIG_DIR',
@@ -61,6 +67,7 @@ export const PROFILE_ENV_VAR: Record<ProviderId, string | null> = {
   kilo: null,
   gemini: null,
   antigravity: null,
+  http: 'CEZ_HTTP_AGENT_CONFIG',
 };
 
 /** Providers that can carry more than one account — what the UI offers "Add account" for. */
@@ -119,8 +126,16 @@ const PROFILE_DIR_MARKERS: Record<ProviderId, readonly string[]> = {
   junie: [],
   // Same for copilot (`PROFILE_ENV_VAR.copilot === null`).
   copilot: [],
-  // kilo, gemini, antigravity cannot carry profiles yet
+  // kilo, gemini and antigravity cannot carry profiles either (`PROFILE_ENV_VAR` is `null` for all
+  // three — none of their CLIs reads a home-relocation variable). They DO have discoverable homes
+  // now (`agentHomePaths().kiloConfig` / `.gemini` / `.antigravity`), but nothing ever probes one
+  // as a profile dir, so the marker lists stay empty rather than advertising an unverified shape.
   kilo: [],
   gemini: [],
   antigravity: [],
+  // http stores its whole configuration inline in the configDir field as JSON, not as a
+  // directory, so there is nothing on disk to recognise. It is nonetheless a profile-capable
+  // provider (`PROFILE_ENV_VAR.http` above) — the markers are about a DIRECTORY, and http has
+  // none; the UI hides the "unrecognised folder" line for it rather than reading this as false.
+  http: [],
 };

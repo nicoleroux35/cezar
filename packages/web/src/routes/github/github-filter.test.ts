@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { GithubItem } from '@open-mercato/maestro-api-client'
+import type { GithubItem } from '@open-mercato/cezar-api-client'
 
 import {
   allLabels,

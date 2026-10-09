@@ -71,6 +71,7 @@ export const workspaceConfigResponseSchema = z.object({
       kilo: z.string().optional(),
       gemini: z.string().optional(),
       antigravity: z.string().optional(),
+      http: z.string().optional(),
     }).optional(),
   }),
 });
@@ -110,6 +111,7 @@ export const setWorkspaceConfigInputSchema = z.object({
           kilo: z.string().trim().min(1).max(200).nullable().optional(),
           gemini: z.string().trim().min(1).max(200).nullable().optional(),
           antigravity: z.string().trim().min(1).max(200).nullable().optional(),
+          http: z.string().trim().min(1).max(200).nullable().optional(),
         })
         .optional(),
     })
@@ -130,11 +132,12 @@ export type SetWorkspaceConfigInput = z.infer<typeof setWorkspaceConfigInputSche
 
 // ---- GUI prefs — the two open bags ----------------------------------------------------------
 
-/** Settings → Appearance: accent + density + reading width. ONE shape for both ui-state files. */
+/** Settings → Appearance: accent + density + reading width + language. ONE shape for both ui-state files. */
 const appearanceSchema = z.object({
   accent: z.enum(['lime', 'violet']).optional(),
   density: z.enum(['comfortable', 'compact', 'ultra']).optional(),
   width: z.enum(['narrow', 'wide']).optional(),
+  language: z.enum(['en', 'fr']).optional(),
 });
 
 const taskTableUiStateSchema = z.looseObject({
@@ -555,7 +558,7 @@ export type ProviderConnectResponse = z.infer<typeof providerConnectResponseSche
  * 400s, so the client compiles against exactly what the route accepts. One definition, used by
  * the route's query validator and by the cockpit's picker.
  */
-export const modelDiscoveryRunnerSchema = z.enum(['claude', 'codex', 'opencode', 'cursor', 'junie', 'kilo']);
+export const modelDiscoveryRunnerSchema = z.enum(['claude', 'codex', 'opencode', 'cursor', 'junie']);
 export type ModelDiscoveryRunner = z.infer<typeof modelDiscoveryRunnerSchema>;
 export const MODEL_DISCOVERY_RUNNERS: readonly ModelDiscoveryRunner[] =
   modelDiscoveryRunnerSchema.options;

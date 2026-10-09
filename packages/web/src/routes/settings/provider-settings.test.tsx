@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ProviderStatusResponse } from '@open-mercato/maestro-api-client'
+import type { ProviderStatusResponse } from '@open-mercato/cezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { applyProviderStatusRow } from '@/lib/provider-status'
 import { workspaceQueryKeys } from '@/api/queries'
@@ -128,7 +128,7 @@ describe('ProviderSettings', () => {
       [...document.querySelectorAll('[data-slot="provider-card"]')].map((item) =>
         item.querySelector('h3')?.textContent,
       ),
-    ).toEqual(['Claude Code', 'Codex', 'Junie', 'OpenCode', 'Cursor', 'pi', 'GitHub Copilot CLI'])
+    ).toEqual(['Claude Code', 'Codex', 'Junie', 'OpenCode', 'Cursor', 'pi', 'GitHub Copilot CLI', 'Kilo', 'Gemini', 'Antigravity', 'HTTP Agent'])
   })
 
   it('presents discovery truth, enablement, and runtime recovery without hiding diagnostics', async () => {

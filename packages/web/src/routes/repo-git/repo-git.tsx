@@ -1,9 +1,10 @@
 import { GitBranchIcon, TriangleAlertIcon } from 'lucide-react'
 
 import { useRepo } from '@/api/queries'
-import type { RepoInfo, RepoResponse } from '@open-mercato/maestro-api-client'
+import type { RepoInfo, RepoResponse } from '@open-mercato/cezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { TabLink } from '@/components/tab-link'
+import { useTranslations } from '@/i18n/use-translations'
 
 import { BranchChip } from '../task-git/diff-controls'
 import { RepoBranchesSection } from './repo-branches'
@@ -26,6 +27,7 @@ import { RepoGitLoading } from './repo-git-loading'
 export type RepoTab = 'changes' | 'commits' | 'branches'
 
 export function RepoGitRoute({ tab }: { tab: RepoTab }) {
+  const { t } = useTranslations()
   const repo = useRepo()
 
   if (repo.isPending) return <RepoGitLoading />
@@ -54,10 +56,10 @@ export function RepoGitRoute({ tab }: { tab: RepoTab }) {
       </div>
     )
   }
-  return <RepoView repo={repo.data} info={info} tab={tab} />
+  return <RepoView repo={repo.data} info={info} tab={tab} t={t} />
 }
 
-function RepoView({ repo, info, tab }: { repo: RepoResponse; info: RepoInfo; tab: RepoTab }) {
+function RepoView({ repo, info, tab, t }: { repo: RepoResponse; info: RepoInfo; tab: RepoTab; t: ReturnType<typeof useTranslations>['t'] }) {
   return (
     <div data-route="repo-git" className="flex min-h-full flex-col">
       <header
@@ -76,13 +78,13 @@ function RepoView({ repo, info, tab }: { repo: RepoResponse; info: RepoInfo; tab
 
         <div data-slot="repo-tabs" className="mt-2.5 flex items-end gap-1">
           <TabLink to="/git" active={tab === 'changes'}>
-            Changes
+            {t('git.tab.changes')}
           </TabLink>
           <TabLink to="/git/commits" active={tab === 'commits'}>
-            Commits
+            {t('git.tab.commits')}
           </TabLink>
           <TabLink to="/git/branches" active={tab === 'branches'}>
-            Branches
+            {t('git.tab.branches')}
           </TabLink>
         </div>
       </header>

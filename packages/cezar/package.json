@@ -1,14 +1,14 @@
 {
-  "name": "@open-mercato/maestro",
+  "name": "@open-mercato/cezar",
   "version": "1.0.0",
   "description": "Local cockpit for running and tracking AI agent tasks in your repo. Uses your logged-in `claude` CLI and `gh` — zero config, zero database.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "maestro": "dist/index.js",
-    "mro": "dist/index.js",
-    "maestro-cli": "dist/index.js",
-    "maestro-run": "dist/index.js"
+    "cezar": "dist/index.js",
+    "cez": "dist/index.js",
+    "cezar-cli": "dist/index.js",
+    "cezar-run": "dist/index.js"
   },
   "exports": {
     ".": "./dist/index.js",
@@ -54,8 +54,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@open-mercato/maestro-api-client": "workspace:*",
-    "@open-mercato/maestro-contract": "workspace:*",
+    "@open-mercato/cezar-api-client": "workspace:*",
+    "@open-mercato/cezar-contract": "workspace:*",
     "@types/node": "^20.14.0",
     "@types/proper-lockfile": "4.1.4",
     "@types/ws": "^8.18.1",

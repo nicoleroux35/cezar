@@ -20,7 +20,8 @@
     "declaration": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "composite": true
   },
   // Build config: tests never reach `dist` (or the published tarball). They are still
   // typechecked — tsconfig.test.json adds them back.

@@ -1,10 +1,10 @@
-import { dashboardOverviewTaskSchema } from '@open-mercato/maestro-contract';
+import { dashboardOverviewTaskSchema } from '@open-mercato/cezar-contract';
 import type {
   DashboardOverview,
   DashboardOverviewQuery,
   DashboardSnapshot,
   DashboardTaskRow,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 
 /** Current workload plus finish-date outcomes; neither task count nor done implies business acceptance. */
 export function buildDashboardOverview(

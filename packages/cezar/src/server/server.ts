@@ -2,7 +2,7 @@ import {
   trackerWatchInputSchema, trackerWatchParamsSchema, trackerWatchQuerySchema,
   trackerCandidatesQuerySchema, trackerListQuerySchema, trackerSearchQuerySchema, trackerItemQuerySchema, trackerReadScope,
   trackerCredentialsSchema, trackerItemParamsSchema, trackerAssociationInputSchema, type TrackerChangedEvent,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 import { createTrackerService } from './tracker/index.ts';
 import { TrackerWatches } from './tracker/watch.ts';
 import { readTrackerAssociation, writeTrackerAssociation, clearTrackerAssociation } from '../tracker-association.ts';
@@ -27,7 +27,7 @@ import {
   isScheduleAutomation,
   type AutomationDefinition,
 } from '../automations/types.ts';
-import { trackerTriggerSchema, trackerAutomationOptionsSchema, trackerAutomationOptionsQuerySchema, automationScheduleSchema, localTimeZone, nextOccurrence } from '@open-mercato/maestro-contract';
+import { trackerTriggerSchema, trackerAutomationOptionsSchema, trackerAutomationOptionsQuerySchema, automationScheduleSchema, localTimeZone, nextOccurrence } from '@open-mercato/cezar-contract';
 import type { IncomingMessage } from 'node:http';
 import { access, constants as fsConstants, mkdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -48,7 +48,7 @@ import {
   type RunIndexEntry,
   type RunsIndexResponse,
   type StarCountPayload,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 // A contract VALUE, like `workspaceUiStateSchema` in workspace/migrations.ts — the request
 // schema this route validates with is the same one the client compiles against.
 import {
@@ -56,8 +56,8 @@ import {
   modelDiscoveryRunnerSchema,
   openProjectInSchema,
   updateProjectInputSchema,
-} from '@open-mercato/maestro-contract';
-import { dispatchInputSchema, dispatchIntentSchema, dispatchReportSchema } from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
+import { dispatchInputSchema, dispatchIntentSchema, dispatchReportSchema } from '@open-mercato/cezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { hostUsageSampler, type HostSampler } from '../core/host-usage.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
@@ -94,7 +94,7 @@ import {
 import { planChain, slugify } from '../planner.ts';
 import { discoverSkills } from '../skills.ts';
 import { SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService, type SkillsUpdateState } from '../skills-update.ts';
-import { selfUpdateApplyRequestSchema, selfUpdateChannelRequestSchema, selfUpdateDevelopmentQuerySchema } from '@open-mercato/maestro-contract';
+import { selfUpdateApplyRequestSchema, selfUpdateChannelRequestSchema, selfUpdateDevelopmentQuerySchema } from '@open-mercato/cezar-contract';
 import { SelfUpdateBusyError, SelfUpdateService } from '../self-update/service.ts';
 import { StarCountReader } from './star-count.ts';
 import { getTeamSkillsCached, refreshTeamSkills, waitForTeamSkills } from '../skills-remote.ts';
@@ -131,7 +131,7 @@ import {
   type DeleteDraftResponse,
   forgeKindSchema,
   forgeConnectInputSchema,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 import { toPastedContent, type PastedContent, type RunManager } from '../workflows/run.ts';
 import { removeWorktree, worktreeDiff, worktreeDiffStat, worktreeSizeBytes } from '../git-worktree.ts';
 import { isReclaimable, reclaimWorktrees } from '../runs/retention.ts';
@@ -169,7 +169,10 @@ import {
   DEFAULT_AGENT_ACCOUNT_ID,
   defaultAgentAccountStore,
   isAbsoluteConfigDir,
+  isHttpJsonConfig,
   loadAgentAccounts,
+  maskHttpAccountConfig,
+  mergeHttpAccountSecret,
   mergeWriteAgentAccounts,
   type AgentAccount,
   type AgentAccountStore,
@@ -386,25 +389,7 @@ const hostedProfileRefusal = {
   error: 'agent accounts are managed from the machine that owns the checkout (this cockpit runs in hosted mode)',
 };
 
-/** Helper to add mediaType to attachments from the wire format before passing to toPastedContent */
-function attachmentWithMediaType(attachment: { name: string; data: string }): {
-  mediaType: string;
-  data: string;
-  name: string;
-} {
-  // Deduce mediaType from filename extension
-  const ext = attachment.name.split('.').pop()?.toLowerCase();
-  const mediaType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
-    : ext === 'webp' ? 'image/webp'
-    : ext === 'gif' ? 'image/gif'
-    : 'image/png';
-
-  return {
-    mediaType,
-    data: attachment.data,
-    name: attachment.name,
-  };
-}
+/**
 
 /**
  * Allocate a profile id from the label (or, with no label, the folder name).
@@ -733,6 +718,9 @@ const startRunSchema = z
     // Queue-only mode: when true, the task is added to the queue in a paused state and will not
     // start automatically. User must manually start it via POST /runs/:id/start-queued.
     queueOnly: z.boolean().optional(),
+    // Task group assignment: user-defined group for organizing related tasks.
+    taskGroupId: z.string().optional(),
+    taskGroupName: z.string().trim().min(1).max(100).optional(),
   })
   .refine((b) => Boolean(b.workflow) !== Boolean(b.steps), {
     message: 'provide either "workflow" or "steps", not both',
@@ -935,6 +923,21 @@ const queuedMessagePatchSchema = z
 
 const reorderQueueSchema = z.object({
   runIds: z.array(z.string()).min(1),
+});
+
+const reorderDisplaySchema = z.object({
+  /** Array of items in the desired display order. Each item is either:
+   *  - A task ID (string) for an ungrouped task
+   *  - An object {groupName: string, taskIds: string[]} for a group with its tasks in order */
+  items: z.array(
+    z.union([
+      z.string(), // ungrouped task ID
+      z.object({
+        groupName: z.string(),
+        taskIds: z.array(z.string()),
+      }),
+    ])
+  ),
 });
 
 // Queued prompt stack bounds (#472). The per-message bounds mirror `messageSchema`
@@ -1187,7 +1190,6 @@ export function createApp(deps: ServerDeps) {
       opencode: { discover: () => discoverOpencodeModels({ cwd: bootRoot }) },
       junie: { discover: () => discoverJunieModels({ cwd: bootRoot }) },
       cursor: { discover: () => discoverCursorModels() },
-      kilo: { discover: () => Promise.resolve([]) }, // Kilo runner not yet implemented
     } as any,
   });
   const providerAuth = deps.providerAuth ?? new ProviderAuthService({ cwd: bootRoot });
@@ -1249,7 +1251,7 @@ export function createApp(deps: ServerDeps) {
   const selfUpdate =
     deps.selfUpdate ??
     new SelfUpdateService({
-      pkgName: '@open-mercato/maestro',
+      pkgName: '@open-mercato/cezar',
       version: deps.version,
       entry: process.argv[1] ?? '',
       restart: () => {},
@@ -1967,6 +1969,25 @@ export function createApp(deps: ServerDeps) {
       const body = { data: c.req.valid('json') };
 
       const provider = body.data.provider as ProviderId;
+      // `http` is refused FIRST, and that refusal is the whole fix for a real bug: this backend is
+      // an HTTP endpoint, not an installed CLI, so there is no login to open — but the generic path
+      // below would still render a command from the descriptor's placeholder executable and
+      // `loginArgs: []`, and `loginCommand('http')` came out as the literal `node`. Pressing
+      // Connect therefore opened a terminal on a bare Node REPL that did nothing at all, which is
+      // exactly what a user reported.
+      //
+      // Refused here rather than by making `loginCommand` return null for http, because the two
+      // callers want different things: the clipboard fallback is genuinely useful for a CLI whose
+      // handoff failed, and would be nonsense here, while the route is where "there is nothing to
+      // sign in to" can say what TO do instead. No `command` in the body — offering a copyable
+      // command would be offering the bug.
+      if (provider === 'http') {
+        return c.json({
+          error: 'HTTP Agent has no sign-in: its endpoint, API key and model are its configuration. '
+            + 'Add a “HTTP Agent” account in Settings → Agent accounts (or set CEZ_HTTP_AGENT_CONFIG), '
+            + 'and this tab connects itself.',
+        }, 409);
+      }
       // A NAMED account is refused in hosted mode before anything is resolved, exactly like every
       // sibling route in the agent-profiles family. Checking later would already have read
       // `~/.cezar/agent-accounts.json`, built a command carrying the account's absolute path (which
@@ -2105,34 +2126,56 @@ export function createApp(deps: ServerDeps) {
   };
 
   /** Build the wire row for one resolved profile: its dir state plus whatever auth is cached. */
-  const agentProfileBody = async (profile: ResolvedAgentProfile) => ({
-    id: profile.id,
-    provider: profile.provider,
-    label: profile.label,
-    configDir: profile.configDir,
-    path: profile.path,
-    ...(await profileDirState(profile.provider, profile.path)),
-    isDefault: profile.isDefault,
-    // CACHED auth only — this listing must never pay a CLI spawn.
+  const agentProfileBody = async (profile: ResolvedAgentProfile) => {
+    // An http account's `configDir` is not a folder at all — it is the JSON object
+    // `CEZ_HTTP_AGENT_CONFIG` carries, and that object holds a live provider API key. Serving it
+    // verbatim would put the key in this response body, the TanStack cache and devtools for every
+    // listing, so the credential is replaced on the way OUT and never stored any other way. The
+    // masking is unconditional (a stored key is always masked) and the client sends the mask back
+    // to mean "keep the stored one" — see `MASKED_API_KEY` in `workspace/agent-accounts.ts`.
     //
-    // Probing here cost a shell-out per provider PLUS one per extra account: ~0.7s with no extra
-    // accounts and over 2s with a few, on every cold load, for a route whose real job (what
-    // accounts exist) is a JSON read and a handful of stats. `GET /api/v1/health` already
-    // established the rule — it serves whatever the cache holds and never pays a `gh` shell-out.
-    // An absent `status` means "not determined yet", which the cockpit renders as Checking… and
-    // then fills in from the per-account status route below.
-    //
-    // SPREAD, not `status: maybeUndefined`: hono would type the key as always-present while
-    // `JSON.stringify` drops it, which is exactly the drift `contract-parity` catches (AGENTS.md
-    // names this as one of the two recurring mismatches).
-    ...(() => {
-      const cached = profile.isDefault
-        ? providerAuth.peekStatus()?.providers.find((row) => row.provider === profile.provider)
-        : providerAuth.peekProfileStatus(profile.provider, profile.id);
-      return cached ? { status: cached } : {};
-    })(),
-    files: await accountFiles(profile),
-  });
+    // Every other provider's `configDir` is a path, and this branch must not touch it: a value
+    // that merely LOOKS like JSON is that user's literal folder name, and rewriting it would
+    // point their account somewhere it is not.
+    const isHttp = profile.provider === 'http';
+    const configDir = isHttp ? maskHttpAccountConfig(profile.configDir) : profile.configDir;
+    return {
+      id: profile.id,
+      provider: profile.provider,
+      label: profile.label,
+      configDir,
+      path: profile.path,
+      // http's config is inline JSON, so there is no folder to stat and no marker file to find.
+      // The generic answer would be `{exists: false, looksValid: false}` — "the CLI has not created
+      // it yet", plus a warning line about an unrecognised folder — for a backend that will never
+      // have either. Rendering that as a warning on a row whose status reads Connected is a
+      // contradiction, so http reports the only honest thing: the state its own inline config
+      // decides, which is what the row's status already says.
+      ...(isHttp
+        ? { exists: isHttpJsonConfig(profile.configDir), looksValid: true }
+        : await profileDirState(profile.provider, profile.path)),
+      isDefault: profile.isDefault,
+      // CACHED auth only — this listing must never pay a CLI spawn.
+      //
+      // Probing here cost a shell-out per provider PLUS one per extra account: ~0.7s with no extra
+      // accounts and over 2s with a few, on every cold load, for a route whose real job (what
+      // accounts exist) is a JSON read and a handful of stats. `GET /api/v1/health` already
+      // established the rule — it serves whatever the cache holds and never pays a `gh` shell-out.
+      // An absent `status` means "not determined yet", which the cockpit renders as Checking… and
+      // then fills in from the per-account status route below.
+      //
+      // SPREAD, not `status: maybeUndefined`: hono would type the key as always-present while
+      // `JSON.stringify` drops it, which is exactly the drift `contract-parity` catches (AGENTS.md
+      // names this as one of the two recurring mismatches).
+      ...(() => {
+        const cached = profile.isDefault
+          ? providerAuth.peekStatus()?.providers.find((row) => row.provider === profile.provider)
+          : providerAuth.peekProfileStatus(profile.provider, profile.id);
+        return cached ? { status: cached } : {};
+      })(),
+      files: await accountFiles(profile),
+    };
+  };
 
   /**
    * Resolve `:id` to an account for the per-account reads below. Unlike `resolveWorkspaceProfile`
@@ -2153,9 +2196,34 @@ export function createApp(deps: ServerDeps) {
     }
   };
 
+  /**
+   * Resolve a client-supplied `configDir` into the text to STORE, against the account as it stands.
+   *
+   * The one thing this adds to `checkProfileDir` is the http credential round trip: the wire
+   * carries a masked `apiKey` (`agentProfileBody`), so a client editing only the model posts the
+   * mask back, and storing it verbatim would replace a working key with eight bullets. Substituting
+   * the stored secret back in happens HERE — the single place a configDir becomes persistent — for
+   * the same reason every rule about this file lives in one place: a second write path is a second
+   * place to forget it. `previous` is absent on create, where there is nothing to preserve.
+   */
+  const storedProfileDir = (configDir: string, provider: ProviderId, previous?: string): string =>
+    provider === 'http' && previous !== undefined
+      ? mergeHttpAccountSecret(configDir, previous)
+      : configDir;
+
   /** Validate a client-supplied config dir. Returns the error text, or null when it is usable. */
-  const checkProfileDir = (configDir: string): string | null => {
+  const checkProfileDir = (configDir: string, provider: ProviderId): string | null => {
     if (CONTROL_CHARS_RE.test(configDir)) return 'folder must not contain control characters';
+    // `http` has no folder at all: its `configDir` IS the JSON object `CEZ_HTTP_AGENT_CONFIG`
+    // carries, because this backend is an HTTP endpoint rather than an installed CLI. Accepting a
+    // path here would store an account the runner can never parse, so the JSON shape is the gate
+    // — the same one `agentAccountSchema` enforces on the way back out, stated here so the user
+    // gets a sentence about their input rather than a silently dropped row.
+    if (provider === 'http') {
+      return isHttpJsonConfig(configDir)
+        ? null
+        : 'an http account needs its endpoint config as JSON: {"endpoint":"https://…/v1/chat/completions","apiKey":"…","model":"…"}';
+    }
     const expanded = expandTilde(configDir);
     // Absolute after expansion: a relative dir would resolve against whatever cwd the agent
     // happens to be spawned in, which for a task is a throwaway worktree. Through
@@ -2226,7 +2294,7 @@ export function createApp(deps: ServerDeps) {
       if (!supportsProfiles(provider)) {
         return c.json({ error: `${provider} cannot carry more than one account` }, 400);
       }
-      const dirError = checkProfileDir(configDir);
+      const dirError = checkProfileDir(configDir, provider);
       if (dirError) return c.json({ error: dirError }, 400);
 
       // Read-first, exactly like `POST /projects`: the duplicate check needs `realpath`, and the
@@ -2275,15 +2343,15 @@ export function createApp(deps: ServerDeps) {
     .patch(
       '/workspace/agent-profiles/:id',
       paramZodValidator(z.object({ id: z.string() })),
+      // Only the SHAPE is settled here, because the provider-dependent half of the rule cannot be:
+      // this request does not name one, and it may not need to — a label-only edit never touches
+      // `configDir`. The route reads the stored row and applies `checkProfileDir` for its provider,
+      // which is why an `http` row cannot be repointed at a folder by a PATCH either.
       jsonZodValidator(() => updateAgentProfileSchema),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
         const id = c.req.param('id');
         const { label, configDir } = c.req.valid('json');
-        if (configDir !== undefined) {
-          const dirError = checkProfileDir(configDir);
-          if (dirError) return c.json({ error: dirError }, 400);
-        }
 
         // Read-first (see POST above, and `PATCH /projects`): a well-formed but unknown id must
         // 404 WITHOUT rewriting the config, and the duplicate check needs async `realpath`.
@@ -2295,8 +2363,22 @@ export function createApp(deps: ServerDeps) {
         }
         const current = existing.find((a) => a.id === id);
         if (!current) return c.json({ error: `unknown account: ${id}` }, 404);
-        if (configDir !== undefined) {
-          const conflict = await conflictingProfile(existing, current.provider, expandTilde(configDir), id);
+        // What actually gets stored: `configDir` as sent, except that an http credential the
+        // client echoed back masked is restored from the row we just read (see `storedProfileDir`).
+        // Computed before validation because the MASKED form is what the conflict check is about:
+        // two accounts are duplicates when they name the same endpoint, and the mask does not
+        // change the endpoint half.
+        const nextConfigDir = configDir === undefined
+          ? undefined
+          : storedProfileDir(configDir, current.provider, current.configDir);
+        if (nextConfigDir !== undefined) {
+          // The PROVIDER comes from the stored row, not from the request: `PATCH` names an account
+          // id and nothing else, so a route that validated the new dir on its own could not tell an
+          // http account (whose configDir is JSON) from a CLI one (whose is a path) — and would
+          // happily accept a folder for the former.
+          const dirError = checkProfileDir(nextConfigDir, current.provider);
+          if (dirError) return c.json({ error: dirError }, 400);
+          const conflict = await conflictingProfile(existing, current.provider, expandTilde(nextConfigDir), id);
           if (conflict !== null) return c.json({ error: conflict }, 409);
         }
 
@@ -2307,7 +2389,7 @@ export function createApp(deps: ServerDeps) {
             if (!entry) return; // lost a race with a concurrent delete — answered below
             // Mutated in place so `.passthrough()` keys on the row survive.
             if (label !== undefined) entry.label = label.trim() || entry.id;
-            if (configDir !== undefined) entry.configDir = configDir;
+            if (nextConfigDir !== undefined) entry.configDir = nextConfigDir;
             updated = entry;
           });
         } catch (err) {
@@ -4211,7 +4293,7 @@ export function createApp(deps: ServerDeps) {
           );
         }
       }
-      const images = parsed.data.images?.map((image) => toPastedContent(attachmentWithMediaType(image)));
+      const images = parsed.data.images?.map((image) => toPastedContent(image));
       const input = {
         task: parsed.data.task,
         model: parsed.data.model,
@@ -4229,6 +4311,8 @@ export function createApp(deps: ServerDeps) {
         generateFollowups: capabilities().followups ? parsed.data.generateFollowups : false,
         ...(parsed.data.dispatch && capabilities().dispatch ? { dispatchIntent: parsed.data.dispatch } : {}),
         queueOnly: parsed.data.queueOnly,
+        taskGroupId: parsed.data.taskGroupId,
+        taskGroupName: parsed.data.taskGroupName,
       };
       if (variants > 1) {
         const runs = manager.startVariants(workflow, input, variants);
@@ -4359,6 +4443,46 @@ export function createApp(deps: ServerDeps) {
       return c.json({ reordered: true, count });
     })
 
+    .post('/runs/reorder-display', jsonZodValidator(reorderDisplaySchema), (c) => {
+      const { store } = c.get('project');
+      const { items } = c.req.valid('json');
+
+      let displayOrder = 0;
+      const updates: Array<{ id: string; order: number }> = [];
+
+      // Process each item (ungrouped task or group)
+      for (const item of items) {
+        if (typeof item === 'string') {
+          // Ungrouped task
+          const run = store.getRun(item);
+          if (!run) return c.json({ error: `run not found: ${item}` }, 404);
+          updates.push({ id: item, order: displayOrder });
+          displayOrder += 1;
+        } else {
+          // Group with tasks
+          for (const taskId of item.taskIds) {
+            const run = store.getRun(taskId);
+            if (!run) return c.json({ error: `run not found: ${taskId}` }, 404);
+            if (run.taskGroupName !== item.groupName) {
+              return c.json({
+                error: `task ${taskId} is not in group ${item.groupName}`
+              }, 400);
+            }
+            updates.push({ id: taskId, order: displayOrder });
+            displayOrder += 1;
+          }
+        }
+      }
+
+      // Apply all updates
+      for (const { id, order } of updates) {
+        // @ts-expect-error - displayOrder is a computed field not in the type but used internally
+        store.updateRun(id, { displayOrder: order });
+      }
+
+      return c.json({ reordered: true, count: updates.length });
+    })
+
     // Live-session participation (spec 002): deliver a user message (text +
     // pasted screenshots) into the run's open claude session.
     .post('/runs/:id/messages', jsonZodValidator(messageSchema), async (c) => {
@@ -4377,7 +4501,7 @@ export function createApp(deps: ServerDeps) {
         if (blocked) return c.json({ error: blocked }, 409);
       }
       const content: PastedContent[] = [
-        ...parsed.data.images.map((image) => toPastedContent(attachmentWithMediaType(image))),
+        ...parsed.data.images.map((image) => toPastedContent(image)),
         ...(parsed.data.text.trim() ? [{ type: 'text', text: parsed.data.text } satisfies ContentBlock] : []),
       ];
       // Three-rung delivery ladder (#472). Branch on the ENGINE's answer rather
@@ -4454,7 +4578,7 @@ export function createApp(deps: ServerDeps) {
       }
 
       if (run.status !== 'queued') return c.json({ error: 'run already started' }, 409);
-      const images: PastedContent[] | undefined = parsed.data.images?.map((image) => toPastedContent(attachmentWithMediaType(image)));
+      const images: PastedContent[] | undefined = parsed.data.images?.map((image) => toPastedContent(image));
       const message = manager.editQueuedMessage(id, msgId, {
         ...(parsed.data.text !== undefined ? { text: parsed.data.text } : {}),
         ...(images !== undefined ? { images } : {}),
@@ -4511,7 +4635,7 @@ export function createApp(deps: ServerDeps) {
       }
       const result = manager.continueRun(id, {
         text: parsed.data.text,
-        images: parsed.data.images?.map((image) => toPastedContent(attachmentWithMediaType(image))),
+        images: parsed.data.images?.map((image) => toPastedContent(image)),
         runner: parsed.data.runner,
         model: parsed.data.model,
         agentProfile: parsed.data.agentProfile,
@@ -5011,7 +5135,7 @@ export function createApp(deps: ServerDeps) {
           return c.json({ error: `at most ${DRAFT_MAX_IMAGES} images per draft` }, 400);
         }
         const body = c.req.valid('json');
-        const result = writeRunDraftImage(dataDir, run.id, attachmentWithMediaType(body));
+        const result = writeRunDraftImage(dataDir, run.id, body);
         if (!result.ok) return c.json({ error: result.error }, 400);
         return c.json(result.image);
       },
@@ -6525,7 +6649,6 @@ export function createApp(deps: ServerDeps) {
     ...(run.issueNumber !== undefined ? { issueNumber: run.issueNumber } : {}),
     ...(run.referencedIssueUrl !== undefined ? { referencedIssueUrl: run.referencedIssueUrl } : {}),
     ...(run.markerRefs !== undefined ? { markerRefs: run.markerRefs } : {}),
-    tokensUsed: run.tokensUsed ?? 0,
     ...(run.costUsd !== undefined ? { costUsd: run.costUsd } : {}),
     ...(run.peakRssBytes !== undefined ? { peakRssBytes: run.peakRssBytes } : {}),
     ...(run.peakProcCount !== undefined ? { peakProcCount: run.peakProcCount } : {}),
@@ -6561,6 +6684,7 @@ export function createApp(deps: ServerDeps) {
       const bootId = await resolveBootProject(projects);
       const runs: RunIndexEntry[] = [];
       const truncated: string[] = [];
+      const referenceStatuses: RunsIndexResponse['referenceStatuses'] = {};
       // Statuses the server already holds, shipped WITH the rows that carry the references. The
       // cockpit would otherwise ask for them a beat after the table paints — one round trip per
       // project, and a visible flash of un-coloured chips before it lands. Cache-only, so this
@@ -6592,18 +6716,15 @@ export function createApp(deps: ServerDeps) {
           // that every consumer would have to look past, and it would blur the one rule this
           // payload has: absent means nothing is known.
           if (Object.keys(cached.prs).length > 0 || Object.keys(cached.issues).length > 0) {
-            // referenceStatuses[project.id] = cached; // Removed: not in contract schema
+            referenceStatuses[project.id] = cached;
           }
         }
       }
       runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       const body: RunsIndexResponse = {
         runs,
-        counts: projects.reduce((acc, p) => {
-          const count = runs.filter(r => r.projectId === p.id).length;
-          if (count > 0) acc[p.id] = count;
-          return acc;
-        }, {} as Record<string, number>),
+        referenceStatuses,
+        perProjectLimit: RUNS_INDEX_PER_PROJECT,
         truncated,
       };
       return c.json(body);
@@ -7011,15 +7132,36 @@ export function resumeCommand(runner: string | undefined, sessionId: string): st
       return `codex resume ${sessionId}`;
     case 'opencode':
       return `opencode --session ${sessionId}`;
+    case 'kilo':
+      // Verified live (`kilo --help`, 0.1.x): `-s, --session <id>`. Kilo keeps history server-side
+      // (one `kilo serve` per session), so the id is what reattaches to it.
+      return `kilo --session ${sessionId}`;
+    case 'gemini':
+      // Verified live (`gemini --help`, 0.60.0): `-r, --resume <id>`. `--session-id` STARTS a new
+      // session with a chosen UUID, so it is the wrong flag for a take-over.
+      return `gemini --resume ${sessionId}`;
     case 'cursor': {
       const bin = quoteResumeBin(process.env.CEZ_CURSOR_AGENT_BIN ?? 'agent');
       return bin === null ? null : `${bin} --resume ${sessionId}`;
+    }
+    case 'antigravity': {
+      // The binary is `agy`, not `antigravity` — and its continuation flag is `--conversation`,
+      // not the `--conversation-id` the RUNNER passes to `agy --headless` (that long form is
+      // headless-only; the interactive CLI takes `--conversation` — `agy --help`).
+      const bin = quoteResumeBin(process.env.CEZ_ANTIGRAVITY_BIN ?? 'agy');
+      return bin === null ? null : `${bin} --conversation ${sessionId}`;
     }
     case 'pi':
       return `pi --session ${sessionId}`;
     case 'copilot':
       // `--resume <id>` takes a session id, a task id or an id prefix (`copilot --help`, 1.0.88).
       return `copilot --resume ${sessionId}`;
+    case 'http':
+      // No CLI exists to reopen: `http-agent-runner.ts` POSTs to an OpenAI-compatible endpoint and
+      // spawns no process, so a take-over line would be a shell command that opens nothing — the
+      // broken affordance #469 forbids. Fail closed rather than fall through to the `default:`
+      // arm's `claude --resume` for a session claude does not own (#387).
+      return null;
     default:
       return `claude --resume ${sessionId}`;
   }

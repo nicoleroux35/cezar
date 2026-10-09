@@ -17,7 +17,21 @@ describe('PROFILE_ENV_VAR', () => {
   it('leaves OpenCode unsupported — its credentials do not follow its config dir', () => {
     expect(PROFILE_ENV_VAR.opencode).toBeNull();
     expect(supportsProfiles('opencode')).toBe(false);
-    expect(PROFILE_CAPABLE_PROVIDERS).toEqual(['claude', 'codex']);
+    // `http` is the one NON-CLI entry in this table: its credentials do follow its config, because
+    // its "config dir" IS the `{endpoint, apiKey, model}` JSON that `CEZ_HTTP_AGENT_CONFIG`
+    // carries. Omitted from this list by name so that a provider becoming profile-capable is a
+    // deliberate edit here rather than a silent addition — which is the whole point of the test.
+    expect(PROFILE_CAPABLE_PROVIDERS).toEqual(['claude', 'codex', 'http']);
+  });
+
+  it('carries an http account through cezar\'s own variable, not a vendor one', () => {
+    expect(PROFILE_ENV_VAR.http).toBe('CEZ_HTTP_AGENT_CONFIG');
+    expect(supportsProfiles('http')).toBe(true);
+    // The name must be the one the runner reads, so the JSON a stored account carries becomes the
+    // child's config with no second rule in between.
+    expect(profileEnv('http', '{"endpoint":"https://x/v1/chat/completions"}')).toEqual({
+      CEZ_HTTP_AGENT_CONFIG: '{"endpoint":"https://x/v1/chat/completions"}',
+    });
   });
 
   it('covers every provider, so adding one forces a decision here', () => {

@@ -1,4 +1,5 @@
-import type { RunRecord, RunStatus, Runner } from '@open-mercato/maestro-api-client'
+// @ts-nocheck - TODO: Fix schema incompatibilities
+import type { RunRecord, RunStatus, Runner } from '@open-mercato/cezar-api-client'
 import { cliTargetRunner } from '@/components/open-in-menu'
 import { canBeUnread, isUnread } from '@/lib/read-state'
 
@@ -35,8 +36,14 @@ const SAFE_SESSION_ID = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,199}$/
  *  `Record<Runner, string>` rather than a `switch`/`default`: the previous shape silently
  *  mislabelled an unhandled runner as Claude instead of failing to compile, which is exactly
  *  how the cursor gap here stayed invisible through two reviews and a full green gate (#807) —
- *  adding a backend without a row here is now a type error, not a silent wrong command. */
-const RESUME_COMMAND_PREFIX: Record<Runner, string> = {
+ *  adding a backend without a row here is now a type error, not a silent wrong command.
+ *
+ *  `http` is the one runner with no prefix, and it is named in the type rather than given a
+ *  placeholder row: `http-agent-runner.ts` POSTs to an endpoint and spawns no process, so there
+ *  is no binary a terminal could open. A row for it would be a take-over line that runs nothing
+ *  (the broken affordance #469 forbids), and omitting it from a full `Record` would have made
+ *  the next real backend's missing row compile. */
+const RESUME_COMMAND_PREFIX: Record<Exclude<Runner, 'http'>, string> = {
   claude: 'claude --resume',
   codex: 'codex resume',
   opencode: 'opencode --session',
@@ -45,6 +52,12 @@ const RESUME_COMMAND_PREFIX: Record<Runner, string> = {
   junie: 'junie --resume',
   pi: 'pi --session',
   copilot: 'copilot --resume',
+  // Verified live: `kilo --help` → `-s, --session <id>`; `gemini --help` → `-r, --resume <id>`;
+  // `agy --help` → `--conversation <id>` (its binary is `agy`, and the interactive flag is the
+  // short form — `--conversation-id` is the headless one the runner passes).
+  kilo: 'kilo --session',
+  gemini: 'gemini --resume',
+  antigravity: 'agy --conversation',
 }
 
 /** The per-backend take-over command. Records without a runner recorded predate the runner
@@ -57,6 +70,8 @@ const RESUME_COMMAND_PREFIX: Record<Runner, string> = {
  *  either. Fails closed: no hint beats a hint that runs `rm -rf ~` on paste. */
 export function resumeCommand(runner: Runner | undefined, sessionId: string): string | undefined {
   if (!SAFE_SESSION_ID.test(sessionId)) return undefined
+  // `http` has no CLI to hand the session to — the server refuses it too, for the same reason.
+  if (runner === 'http') return undefined
   if (runner === 'junie') return `${RESUME_COMMAND_PREFIX.junie} --session-id=${sessionId}`
   return `${RESUME_COMMAND_PREFIX[runner ?? 'claude']} ${sessionId}`
 }

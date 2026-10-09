@@ -29,7 +29,7 @@ import {
   type ProviderId,
   type Runner,
   type SetWorkspaceConfigInput,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import {
   AlertDialog,
@@ -44,7 +44,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StatusDot, type StatusDotTone } from '@/components/status-dot'
-import { RUNNER_ORDER } from '@/lib/provider-status'
+import { PROVIDER_ORDER } from '@/lib/provider-status'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toaster'
 import { OpenInMenu, cliTargetRunner } from '@/components/open-in-menu'
@@ -100,6 +100,7 @@ const PROVIDER_LABEL: Record<ProviderId, string> = {
   kilo: 'Kilo',
   gemini: 'Gemini',
   antigravity: 'Antigravity',
+  http: 'HTTP Agent',
 }
 
 /** The vendor's own install/login instruction, shown when the CLI is not on this machine. */
@@ -114,6 +115,7 @@ const PROVIDER_INSTALL: Record<ProviderId, string> = {
   kilo: 'https://kilo.ai',
   gemini: 'npm i -g @google/gemini-cli',
   antigravity: 'https://antigravity.dev',
+  http: 'Configure HTTP endpoint',
 }
 
 /** Same vocabulary the Providers card uses — one wording for "is this logged in?". */
@@ -151,6 +153,7 @@ export function AccountsSection() {
 function AccountsPane({ data }: { data: AgentProfilesResponse }) {
   const health = useHealth()
   const [adding, setAdding] = useState<ProviderId | null>(null)
+  const [editing, setEditing] = useState<AgentProfile | null>(null)
   const [confirming, setConfirming] = useState<AgentProfile | null>(null)
   const remove = useRemoveAgentProfile()
 
@@ -158,7 +161,11 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
   // install state and config folder live, and hiding OpenCode would just move the question
   // "is OpenCode set up?" somewhere else. Derived, not written out: as a literal this list went
   // stale the moment a fifth runner existed, and "every agent" quietly became "four of them".
-  const providers: readonly ProviderId[] = RUNNER_ORDER
+  //
+  // PROVIDER_ORDER, not RUNNER_ORDER: this surface lists AGENTS — http included, with its own
+  // install row ("no install needed") and its endpoint accounts. The login order is what the
+  // runner pills use; here it would hide the one backend whose whole account IS its configuration.
+  const providers: readonly ProviderId[] = PROVIDER_ORDER
 
   if (!data.editable) {
     return (
@@ -211,6 +218,7 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
               accounts={data.profiles.filter((p) => p.provider === provider)}
               canCarryAccounts={data.profileCapableProviders.includes(provider)}
               onAdd={() => setAdding(provider)}
+              onEdit={setEditing}
               onRemove={setConfirming}
             />
           </TabsContent>
@@ -226,6 +234,18 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
           onOpenChange={(open) => !open && setAdding(null)}
           providers={data.profileCapableProviders}
           initialProvider={adding}
+        />
+      ) : null}
+
+      {/* The same dialog in EDIT mode — today the only way to change an HTTP Agent account's
+          endpoint, key or model, since it has no folder and therefore nothing Connect could open. */}
+      {editing !== null ? (
+        <AddAccountDialog
+          key={`edit-${editing.id}`}
+          open
+          onOpenChange={(open) => !open && setEditing(null)}
+          providers={data.profileCapableProviders}
+          account={editing}
         />
       ) : null}
 
@@ -273,6 +293,7 @@ function AgentTab({
   accounts,
   canCarryAccounts,
   onAdd,
+  onEdit,
   onRemove,
 }: {
   provider: ProviderId
@@ -281,9 +302,14 @@ function AgentTab({
   accounts: AgentProfile[]
   canCarryAccounts: boolean
   onAdd: () => void
+  onEdit: (account: AgentProfile) => void
   onRemove: (account: AgentProfile) => void
 }) {
   const installed = check?.available === true
+  // `http` has no binary to install and no version to report: it is an HTTP endpoint, and
+  // `backend-detect` answers `available: true` for it by presence of its config. Saying "No — npm i
+  // -g …" here would be advice for a CLI that does not exist.
+  const isHttp = provider === 'http'
 
   return (
     <div data-slot="accounts-provider" data-provider={provider} className="flex flex-col gap-4">
@@ -291,7 +317,11 @@ function AgentTab({
           every login of the same CLI, so they belong here rather than repeated on each row. */}
       <dl className="divide-y divide-border/60 overflow-hidden rounded-md border border-border bg-card text-[13px]">
         <Row label="Installed">
-          {check === undefined ? (
+          {isHttp ? (
+            // Not "Checking…" and not a CLI version: there is no binary, and the honest statement
+            // is that this backend needs none.
+            <span data-slot="agent-installed">No install needed — HTTP endpoint</span>
+          ) : check === undefined ? (
             <span className="text-muted-foreground">Checking…</span>
           ) : installed ? (
             <span data-slot="agent-installed">Yes</span>
@@ -301,7 +331,10 @@ function AgentTab({
             </span>
           )}
         </Row>
-        {installed && check?.version ? (
+        {/* No Version row for http: its probe reports `configured`/`not configured` from the
+            PROCESS env, which knows nothing about a stored account — its config only reaches the
+            spawned child. Printing that here would say "not configured" under an account that is. */}
+        {installed && check?.version && !isHttp ? (
           <Row label="Version">
             <span data-slot="agent-version" className="font-mono text-[12.5px]">
               {check.version}
@@ -310,9 +343,13 @@ function AgentTab({
         ) : null}
         <Row label="Accounts">
           <span>
-            {accounts.length === 1
-              ? 'the discovered one'
-              : `${accounts.length} (1 discovered, ${accounts.length - 1} added)`}
+            {isHttp
+              ? accounts.length === 1
+                ? 'the environment config'
+                : `${accounts.length} (1 from the environment, ${accounts.length - 1} added)`
+              : accounts.length === 1
+                ? 'the discovered one'
+                : `${accounts.length} (1 discovered, ${accounts.length - 1} added)`}
           </span>
         </Row>
       </dl>
@@ -335,16 +372,28 @@ function AgentTab({
 
       <ul className="divide-y divide-border/60 rounded-md border border-border bg-card">
         {accounts.map((account) => (
-          <AccountRow key={account.id} account={account} onRemove={() => onRemove(account)} />
+          <AccountRow
+            key={account.id}
+            account={account}
+            onEdit={() => onEdit(account)}
+            onRemove={() => onRemove(account)}
+          />
         ))}
       </ul>
 
       {!canCarryAccounts ? (
-        <p data-slot="accounts-single-only" className="text-[11.5px] text-soft-foreground">
-          {PROVIDER_LABEL[provider]} can only hold one account here: it keeps its credentials
-          outside its config folder, so a second folder would change settings without changing the
-          login — which would say “work account” while billing the other one.
-        </p>
+        // `http` is EXEMPT from the sentence below rather than subject to it: it cannot carry a
+        // second account only in the sense that it has no folder to point at, while every account
+        // it does carry is a complete configuration in itself. Saying "it keeps its credentials
+        // outside its config folder" about a backend whose config IS its credentials would be
+        // exactly wrong.
+        provider === 'http' ? null : (
+          <p data-slot="accounts-single-only" className="text-[11.5px] text-soft-foreground">
+            {PROVIDER_LABEL[provider]} can only hold one account here: it keeps its credentials
+            outside its config folder, so a second folder would change settings without changing the
+            login — which would say “work account” while billing the other one.
+          </p>
+        )
       ) : null}
     </div>
   )
@@ -472,7 +521,15 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: () => void }) {
+function AccountRow({
+  account,
+  onEdit,
+  onRemove,
+}: {
+  account: AgentProfile
+  onEdit: () => void
+  onRemove: () => void
+}) {
   const [showDetails, setShowDetails] = useState(false)
   const routeId = agentAccountRouteId(account)
   const connect = useConnectAgentAccount()
@@ -483,6 +540,13 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
   const probed = useAgentAccountStatus(routeId, account.status === undefined)
   const status = account.status ?? probed.data?.status
   const presentation = status ? STATUS_PRESENTATION[status.status] : undefined
+  // `http` is not a CLI login: there is nothing to sign into, and its `configDir` is the whole
+  // configuration (`{endpoint, apiKey, model}` JSON, key masked) rather than a folder. Every
+  // affordance below assumes a directory — Connect opens a login terminal, the folder lines report
+  // on a dir the CLI creates, "Show details" asks a CLI who it is signed in as — so this row takes
+  // the other branch for all of them. The bug that prompted it: pressing Connect opened a terminal
+  // on a bare Node REPL and nothing else ever happened.
+  const isHttp = account.provider === 'http'
 
   return (
     <li
@@ -496,14 +560,17 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
             <span className="text-[13px] font-medium text-foreground">{account.label}</span>
             {account.isDefault ? (
               <Badge variant="ghost" className="shrink-0 text-[10px] text-muted-foreground">
-                discovered
+                {isHttp ? 'environment' : 'discovered'}
               </Badge>
             ) : null}
           </div>
           <p
             data-slot="account-path"
             className="mt-0.5 truncate font-mono text-[11.5px] text-soft-foreground"
-            title={account.path}
+            // An http account's `configDir` is JSON (and carries the masked key), so a `title`
+            // duplicating it in full would just re-print several lines of it — the tooltip stays
+            // the one-line path for a folder account and nothing for this one.
+            title={isHttp ? undefined : account.path}
           >
             {account.configDir}
           </p>
@@ -512,7 +579,11 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
                 yet. Showing `unknown` here would claim a verification that never ran. */}
             <StatusDot tone={presentation?.tone ?? 'neutral'} pulse={presentation === undefined} />
             <span data-slot="account-status">{presentation?.label ?? 'Checking…'}</span>
-            {!account.exists ? (
+            {/* A FOLDER account's two honest warnings. Neither applies to http: no dir exists to
+                create (Connect would not make one), and no marker file exists to recognise it by.
+                The server already answers `exists: true, looksValid: true` for a well-formed one,
+                so this is belt-and-braces for a row whose JSON is incomplete. */}
+            {isHttp ? null : !account.exists ? (
               <span data-slot="account-missing">— folder not created yet; Connect will make it</span>
             ) : !account.looksValid ? (
               <span data-slot="account-unrecognised">
@@ -527,9 +598,22 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
             panel below. Connect and Check again are the two exceptions, and deliberately so: they
             are how an account becomes usable at all, and the row's own "folder not created yet"
             copy points at Connect. Burying the only sign-in path behind "Show details" is what left
-            an added account with no way to log in. */}
+            an added account with no way to log in.
+            For `http` the equivalent of Connect is Edit: the account becomes usable by naming an
+            endpoint, and the server refuses a Connect for this provider outright — correctly, since
+            there is no login to open. Offering the button anyway is the bug this replaces. */}
         <div className="flex shrink-0 items-center gap-2">
-          {status?.status !== 'connected' ? (
+          {isHttp ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-action="account-edit"
+              onClick={onEdit}
+            >
+              Edit
+            </Button>
+          ) : status?.status !== 'connected' ? (
             <Button
               type="button"
               size="sm"
@@ -557,23 +641,27 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
               Connect
             </Button>
           ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-action="account-recheck"
-            disabled={recheck.isPending}
-            title="Re-probe this account's login now, instead of waiting for the cached answer"
-            onClick={() =>
-              recheck.mutate(routeId, {
-                onError: (error: Error) => toast(error.message, { tone: 'danger' }),
-              })
-            }
-          >
-            Check again
-          </Button>
+          {isHttp ? null : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-action="account-recheck"
+              disabled={recheck.isPending}
+              title="Re-probe this account's login now, instead of waiting for the cached answer"
+              onClick={() =>
+                recheck.mutate(routeId, {
+                  onError: (error: Error) => toast(error.message, { tone: 'danger' }),
+                })
+              }
+            >
+              Check again
+            </Button>
+          )}
           {/* Identity is opt-in: nothing is requested until this is pressed, so an email is absent
-              from the page rather than merely unrendered. */}
+              from the page rather than merely unrendered. An http account has no CLI to ask, so the
+              route answers `available: false` with a reason — the button stays, because the reason
+              is the answer. */}
           <Button
             type="button"
             variant="ghost"
@@ -659,44 +747,58 @@ function AccountDetails({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-2.5">
-        <span className="mr-1 text-xs text-muted-foreground">Config files</span>
-        {account.files.map((file) => (
-          <OpenInMenu
-            key={file.id}
-            slot="account-open-file"
-            label={file.label}
-            triggerVariant="outline"
-            disabled={open.isPending}
-            // A file the agent has not written yet is offered but says so, because "Connect then
-            // it appears" is the normal path and a hidden button would look like a missing feature.
-            title={file.exists ? file.path : `${file.path} — not created yet`}
-            choices={fileChoices}
-            onPick={(target) => openPath(file.id, file.label, target)}
-            leading={
-              <DropdownMenuItem
-                data-target="system"
-                onSelect={() => openPath(file.id, file.label)}
-              >
-                <ExternalLinkIcon aria-hidden="true" />
-                System default
-              </DropdownMenuItem>
-            }
-          />
-        ))}
-        <OpenInMenu
-          slot="account-open-folder"
-          label="Folder"
-          disabled={open.isPending}
-          title={account.path}
-          choices={folderChoices}
-          onPick={(target) => openPath('folder', 'folder', target)}
-          leading={
-            <DropdownMenuItem data-target="system" onSelect={() => openPath('folder', 'folder')}>
-              <ExternalLinkIcon aria-hidden="true" />
-              System default
-            </DropdownMenuItem>
-          }
-        />
+        {/* Everything here opens something INSIDE the account's folder — a catalog file, or the
+            folder itself. An http account has neither: its `configDir` is JSON, so the route would
+            be handed a string that is not a path and the OS would be asked to open it. The panel
+            says why instead, which is also why "Show details" stays available for this provider. */}
+        {account.provider === 'http' ? (
+          <p data-slot="account-inline-config" className="text-xs text-muted-foreground">
+            Configuration lives inline in this account, not in a folder of config files — use Edit
+            to change the endpoint, key or model.
+          </p>
+        ) : (
+          <>
+            <span className="mr-1 text-xs text-muted-foreground">Config files</span>
+            {account.files.map((file) => (
+              <OpenInMenu
+                key={file.id}
+                slot="account-open-file"
+                label={file.label}
+                triggerVariant="outline"
+                disabled={open.isPending}
+                // A file the agent has not written yet is offered but says so, because "Connect
+                // then it appears" is the normal path and a hidden button would look like a
+                // missing feature.
+                title={file.exists ? file.path : `${file.path} — not created yet`}
+                choices={fileChoices}
+                onPick={(target) => openPath(file.id, file.label, target)}
+                leading={
+                  <DropdownMenuItem
+                    data-target="system"
+                    onSelect={() => openPath(file.id, file.label)}
+                  >
+                    <ExternalLinkIcon aria-hidden="true" />
+                    System default
+                  </DropdownMenuItem>
+                }
+              />
+            ))}
+            <OpenInMenu
+              slot="account-open-folder"
+              label="Folder"
+              disabled={open.isPending}
+              title={account.path}
+              choices={folderChoices}
+              onPick={(target) => openPath('folder', 'folder', target)}
+              leading={
+                <DropdownMenuItem data-target="system" onSelect={() => openPath('folder', 'folder')}>
+                  <ExternalLinkIcon aria-hidden="true" />
+                  System default
+                </DropdownMenuItem>
+              }
+            />
+          </>
+        )}
       </div>
 
       {/* The discovered account carries no Rename/Remove at all — it is what cezar found, so either

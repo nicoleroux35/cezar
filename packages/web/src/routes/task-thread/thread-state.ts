@@ -1,4 +1,4 @@
-import type { RunEvent, RunStatus } from '@open-mercato/maestro-api-client'
+import type { RunEvent, RunStatus } from '@open-mercato/cezar-api-client'
 import { runItemKey } from '@/api/run-events'
 import {
   toolDisplay,
@@ -8,7 +8,7 @@ import {
   type UiAskQuestion,
   type UiItem,
   type UiToolItem,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 
 /**
  * The thread reducer: folds one run's ordered event list (`useRunEvents` — v1 lines and

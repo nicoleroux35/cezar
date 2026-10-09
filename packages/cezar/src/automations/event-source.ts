@@ -1,4 +1,4 @@
-import type { TrackerAssociation, TrackerAutomationEvent } from '@open-mercato/maestro-contract';
+import type { TrackerAssociation, TrackerAutomationEvent } from '@open-mercato/cezar-contract';
 
 export interface TrackerEventCandidate {
   eventId: string;

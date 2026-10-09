@@ -239,9 +239,22 @@ describe('resolveOnPath (#469 Windows launcher safety)', () => {
 });
 
 describe('agentCliRunner', () => {
-  // Driven off RUNNER_IDS, not a literal list, so runner #5 is covered the moment it is added
-  // (the pi entry was missed on the hand-written list, #387 review).
-  it.each(RUNNER_IDS)('maps cli:%s to that runner', (runner) => {
+  // Driven off RUNNER_IDS minus the runners that have no CLI binary, rather than a hand-written
+  // list: a hand-written one is what missed the pi entry (#387 review), and the subtraction is what
+  // keeps `http` out without a second literal to forget. `http` is the ONLY member of RUNNER_IDS
+  // with nothing to launch — it POSTs to an OpenAI-compatible endpoint (`http-agent-runner.ts`
+  // spawns no process), so there is no binary a terminal could open and an entry for it would be
+  // the broken affordance #469 forbids. Derived from the real source list rather than spelled out
+  // so the two cannot drift; the assertion below pins that the subtraction stays a one-element list
+  // instead of quietly growing into a way to excuse a runner that really does have a CLI.
+  const NO_CLI_BINARY: readonly string[] = ['http'];
+  const CLI_RUNNER_IDS = RUNNER_IDS.filter((id) => !NO_CLI_BINARY.includes(id));
+  it('names exactly one runner without a CLI binary, and it is http', () => {
+    expect(RUNNER_IDS.length - CLI_RUNNER_IDS.length).toBe(1);
+    expect(agentCliRunner('cli:http')).toBeNull();
+  });
+
+  it.each(CLI_RUNNER_IDS)('maps cli:%s to that runner', (runner) => {
     expect(agentCliRunner(`cli:${runner}`)).toBe(runner);
   });
 

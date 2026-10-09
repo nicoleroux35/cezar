@@ -32,7 +32,7 @@ import type {
   GithubMergeMethod,
   GithubPrMergeState,
   UiState,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 import { IssueBrowserLayout } from '@/components/issue-browser-layout'
 import { CenteredState } from '@/components/centered-state'
 import { Diff, type DiffFileChange } from '@/components/diff'
@@ -57,6 +57,7 @@ import { shortAge } from '@/lib/format'
 import { githubTaskPrompt } from '@/lib/github-task'
 import { orderSkillsByUsage } from '@/lib/skills'
 import { cn, isHttpUrl } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 
 import { Markdown } from '../task-thread/markdown'
 import {
@@ -148,6 +149,7 @@ export function GithubRoute({
   /** This is the bare `/github` index (#417): restore the remembered sub-tab before rendering. */
   index?: boolean
 }) {
+  const { t } = useTranslations()
   const { n } = useParams()
   // One fast shot now that the list dropped `statusCheckRollup` (#664) — no more fast/full swap.
   const list = useGithub({ limit: LIST_LIMIT })
@@ -535,10 +537,10 @@ export function GithubRoute({
           </div>
           <div data-slot="gh-tabs" className="mt-2.5 flex items-end gap-1">
             <TabLink to="/github" active={view === 'issues'} onClick={() => saveGithubView('issues')}>
-              Issues · {countLabel(gh.issues.length)}
+              {t('github.tab.issues')} · {countLabel(gh.issues.length)}
             </TabLink>
             <TabLink to="/github/prs" active={view === 'prs'} onClick={() => saveGithubView('prs')}>
-              Pull requests · {countLabel(gh.prs.length)}
+              {t('github.tab.pullRequests')} · {countLabel(gh.prs.length)}
             </TabLink>
           </div>
           {/* Wraps rather than squeezes: on a phone the sort control below is ~145px, and with
@@ -969,6 +971,7 @@ function MergeRequirementIcon({ state }: { state: MergeRequirementState }) {
 }
 
 function GithubMergeBox({ number }: { number: number }) {
+  const { t } = useTranslations()
   const queryClient = useQueryClient()
   const mergeState = useQuery({
     queryKey: queryKeys.githubMergeState(number),
@@ -1025,12 +1028,12 @@ function GithubMergeBox({ number }: { number: number }) {
   }
 
   const title =
-    state.state === 'merged' ? 'Merged'
-      : state.state === 'closed' ? 'Closed'
-        : state.isDraft ? 'Draft'
-          : state.mergeable === 'conflicting' ? 'Conflicts must be resolved'
-            : state.canMerge ? 'Ready to merge'
-              : 'Merge blocked'
+    state.state === 'merged' ? t('github.state.merged')
+      : state.state === 'closed' ? t('github.state.closed')
+        : state.isDraft ? t('github.state.draft')
+          : state.mergeable === 'conflicting' ? t('github.pr.conflictsMustBeResolved')
+            : state.canMerge ? t('github.pr.readyToMerge')
+              : t('github.pr.mergeBlocked')
   const reviewState: MergeRequirementState =
     state.reviewDecision === 'approved' ? 'passing'
       : state.reviewDecision === 'unknown' ? 'unknown'

@@ -6,7 +6,7 @@ import {
   trackerAssociationSchema,
   automationScheduleSchema,
   type AutomationSchedule,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 import { workflowStepSchema } from '../workflows/types.ts';
 

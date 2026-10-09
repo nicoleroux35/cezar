@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 import { ApiError } from '@/api/client'
 import { useFsBrowse } from '@/api/queries'
-import type { FsBrowseDir } from '@open-mercato/maestro-api-client'
+import type { FsBrowseDir } from '@open-mercato/cezar-api-client'
 import { cn } from '@/lib/utils'
 
 /** System Settings ▸ Privacy & Security ▸ Files & Folders. */

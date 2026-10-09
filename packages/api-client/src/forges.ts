@@ -1,4 +1,18 @@
-import type { ForgeKind, ForgeConnectInput, ForgesStatusResponse, ForgeConnectResponse } from '@open-mercato/maestro-contract';
+import type { ForgeKind, ForgeConnectInput, ForgesStatusResponse, ForgeConnectResponse } from '@open-mercato/cezar-contract';
+import { apiPath } from './utils/project-scope.ts';
+
+/**
+ * Forge API client error.
+ */
+export class ForgeApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ForgeApiError';
+  }
+}
 
 /**
  * Get the status of all forge CLIs (GitHub, GitLab, Gitea, Forgejo).
@@ -7,9 +21,9 @@ import type { ForgeKind, ForgeConnectInput, ForgesStatusResponse, ForgeConnectRe
  */
 export async function getForgesStatus(opts?: { refresh?: boolean }): Promise<ForgesStatusResponse> {
   const query = opts?.refresh ? '?refresh=1' : '';
-  const response = await fetch(`${getApiBase()}/forges/status${query}`);
-  if (!response.ok) throw new ApiError('Failed to fetch forges status', response.status);
-  return response.json();
+  const response = await fetch(apiPath(`/forges/status${query}`));
+  if (!response.ok) throw new ForgeApiError(response.status, 'Failed to fetch forges status');
+  return response.json() as Promise<ForgesStatusResponse>;
 }
 
 /**
@@ -22,11 +36,11 @@ export async function connectForge(
   kind: ForgeKind,
   input: ForgeConnectInput = {},
 ): Promise<ForgeConnectResponse> {
-  const response = await fetch(`${getApiBase()}/forges/${kind}/connect`, {
+  const response = await fetch(apiPath(`/forges/${kind}/connect`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  if (!response.ok) throw new ApiError(`Failed to connect ${kind}`, response.status);
-  return response.json();
+  if (!response.ok) throw new ForgeApiError(response.status, `Failed to connect ${kind}`);
+  return response.json() as Promise<ForgeConnectResponse>;
 }

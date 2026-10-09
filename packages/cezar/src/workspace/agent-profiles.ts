@@ -53,9 +53,20 @@ const PROVIDER_HOME: Record<ProviderId, (home: ReturnType<typeof agentHomePaths>
   pi: (home) => home.claude,
   junie: (home) => home.junie,
   copilot: (home) => home.copilot,
-  kilo: (home) => home.claude, // Fallback to claude home for now
-  gemini: (home) => home.claude, // Fallback to claude home for now
-  antigravity: (home) => home.claude, // Fallback to claude home for now
+  // `kilo` is OpenCode's fork and keeps its own config dir (`~/.config/kilo`), distinct from
+  // OpenCode's `~/.config/opencode` — `kilo debug paths` reports exactly that (7.7.9, 2026-10-09).
+  kilo: (home) => home.kiloConfig,
+  // Gemini and Antigravity CANNOT carry profiles (`PROFILE_ENV_VAR` is `null` for both: neither
+  // CLI reads a home-relocation variable), but they each have a real home to SHOW on the discovered
+  // row, and it is not Claude's. Antigravity's is a subdirectory of Gemini's — that is where
+  // `antigravity-oauth-token` lives, and it is why the two need separate slots.
+  gemini: (home) => home.gemini,
+  antigravity: (home) => home.antigravity,
+  // Unreachable by design: http has no home directory at all, so `defaultAgentProfile` answers it
+  // from the environment instead of asking this table (see its comment). The entry exists because
+  // the table is exhaustive over `ProviderId`, and naming Claude's home here is the honest
+  // placeholder rather than a path that would look like a real answer.
+  http: (home) => home.claude,
 };
 
 /**
@@ -63,13 +74,21 @@ const PROVIDER_HOME: Record<ProviderId, (home: ReturnType<typeof agentHomePaths>
  * honours the vendors' own `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `CURSOR_CONFIG_DIR` /
  * `COPILOT_HOME` / `XDG_CONFIG_HOME`. Setting one of those on the cezar process therefore moves
  * the DEFAULT account rather than being ignored.
+ *
+ * `http` is the one exception, and it is not a special case for convenience: this backend has no
+ * CLI and no home directory, so there is no directory for `agentHomePaths()` to discover. Its
+ * whole account IS `CEZ_HTTP_AGENT_CONFIG` — the JSON that names the endpoint — which is therefore
+ * read here, from the same variable the runner reads and `profileEnv` exports for a stored one.
+ * Answering Claude's home instead (as this used to) put `~/.claude` on the HTTP Agent's discovered
+ * row, a folder that means nothing for it.
  */
 export function defaultAgentProfile(
   provider: ProviderId,
   env: NodeJS.ProcessEnv = process.env,
 ): ResolvedAgentProfile {
-  const home = agentHomePaths(env);
-  const path = PROVIDER_HOME[provider](home);
+  const path = provider === 'http'
+    ? (env.CEZ_HTTP_AGENT_CONFIG?.trim() ?? '')
+    : PROVIDER_HOME[provider](agentHomePaths(env));
   return {
     id: DEFAULT_AGENT_ACCOUNT_ID,
     provider,

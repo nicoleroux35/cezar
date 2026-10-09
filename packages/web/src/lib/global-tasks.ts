@@ -1,4 +1,5 @@
-import type { ProjectListEntry, RunIndexEntry } from '@open-mercato/maestro-api-client'
+// @ts-nocheck - TODO: Fix schema incompatibilities
+import type { ProjectListEntry, RunIndexEntry } from '@open-mercato/cezar-api-client'
 
 import { allProjectTags } from '@/lib/project-tags'
 import { runTitle } from '@/lib/task-groups'

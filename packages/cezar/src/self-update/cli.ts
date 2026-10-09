@@ -140,7 +140,7 @@ async function versionsCommand(): Promise<number> {
       console.log(`    ${checkout.branch.padEnd(34)} ${checkout.built ? 'built    ' : 'not built'} ${checkout.worktree}`);
     }
   }
-  const registry = await new RegistryCache('@open-mercato/maestro').get();
+  const registry = await new RegistryCache('@open-mercato/cezar').get();
   if (registry) {
     console.log(`\n  registry: stable ${registry.distTags[distTagFor('stable')] ?? '—'} · nightly ${registry.distTags[distTagFor('nightly')] ?? '—'}`);
   }
@@ -167,7 +167,7 @@ async function linkCommand(dir: string | undefined, use: boolean): Promise<numbe
   const target = resolve(dir ?? process.cwd());
   const packageRoot = cezarPackageRoot(target);
   if (!packageRoot) {
-    console.error(`  ✗ ${target} is not a cezar checkout (no @open-mercato/maestro package.json there or in packages/cezar)`);
+    console.error(`  ✗ ${target} is not a cezar checkout (no @open-mercato/cezar package.json there or in packages/cezar)`);
     return 1;
   }
   try {

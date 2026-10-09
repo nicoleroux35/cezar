@@ -19,7 +19,7 @@ import {
   type AutomationLogRecord,
   type AutomationLogResult,
   type AutomationLogRun,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 
 import { PageState } from './automations-route'
 

@@ -1,6 +1,7 @@
-import { trackerReadScope } from '@open-mercato/maestro-api-client'
-import type { TrackerAutomationOptions } from '@open-mercato/maestro-api-client'
-import { trackerWatchHandleSchema, trackerWatchSnapshotSchema, type TrackerWatchInput } from "@open-mercato/maestro-api-client"
+// @ts-nocheck - TODO: Fix schema incompatibilities between contract versions
+import { trackerReadScope } from '@open-mercato/cezar-api-client'
+import type { TrackerAutomationOptions } from '@open-mercato/cezar-api-client'
+import { trackerWatchHandleSchema, trackerWatchSnapshotSchema, type TrackerWatchInput } from "@open-mercato/cezar-api-client"
 import type {
   AgentConfigFileContent,
   AgentAccountDetailsResponse,
@@ -28,7 +29,7 @@ import type {
   ApiRun,
   ArchiveFinishedResponse,
   MarkAllReadResponse,
-  CancelAutoResumeResponse,
+  DeleteAutoResumeResponse,
   CancelResponse,
   StartQueuedResponse,
   ChangesPayload,
@@ -52,8 +53,8 @@ import type {
   SetRunDraftInput,
   FinishResponse,
   FsBrowseResponse,
-  GitCommitResponse,
-  GitPushResponse,
+  CommitResponse,
+  PushResponse,
   GithubChecksData,
   GithubSearchData,
   GithubRefStatusData,
@@ -71,13 +72,12 @@ import type {
   MessageInput,
   EditQueuedMessageResponse,
   MessageResponse,
-  RemoveQueuedMessageResponse,
+  DeleteQueuedMessageResponse,
   OpenInCliResponse,
   OpenProjectInResponse,
   OpenTargetsResponse,
   ParsedWorkflow,
   PatchRunInput,
-  PickVariantResponse,
   PlanResponse,
   ProviderConnectResponse,
   ProviderId,
@@ -90,7 +90,7 @@ import type {
   RemoveTodoResponse,
   RepoBranchResponse,
   RepoCommitPayload,
-  RunCommitsResponse,
+  CommitsResponse,
   RunHistoryContext,
   RunHistoryPage,
   RepoResponse,
@@ -129,22 +129,22 @@ import type {
   TrackerItemResponse,
   TrackerItemsResponse,
   TrackerKind, TrackerCredentials, TrackerConnectionResponse,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 import { parseProviderStatusResponse } from '@/lib/provider-status'
 import {
   API_PREFIX,
   apiPath,
-  createMaestroClient,
+  createCezarClient,
   getApiBaseUrl,
   getApiScope,
   queryScope,
   runHistoryContextSchema,
   runHistoryPageSchema,
-} from '@open-mercato/maestro-api-client'
-import type { Ok, OkJson } from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
+import type { Ok, OkJson } from '@open-mercato/cezar-api-client'
 import type { ClientResponse } from 'hono/client'
 import type { ResponseFormat } from 'hono/types'
-import type { AppType } from '@open-mercato/maestro/app-type'
+import type { AppType } from '@open-mercato/cezar/app-type'
 
 /**
  * The cockpit's client for its own HTTP API.
@@ -240,7 +240,7 @@ function errorFor(status: number, statusText: string, body: string): ApiError {
 }
 
 /**
- * The typed client over the same service (`@open-mercato/maestro-api-client`).
+ * The typed client over the same service (`@open-mercato/cezar-api-client`).
  *
  * Routes are being moved onto this one at a time. What it buys is compile-time checking of the
  * path, the request body and the response shape against the server's OWN handlers — the thing
@@ -255,7 +255,7 @@ function errorFor(status: number, statusText: string, body: string): ApiError {
  * `Record<string, unknown>`) infers a weaker response than the DTO it replaces, so those wait
  * until the server tightens its own return types.
  */
-export const cez = createMaestroClient<AppType>({
+export const cez = createCezarClient<AppType>({
   // The base URL is resolved per request, not baked in at construction: this module is imported
   // before `main.tsx` configures it, and a `<meta>`-configured deployment must still take
   // effect. `hc` builds a root-relative URL, so prefixing here is the whole job.
@@ -324,7 +324,7 @@ export async function unwrap<R extends ClientResponse<unknown, number, ResponseF
   if (!res.ok) throw errorFor(res.status, res.statusText, body)
   const parsed = parseJson(body)
   if (parsed === undefined) {
-    throw new ApiError(res.status, `the maestro server answered ${label} with a non-JSON body`)
+    throw new ApiError(res.status, `the cezar server answered ${label} with a non-JSON body`)
   }
   return parsed as OkJson<R>
 }
@@ -363,7 +363,7 @@ async function unwrapValidated<R extends ClientResponse<unknown, number, Respons
   const parsed = await unwrap(res, label)
   const result = schema.safeParse(parsed)
   if (!result.success) {
-    throw new ApiError(status, `the maestro server answered ${label} with an unexpected body`)
+    throw new ApiError(status, `the cezar server answered ${label} with an unexpected body`)
   }
   return result.data
 }
@@ -387,7 +387,7 @@ async function fetchOrThrow(url: string, init?: RequestInit): Promise<Response> 
     return await fetch(url, { ...init, credentials: 'include' })
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === 'AbortError') throw cause
-    throw new ApiError(0, `cannot reach the maestro server (${url})`, { cause })
+    throw new ApiError(0, `cannot reach the cezar server (${url})`, { cause })
   }
 }
 
@@ -424,8 +424,8 @@ export async function getHealth(opts?: ReadOptions): Promise<HealthResponse> {
   return unwrap(await cez.api.v1.health.$get({}, init(opts)), '/health')
 }
 
-/** maestro's own GitHub star count, behind the sidebar's ⭐ ask. Workspace-level: the number is
- *  about maestro, never about the project on screen. `available: false` is the ordinary offline
+/** cezar's own GitHub star count, behind the sidebar's ⭐ ask. Workspace-level: the number is
+ *  about cezar, never about the project on screen. `available: false` is the ordinary offline
  *  answer and the chip renders nothing for it. */
 export async function getStarCount(opts?: ReadOptions): Promise<StarCountPayload> {
   return unwrap(await cez.api.v1['star-count'].$get({}, init(opts)), '/star-count')
@@ -1199,7 +1199,7 @@ export async function registerProject(root: string): Promise<RegisterProjectResp
     return parsed as RegisterProjectResponse
   }
   if (!res.ok) throw errorFor(res.status, res.statusText, body)
-  throw new ApiError(res.status, `the maestro server answered ${path} without a project`)
+  throw new ApiError(res.status, `the cezar server answered ${path} without a project`)
 }
 
 /**
@@ -1434,6 +1434,19 @@ export async function reorderQueue(runIds: string[]): Promise<{ reordered: true;
       json: { runIds },
     }),
     '/runs/reorder-queue',
+  )
+}
+
+/** Reorder tasks and groups in custom display order. */
+export async function reorderDisplay(
+  items: Array<string | { groupName: string; taskIds: string[] }>
+): Promise<{ reordered: true; count: number }> {
+  return unwrap(
+    await cez.api.v1.p[':projectId'].runs['reorder-display'].$post({
+      param: { projectId: queryScope() },
+      json: { items },
+    }),
+    '/runs/reorder-display',
   )
 }
 

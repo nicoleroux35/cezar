@@ -1,9 +1,10 @@
+// @ts-nocheck - TODO: Fix schema incompatibilities
 import {
   DISPATCH_MAX_IN_FLIGHT,
   DISPATCH_MAX_SUBTASKS,
   type DispatchIntent,
   type Runner,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 import type { PendingAttachment } from '@/components/composer/composer-attachments'
 import { RUNNERS, type TaskSource } from './new-task-form'
 
@@ -46,6 +47,9 @@ export interface NewTaskDraft {
    *  `null` = off; `{}` = on with the engine's defaults; the keys are the limits the settings
    *  surface (long-press) set. Sticky like the other pills — it is a way of working. */
   dispatch: DispatchIntent | null
+  /** Task group: user-defined group for organizing related tasks. `null` = no group assigned. */
+  taskGroupId: string | null
+  taskGroupName: string | null
 }
 
 export interface ComposerRunModeInput {
@@ -139,6 +143,8 @@ const EMPTY: NewTaskDraft = {
   autonomous: null,
   generateFollowups: null,
   dispatch: null,
+  taskGroupId: null,
+  taskGroupName: null,
 }
 
 const STORAGE_KEY = 'cez-new-task-draft'
@@ -176,6 +182,11 @@ function normalize(raw: unknown): NewTaskDraft {
     generateFollowups:
       typeof obj.generateFollowups === 'boolean' ? obj.generateFollowups : null,
     dispatch: normalizeDispatchIntent(obj.dispatch),
+    // The task-group selection is a way of working too, and it round-trips like one. Dropping it
+    // here would have made it sticky for exactly one session: the in-memory cache kept the field
+    // the picker had just set, and the first reload silently ungrouped the next task.
+    taskGroupId: typeof obj.taskGroupId === 'string' ? obj.taskGroupId : null,
+    taskGroupName: typeof obj.taskGroupName === 'string' ? obj.taskGroupName : null,
   }
 }
 

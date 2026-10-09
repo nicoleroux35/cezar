@@ -1,7 +1,7 @@
 import type {
   TrackerKind, TrackerAssociationInput, TrackerAssociationResult, TrackerCandidatesQuery,
   TrackerCandidatesResult, TrackerFailure, TrackerCredentials, TrackerConnectionResponse, TrackerListQuery, TrackerSearchQuery, TrackerItemsResult,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 import { readTrackerAssociation } from '../../tracker-association.ts';
 import { createDryTrackerClient } from './dry-run.ts';
 import { createJiraClient } from './jira.ts';

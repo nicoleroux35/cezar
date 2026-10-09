@@ -1,7 +1,7 @@
 import { ChevronDownIcon, SettingsIcon } from 'lucide-react'
 import { Link } from '@/lib/project-router'
 
-import type { BackendCheck, HealthResponse, Runner } from '@open-mercato/maestro-api-client'
+import type { BackendCheck, HealthResponse, Runner } from '@open-mercato/cezar-api-client'
 import { StatusDot } from '@/components/status-dot'
 import {
   DropdownMenu,
@@ -30,7 +30,7 @@ import {
  *  fail the typecheck here instead of quietly dropping out of the dot's idea of what can start a
  *  task. A type-level set, so no zod schema — and no zod — is pulled into the cockpit bundle for
  *  it. */
-const RUNNER_NAMES: Record<Runner, true> = { claude: true, codex: true, junie: true, opencode: true, cursor: true, pi: true, copilot: true, kilo: true, gemini: true, antigravity: true }
+const RUNNER_NAMES: Record<Runner, true> = { claude: true, codex: true, junie: true, opencode: true, cursor: true, pi: true, copilot: true, kilo: true, gemini: true, antigravity: true, http: true }
 
 const isRunner = (check: BackendCheck): boolean => Object.hasOwn(RUNNER_NAMES, check.name)
 

@@ -13,7 +13,7 @@ import { MAX_REF } from './task-refs.ts';
 import { workflowDefSchema } from '../workflows/types.ts';
 // A contract VALUE, like `workspaceUiStateSchema` in `workspace/migrations.ts`: the persisted
 // `dispatch` object and its wire half are literally the same schema, so they cannot drift.
-import { dispatchSchema, trackerAssociationSchema, trackerAutomationEventSchema } from '@open-mercato/maestro-contract';
+import { dispatchSchema, trackerAssociationSchema, trackerAutomationEventSchema } from '@open-mercato/cezar-contract';
 
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 
@@ -354,6 +354,14 @@ export const runRecordSchema = z.object({
   groupId: z.string().optional(),
   /** Variant letter within the group — 'A' | 'B' | 'C' (kept as a string). */
   variant: z.string().optional(),
+  /** Task group: user-defined group name for organizing related tasks. Tasks with the same
+   *  taskGroupId can be displayed together and launched in parallel (respecting maxParallel).
+   *  Absent on tasks not assigned to a group. This is separate from `groupId` which is for
+   *  parallel variants of the same prompt. Optional: additive field, absent on runs created
+   *  before this feature. */
+  taskGroupId: z.string().optional(),
+  /** Display name for the task group — shown in the UI when grouping tasks. Optional. */
+  taskGroupName: z.string().optional(),
   /** Peak resident memory (bytes) / process count observed across the run's
    *  agent process trees (#348) — written when a session's telemetry ends.
    *  Optional: old runs.json files and `ps`-less platforms have neither. */
@@ -980,6 +988,8 @@ export class RunStore extends EventEmitter {
     worktree?: false;
     groupId?: string;
     variant?: string;
+    taskGroupId?: string;
+    taskGroupName?: string;
     steps: Array<Pick<StepState, 'id' | 'name' | 'kind'>>;
   }): RunRecord {
     const run: RunRecord = {
@@ -1001,6 +1011,8 @@ export class RunStore extends EventEmitter {
       worktree: input.worktree,
       groupId: input.groupId,
       variant: input.variant,
+      taskGroupId: input.taskGroupId,
+      taskGroupName: input.taskGroupName,
       status: 'queued',
       createdAt: new Date().toISOString(),
       tokensUsed: 0,

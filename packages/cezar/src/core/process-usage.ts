@@ -15,7 +15,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import type { DashboardTelemetrySample } from '@open-mercato/maestro-contract';
+import type { DashboardTelemetrySample } from '@open-mercato/cezar-contract';
 
 /** One aggregated sample for a run's process tree. */
 export interface ProcessUsage {

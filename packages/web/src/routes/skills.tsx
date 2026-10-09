@@ -8,7 +8,7 @@ import { Link } from '@/lib/project-router'
 import { refreshSkills } from '@/api/client'
 import { queryKeys, useImportableSkills, useProjects, useSkills, useWorkflows } from '@/api/queries'
 import { useProjectScope } from '@/api/project-scope-context'
-import type { Skill } from '@open-mercato/maestro-api-client'
+import type { Skill } from '@open-mercato/cezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { ImportSkillsPanel } from '@/components/skills-import-panel'
 import { SkillDetailBody, SkillSourceTag } from '@/components/skill-detail'
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
 import { filterSkills, isProjectSkill, orderSkills, skillUsedBy } from '@/lib/skills'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 import { BookmarkletPanel } from './settings/bookmarklets-section'
 
 /**
@@ -42,11 +43,12 @@ const BOOKMARKLETS = '__bm'
 const IMPORT = '__import'
 
 export function SkillsRoute() {
+  const { t } = useTranslations()
   return (
     <div data-route="skills" className="flex min-h-full flex-col">
       {/* Desktop header — below `md` the shell's top bar already says "Skills". */}
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
-        <h1 className="text-base font-semibold">Skills</h1>
+        <h1 className="text-base font-semibold">{t('skills.title')}</h1>
         <p className="text-[13px] text-muted-foreground">Markdown playbooks agents can follow.</p>
       </header>
       <SkillsCatalog />
@@ -55,6 +57,7 @@ export function SkillsRoute() {
 }
 
 function SkillsCatalog() {
+  const { t } = useTranslations()
   const skillsQuery = useSkills()
   const workflowsQuery = useWorkflows()
   const importableQuery = useImportableSkills()
@@ -81,7 +84,7 @@ function SkillsCatalog() {
         icon={<TriangleAlertIcon />}
         tone="danger"
         heading="h2"
-        title="Could not load skills"
+        title={t('skills.couldNotLoad')}
         subtitle={skillsQuery.error.message}
       />
     )
@@ -121,8 +124,8 @@ function SkillsCatalog() {
         <div className="flex shrink-0 items-center gap-2 p-3 pb-2">
           <Input
             data-slot="skills-filter"
-            placeholder="Filter skills…"
-            aria-label="Filter skills"
+            placeholder={t('skills.filterPlaceholder')}
+            aria-label={t('skills.filterPlaceholder')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="h-8 text-[13px]"
@@ -139,7 +142,7 @@ function SkillsCatalog() {
               aria-hidden="true"
               className={cn('size-3', refresh.isPending && 'motion-safe:animate-spin')}
             />
-            Refresh
+            {t('skills.refresh')}
           </button>
         </div>
 

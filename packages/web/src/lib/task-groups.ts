@@ -1,5 +1,6 @@
-import type { RunRecord } from '@open-mercato/maestro-api-client'
+import type { RunRecord } from '@open-mercato/cezar-api-client'
 import { isAwaitingAnswer, isNeedsYouStatus } from './attention'
+import type { TranslationKey } from '@/i18n/translations'
 
 /**
  * How the task list is bucketed, sorted and collapsed — the pure half of the sidebar quick-list
@@ -19,6 +20,15 @@ import { isAwaitingAnswer, isNeedsYouStatus } from './attention'
 export type ListView = 'active' | 'archived'
 
 export type BucketLabel = 'Pinned' | 'Needs you' | 'Working' | 'Recent' | 'Archived'
+
+/** Map bucket labels to translation keys */
+export const BUCKET_TRANSLATION_KEYS: Record<BucketLabel, TranslationKey> = {
+  'Pinned': 'tasks.bucket.pinned',
+  'Needs you': 'tasks.bucket.needsYou',
+  'Working': 'tasks.bucket.working',
+  'Recent': 'tasks.bucket.recent',
+  'Archived': 'tasks.bucket.archived',
+}
 
 /** Rendering order. Also the exhaustive set — `groupRuns` emits a subset of these, in this order. */
 export const BUCKET_ORDER: readonly BucketLabel[] = ['Pinned', 'Needs you', 'Working', 'Recent', 'Archived']
@@ -213,6 +223,14 @@ export function sortRuns(runs: readonly RunRecord[], view: ListView): RunRecord[
   return runs
     .filter((run) => (view === 'archived' ? run.archived : !run.archived))
     .sort((a, b) => {
+      // Custom display order takes absolute priority when set on both runs
+      if (a.displayOrder !== undefined && b.displayOrder !== undefined) {
+        return a.displayOrder - b.displayOrder
+      }
+      // If only one has displayOrder, it comes first
+      if (a.displayOrder !== undefined) return -1
+      if (b.displayOrder !== undefined) return 1
+
       // Pinned first (#935), ahead of every status weight — that IS what a pin asks for, and it
       // is one rule serving three surfaces: the `Pinned` bucket's contents, the flat Tasks
       // table (which has no buckets), and which member represents a collapsed variant tile, so
@@ -337,4 +355,97 @@ export function listCounts(runs: readonly RunRecord[]): {
     if (isNeedsYouStatus(run)) waiting += 1
   }
   return { active, archived, waiting }
+}
+
+/**
+ * Task group organization: groups runs by their user-defined `taskGroupName`.
+ *
+ * This is SEPARATE from variant groups (`groupId`) — task groups organize related tasks
+ * that can be launched together, while variant groups are parallel runs of the same prompt.
+ */
+export interface TaskGroup {
+  /** The group name (user-defined) */
+  name: string
+  /** All runs in this group, already sorted by sortRuns */
+  runs: RunRecord[]
+}
+
+/**
+ * Group runs by their `taskGroupName`, returning ungrouped runs separately.
+ *
+ * Groups are sorted by:
+ * 1. Groups with active/running tasks first
+ * 2. Then alphabetically by name
+ *
+ * Ungrouped runs (no `taskGroupName`) are returned as-is.
+ */
+export function groupByTaskGroup(runs: readonly RunRecord[]): {
+  groups: TaskGroup[]
+  ungrouped: RunRecord[]
+} {
+  const byName = new Map<string, RunRecord[]>()
+  const ungrouped: RunRecord[] = []
+
+  for (const run of runs) {
+    if (run.taskGroupName) {
+      const existing = byName.get(run.taskGroupName)
+      if (existing) existing.push(run)
+      else byName.set(run.taskGroupName, [run])
+    } else {
+      ungrouped.push(run)
+    }
+  }
+
+  // Sort groups: active/running first, then alphabetically
+  const groups = Array.from(byName.entries())
+    .map(([name, runs]): TaskGroup => ({ name, runs }))
+    .sort((a, b) => {
+      // Groups with running/queued tasks come first
+      const aActive = a.runs.some((r) => r.status === 'running' || r.status === 'queued')
+      const bActive = b.runs.some((r) => r.status === 'running' || r.status === 'queued')
+      if (aActive !== bActive) return aActive ? -1 : 1
+
+      // Then alphabetically by name
+      return a.name.localeCompare(b.name)
+    })
+
+  return { groups, ungrouped }
+}
+
+/**
+ * Prepare reorder payload from a drag & drop operation.
+ *
+ * Takes the new order of items (mix of ungrouped tasks and groups) and
+ * prepares the data structure for POST /runs/reorder-display.
+ *
+ * @param orderedItems - Array where each element is either:
+ *   - { type: 'task', run: RunRecord } for an ungrouped task
+ *   - { type: 'group', group: TaskGroup } for a group with all its tasks
+ */
+export function buildReorderPayload(
+  orderedItems: Array<
+    | { type: 'task'; run: RunRecord }
+    | { type: 'group'; group: TaskGroup }
+  >
+): {
+  items: Array<
+    | string
+    | {
+        groupName: string
+        taskIds: string[]
+      }
+  >
+} {
+  const items = orderedItems.map((item) => {
+    if (item.type === 'task') {
+      return item.run.id
+    } else {
+      return {
+        groupName: item.group.name,
+        taskIds: item.group.runs.map((r) => r.id),
+      }
+    }
+  })
+
+  return { items }
 }

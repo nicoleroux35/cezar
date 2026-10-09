@@ -1,7 +1,7 @@
 /**
  * Finding cezar's OWN checkouts — the worktrees a developer might want the desktop app (or the
  * `cezar` launcher) to run instead of a published release. Nothing to configure: every
- * registered project whose tree holds the `@open-mercato/maestro` package is a cezar repo, and
+ * registered project whose tree holds the `@open-mercato/cezar` package is a cezar repo, and
  * `git worktree list` in it names every task branch cezar (or the developer) checked out. A
  * worktree is switchable once it is built (`dist/index.js` and the cockpit's `web/dist`); the
  * switch itself is `linkCheckout` in layout.ts.

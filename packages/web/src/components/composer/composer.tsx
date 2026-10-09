@@ -17,7 +17,7 @@ import {
 
 import { putUiState } from '@/api/client'
 import { queryKeys, useSkills, useUiState } from '@/api/queries'
-import type { AttachmentInput } from '@open-mercato/maestro-api-client'
+import type { AttachmentInput } from '@open-mercato/cezar-api-client'
 import { Button } from '@/components/ui/button'
 import { Command, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'

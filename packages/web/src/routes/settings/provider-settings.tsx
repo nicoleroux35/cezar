@@ -8,7 +8,7 @@ import {
   useRetryProviderAuth,
   workspaceQueryKeys,
 } from '@/api/queries'
-import type { ProviderId, ProviderStatusResponse } from '@open-mercato/maestro-api-client'
+import type { ProviderId, ProviderStatusResponse } from '@open-mercato/cezar-api-client'
 import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -28,6 +28,7 @@ export const PROVIDERS = [
   { id: 'kilo', label: 'Kilo', login: 'kilo login' },
   { id: 'gemini', label: 'Gemini', login: 'gemini' },
   { id: 'antigravity', label: 'Antigravity', login: 'agy' },
+  { id: 'http', label: 'HTTP Agent', login: 'configure HTTP endpoint' },
 ] as const
 
 const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
@@ -41,6 +42,7 @@ const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
   kilo: value,
   gemini: value,
   antigravity: value,
+  http: value,
 })
 
 const STATUS_PRESENTATION = {

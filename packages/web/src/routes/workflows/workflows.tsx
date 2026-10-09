@@ -33,7 +33,7 @@ import { useParams } from 'react-router'
 
 import { ApiError, createWorkflow, deleteWorkflow, parseWorkflow, postPlan } from '@/api/client'
 import { queryKeys, useSkills, useUiState, useWorkflows } from '@/api/queries'
-import type { Skill, WorkflowDef, WorkflowStepDef } from '@open-mercato/maestro-api-client'
+import type { Skill, WorkflowDef, WorkflowStepDef } from '@open-mercato/cezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { SkillEmptyHintCompact } from '@/components/skill-empty-hint'
 import {
@@ -52,6 +52,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
 import { isProjectSkill, orderSkillsByUsage } from '@/lib/skills'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 import {
   WB_MAX_STEPS,
   draftFromPlan,
@@ -121,6 +122,7 @@ export function WorkflowsRoute() {
 }
 
 function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
+  const { t } = useTranslations()
   const workflowsQuery = useWorkflows()
   const skillsQuery = useSkills()
   const uiStateQuery = useUiState()
@@ -333,9 +335,9 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
     <div data-route="workflows" className="flex min-h-full flex-col">
       {/* Desktop header — below `md` the shell's top bar already says "Workflows". */}
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
-        <h1 className="text-base font-semibold">Workflows</h1>
+        <h1 className="text-base font-semibold">{t('workflows.title')}</h1>
         <p className="text-[13px] text-muted-foreground">
-          Portable skill chains — the agent applies them top to bottom.
+          {t('workflows.subtitle')}
         </p>
       </header>
 
@@ -375,11 +377,11 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                     variant="danger-ghost"
                     size="sm"
                     data-slot="wb-delete"
-                    title="Delete the saved workflow file"
+                    title={t('workflows.deleteTitle')}
                     onClick={() => setConfirmDelete(true)}
                   >
                     <Trash2Icon aria-hidden="true" className="size-3" />
-                    Delete
+                    {t('workflows.action.delete')}
                   </Button>
                 ) : null}
                 <Button
@@ -388,14 +390,14 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                   size="sm"
                   data-slot="wb-auto"
                   aria-expanded={autoOpen}
-                  title="Describe a chain — the agent builds it"
+                  title={t('workflows.autoTitle')}
                   onClick={() => {
                     setImportOpen(false)
                     setAutoOpen((open) => !open)
                   }}
                 >
                   <WandSparklesIcon aria-hidden="true" className="size-3" />
-                  Auto
+                  {t('workflows.action.auto')}
                 </Button>
                 <Button
                   type="button"
@@ -409,18 +411,18 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                   }}
                 >
                   <UploadIcon aria-hidden="true" className="size-3" />
-                  Import
+                  {t('workflows.action.import')}
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   data-slot="wb-export"
-                  title="Download workflow.yaml"
+                  title={t('workflows.exportTitle')}
                   onClick={exportYaml}
                 >
                   <DownloadIcon aria-hidden="true" className="size-3" />
-                  Export
+                  {t('workflows.action.export')}
                 </Button>
                 <Button
                   type="button"
@@ -431,7 +433,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
                   onClick={runSave}
                 >
                   <CheckIcon aria-hidden="true" className="size-3" />
-                  Save
+                  {t('workflows.action.save')}
                 </Button>
               </div>
             </div>

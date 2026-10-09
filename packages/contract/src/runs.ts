@@ -283,6 +283,17 @@ export const runRecordSchema = z.object({
   groupId: z.string().optional(),
   /** Variant letter within the group — 'A' | 'B' | 'C'. */
   variant: z.string().optional(),
+  /** Task group: user-defined group name for organizing related tasks. Tasks with the same
+   *  taskGroupId can be displayed together and launched in parallel (respecting maxParallel).
+   *  Absent on tasks not assigned to a group. This is separate from `groupId` which is for
+   *  parallel variants of the same prompt. */
+  taskGroupId: z.string().optional(),
+  /** Display name for the task group — shown in the UI when grouping tasks. */
+  taskGroupName: z.string().optional(),
+  /** Custom display order for tasks and groups. Lower numbers appear first.
+   *  Allows manual reordering of tasks and groups in any order (e.g., ungrouped task, group A, group B, ungrouped task).
+   *  When absent, falls back to natural sorting (by status, then creation date). */
+  displayOrder: z.number().optional(),
   peakRssBytes: z.number().optional(),
   peakProcCount: z.number().optional(),
   archived: z.boolean(),
@@ -333,71 +344,144 @@ export const apiRunSchema = z.union([
 ]);
 export type ApiRun = z.infer<typeof apiRunSchema>;
 
+// ---- the cross-project index --------------------------------------------------------------
+
 /**
  * One run in the WORKSPACE-level index (`GET /api/v1/workspace/runs-index`) — the ⌘K palette's
- * source. A subset of `RunRecord` (not a projection — the same zod keys), plus the unique
- * `projectId` so the cross-project list can route you to the right project. Subset rationale:
- * loading all fields of ~200 runs per project × N registered projects defeats caching, slows the
- * paint, and inflates network cost when the palette itself uses only title + status + dates + a
- * couple optional fields. Add more fields here as the palette needs them; removing one is a
- * breaking change (the contract promises it is there).
+ * "find a task in any project" list, and the global Tasks page's rows.
+ *
+ * Deliberately a separate, slim shape rather than `ApiRun`. The index answers for every
+ * registered project at once, and `runRecordSchema` carries `steps[]` and `workflowDef` — a fat
+ * record whose cost is fine per project and absurd multiplied by the registry. These are exactly
+ * the fields a palette row renders: `runTitle`'s three (`title`, `titleSummary`, `titleOrigin`),
+ * `deriveAttention`'s `AttentionInput`, `isUnread`'s `ReadStateInput`, and the timestamps
+ * `shortAge` reads. Adding a field here is cheap; adding the whole record is what this exists to
+ * avoid — but note that widening either of those two `Pick`s means widening this too, or the
+ * palette's cross-project rows silently answer differently from every other surface.
+ *
+ * `projectId` is the join key, NOT the project name: the registry is already on the client and is
+ * authoritative for display names, and duplicating one here would let a renamed project show two
+ * different labels in one palette.
  */
-export const runIndexEntrySchema = runRecordSchema
-  .pick({
-    id: true,
-    title: true,
-    titleSummary: true,
-    workflow: true,
-    status: true,
-    archived: true,
-    pinned: true,
-    createdAt: true,
-    startedAt: true,
-    finishedAt: true,
-    tokensUsed: true,
-    costUsd: true,
-    prNumber: true,
-    issueNumber: true,
-    groupId: true,
-    variant: true,
-    seenAt: true,
-    queuePosition: true,
-  })
-  .extend({
-    projectId: z.string(),
-    /** Absent when unknown (no `gh`, no remote, a non-git project). */
-    repoHandle: z.object({ owner: z.string(), name: z.string() }).optional(),
-    /**
-     * `GET /runs` attaches it (`withUsage`) — never persisted.
-     *
-     * Optional for two reasons: live usage isn't on a finished run, and (while we could simply
-     * omit those) the usage collector is a singleton across every project: every cezar process
-     * runs every project's agents, so `currentUsage(runId)` knows about a run whatever project it
-     * is in, which is what lets the index aggregate without rereading process tables. Including
-     * it here costs no extra work.
-     */
-    usage: processUsageSchema.optional(),
-  });
+export const runIndexEntrySchema = z.object({
+  /** The registered project this run belongs to. Joins against `GET /projects`. */
+  projectId: z.string(),
+  id: z.string(),
+  title: z.string(),
+  titleSummary: z.string().optional(),
+  titleOrigin: z.enum(['user', 'auto', 'marker']).optional(),
+  status: runStatusSchema,
+  activity: runActivitySchema.optional(),
+  createdAt: z.string(),
+  finishedAt: z.string().optional(),
+  /** With `status`/`finishedAt`/`archived`, the four inputs `isUnread` reads — what lets the
+   *  palette lead with "finished while you weren't looking" across every project, not just the
+   *  one you happen to be standing in. */
+  seenAt: z.string().optional(),
+  /** Always present, like `RunRecord.archived`: absent would read as "not archived", and the
+   *  unread rule treats archiving as a stronger "done with this" than reading. */
+  archived: z.boolean(),
+  /** A run parked by a provider usage limit is `failed` on the record with a resume booked
+   *  (spec 2026-08-03-auto-resume-after-usage-limit). Both `deriveAttention` and `isUnread` read
+   *  it, so without it here a cross-project row would show a red "failed" dot and land in
+   *  Recently finished for work that is simply waiting for its appointment. */
+  autoResumeAt: z.string().optional(),
+  /** A `failed` run whose session closed on an unanswered `CEZ:ASK` — `deriveAttention` reads it,
+   *  so a cross-project row says "needs you" like every other surface rather than "failed". */
+  awaitingAnswerSince: z.string().optional(),
+  /** The workflow the run executes — the global Tasks page shows it in a column and groups by
+   *  it. Always present on the record (`RunRecord.workflow`), so required here; the display
+   *  refinement `workflowLabel` applies needs `steps[]`, which this row deliberately omits, so
+   *  a `(planned)` chain reads as itself here rather than as its first agent's name. */
+  workflow: z.string(),
+  /** The task's branch, when it has one — a column on the global page, and the one field that
+   *  makes a cross-project row identifiable at a glance without opening it. */
+  branch: z.string().optional(),
+  /** The run's place in a dispatch tree (spec 2026-09-10-dispatch): the two keys the global
+   *  page needs to nest a child under its parent, and the child's `kind` so a row can say
+   *  `review` or `implement` next to its title. Absent on a plain task. */
+  dispatch: dispatchSchema.pick({ rootRunId: true, parentRunId: true, kind: true }).optional(),
+  /** When the agent actually started, as opposed to when the task was created. The global page's
+   *  age column prefers it and falls back to `createdAt`, exactly as the per-project table does. */
+  startedAt: z.string().optional(),
+  /**
+   * The six fields `taskReference()` (`web/src/lib/tasks-table.ts`) reads to decide a task's PR
+   * or issue chip. Carried verbatim rather than pre-resolved into a `{kind, number, url}` on the
+   * server, because the rule that picks between them is subtle (#407, #526: a run that REVIEWED
+   * a PR must not claim it as its own, an issue-subject run must not adopt an incidental
+   * transcript PR) and it already exists, tested, on the client. Resolving it a second time
+   * server-side would be a second rule, and the two would drift.
+   *
+   * Six scalars is still the slim row this schema exists to keep: `steps[]` and `workflowDef`,
+   * the expensive half, stay off it.
+   */
+  pullRequestUrl: z.string().optional(),
+  referencedPullRequestUrl: z.string().optional(),
+  prNumber: z.number().optional(),
+  prRefs: z.array(runPrRefSchema).max(8).optional(),
+  issueNumber: z.number().optional(),
+  referencedIssueUrl: z.string().optional(),
+  markerRefs: z.object({ pr: z.number().optional(), issue: z.number().optional() }).optional(),
+  /** What the run has cost so far. Absent means nothing was recorded, which is NOT `$0` — the
+   *  cockpit prints an em dash rather than claiming a measurement that never happened. */
+  costUsd: z.number().optional(),
+  /** The persisted high-water marks a FINISHED run leaves behind. `usage` below stops existing
+   *  the moment the process tree does, so without these a finished row could say nothing at all
+   *  about what it took to run. */
+  peakRssBytes: z.number().optional(),
+  peakProcCount: z.number().optional(),
+  /**
+   * The live CPU/RSS sample of this run's process tree, attached on the way out exactly as
+   * `GET /runs` attaches it (`withUsage`) — never persisted.
+   *
+   * It can ride a WORKSPACE-level answer because the sampler is process-wide: one cezar process
+   * runs every project's agents, so `currentUsage(runId)` knows about a run whatever project it
+   * belongs to. That is what lets a cross-project table show live usage without opening one
+   * event stream per project (it could not — the run stream is project-scoped).
+   */
+  usage: processUsageSchema.optional(),
+});
 export type RunIndexEntry = z.infer<typeof runIndexEntrySchema>;
 
 /**
- * The ⌘K run palette (`GET /api/v1/workspace/runs-index`): newest 50 from each registered
- * project, deduplicated by project id (a repo registered at two paths renders one entry only,
- * under whichever came first). Capped so the endpoint stays fast — a palette user types a few
- * chars, they don't scroll 2000 rows.
+ * Everything the SERVER already knew about the references its rows carry, per project — the
+ * statuses that would otherwise cost a second round trip a beat after the table paints.
  *
+ * Read from cache only: this never asks the forge, so a cold entry is simply absent and
+ * `GET /github/ref-status` stays the route that actually goes and looks. That makes it free, and
+ * being free is what lets it be a superset — the server looks up every number a run mentions
+ * rather than re-deriving which one the cockpit will display (#407, #526 live client-side, and
+ * duplicating that rule is how the two would drift).
+ */
+export const referenceStatusesByProjectSchema = z.record(
+  z.string(),
+  z.object({
+    prs: z.record(z.number(), referenceStatusSchema),
+    issues: z.record(z.number(), referenceStatusSchema),
+  }),
+);
+
+/**
  * `GET /workspace/runs-index`.
+ *
+ * `truncated` is not decoration: the index caps each project's contribution, and a capped list
+ * that says nothing reads as "your task is not here" when the honest answer is "not in the
+ * newest N". Naming the projects that hit the cap is what lets a consumer say so.
  */
 export const runsIndexResponseSchema = z.object({
   /** Newest first, across every registered project. Archived runs are included — `GET /runs`
-   *  is where the archive tab lives, and the index must route you to it. */
+   *  carries them for the project you are standing in, and a finder that dropped them elsewhere
+   *  would make a task vanish the moment you left its project. */
   runs: z.array(runIndexEntrySchema),
-  /** How many runs were included per project (informational, for dev diagnostics). */
-  counts: z.record(z.string(), z.number()),
+  /** Additive: absent statuses mean "nothing warm", never "nothing to show". */
+  referenceStatuses: referenceStatusesByProjectSchema,
+  /** The per-project cap that produced this list — `RUNS_INDEX_PER_PROJECT` in the service. */
+  perProjectLimit: z.number(),
   /** Ids of the projects that had more runs than the cap allowed. */
   truncated: z.array(z.string()),
 });
 export type RunsIndexResponse = z.infer<typeof runsIndexResponseSchema>;
+
 
 // ---- mutations --------------------------------------------------------------------------
 
@@ -561,17 +645,239 @@ export const groupResponseSchema = z.object({
 });
 export type GroupResponse = z.infer<typeof groupResponseSchema>;
 
-// ---- inputs ------------------------------------------------------------------------------
+// ---- attachment vocabulary (#950) -----------------------------------------------------------
+//
+// ONE definition, shared by the wire schema, the engine that writes the file and the cockpit
+// that screens it. `f5190c7b` moved these into `packages/api-client/src/utils/image-utils.ts`
+// with different meanings (`isAttachmentMediaType` started accepting every `text/*` and
+// `application/json`, `attachmentExtension` took a NAME instead of a media type), which both
+// widened the allowlist and broke `sanitizeAttachmentName`'s extension pin. They live here
+// again, byte-for-byte as #950/#929/#960 shipped them, because the route, the run folder and the
+// per-project library all have to agree on one rule.
 
-/** An image or file attachment (the two share one schema, distinguished by name pattern). */
+/**
+ * Non-image attachment types the composer may send (#950). Deliberately an allowlist and
+ * deliberately short: cezar serves these files back from the cockpit's own origin, so every entry
+ * here is one more thing that must be safe to hand a browser. `image/*` stays a regex — narrowing
+ * what the route has always accepted would be the breaking half of this change.
+ *
+ * `text/x-markdown` is the spelling some browsers still report for a `.md`.
+ */
+export const FILE_ATTACHMENT_MEDIA_TYPES = [
+  'text/plain',
+  'text/markdown',
+  'text/x-markdown',
+  'application/pdf',
+] as const;
+
+/** Does this media type travel as an inline image block the model can look at? */
+export function isImageMediaType(mediaType: string): boolean {
+  return /^image\//.test(mediaType);
+}
+
+/** Is this something the composer may attach at all — an image, or one of the file types above? */
+export function isAttachmentMediaType(mediaType: string): boolean {
+  return (
+    isImageMediaType(mediaType) ||
+    (FILE_ATTACHMENT_MEDIA_TYPES as readonly string[]).includes(mediaType)
+  );
+}
+
+/**
+ * The on-disk extension for an attachment, derived from its media type ALONE — the user's own
+ * filename never reaches the wire, and therefore never reaches a path. `img` is the pre-existing
+ * catch-all for an image type cezar does not name (an SVG, a BMP), kept so those files land where
+ * they always did.
+ */
+export function attachmentExtension(mediaType: string): string {
+  return /png/.test(mediaType) ? 'png'
+    : /jpe?g/.test(mediaType) ? 'jpg'
+    : /webp/.test(mediaType) ? 'webp'
+    : /gif/.test(mediaType) ? 'gif'
+    : mediaType === 'application/pdf' ? 'pdf'
+    : mediaType === 'text/plain' ? 'txt'
+    : mediaType === 'text/markdown' || mediaType === 'text/x-markdown' ? 'md'
+    : 'img';
+}
+
+/** Extensions `attachmentExtension` produces for an inline image. */
+const IMAGE_ATTACHMENT_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'img']);
+
+/**
+ * Does a persisted attachment name (`pasted-3.pdf`, `screenshot-1.png`) refer to an image?
+ *
+ * The one predicate every reader branches on — the engine deciding whether to re-encode a file as
+ * an image block, and the cockpit deciding between a thumbnail and a named chip. Branch on the
+ * NAME, never on the list an entry came from: images and files share one list and one numbering
+ * space on disk, and that is what keeps the orphan sweep, the restart re-read and the per-stack
+ * cap on a single code path.
+ */
+export function isImageAttachmentName(name: string): boolean {
+  const ext = name.split('.').pop()?.toLowerCase();
+  return ext !== undefined && IMAGE_ATTACHMENT_EXTENSIONS.has(ext);
+}
+
+/**
+ * Extensions a name may keep for a given media type, beyond the canonical one
+ * `attachmentExtension` produces. `.log` is here because it is the case the composer went out of
+ * its way to accept (a log the browser types as `text/plain`), and renaming `server.log` to
+ * `server.log.txt` in the library would throw away the only thing the user recognises it by.
+ * `.jpeg` is here for the same reason (#960's first caller to exercise this for images): the
+ * canonical spelling `attachmentExtension` picks for `image/jpeg` is `jpg`, but `photo.jpeg` is at
+ * least as common a name to arrive with, and renaming it to `photo.jpeg.jpg` would be the exact
+ * double-extension the canonical-extension rule exists to avoid, not enforce.
+ */
+const ALLOWED_NAME_EXTENSIONS: Record<string, readonly string[]> = {
+  'application/pdf': ['pdf'],
+  'text/plain': ['txt', 'text', 'log'],
+  'text/markdown': ['md', 'markdown'],
+  'text/x-markdown': ['md', 'markdown'],
+  'image/jpeg': ['jpg', 'jpeg'],
+  'image/tiff': ['tif', 'tiff'],
+};
+
+/** Real spellings of an image subtype `attachmentExtension` does not name individually. A closed
+ *  set rather than `mediaType.split('/')[1]`: `isImageMediaType` is the bare regex `/^image\//`,
+ *  so the subtype is a string the CLIENT chose, and accepting it wholesale would let
+ *  `image/sh` + `deploy.sh` keep `.sh` — the extension pin this function exists to apply. */
+const IMAGE_SUBTYPE_SPELLINGS = new Set(['svg', 'bmp', 'tiff', 'tif', 'avif', 'heic', 'heif', 'apng']);
+
+/** Longest stem the library will keep, in code POINTS and in UTF-8 bytes — `truncateToBounds`
+ *  applies both in one pass. Filesystems bound the entry in BYTES (255 on ext4/APFS/NTFS), and a
+ *  character bound alone is not one: 100 emoji are 400 bytes, and the write would fail with
+ *  `ENAMETOOLONG`. That failure is caught and degrades to no library entry, so the cost of getting
+ *  this wrong is silent absence rather than a crash — which is exactly why it is bounded here
+ *  instead. Both bounds leave room for the extension and the `-2`/`-99` collision suffix. */
+const MAX_ATTACHMENT_NAME_STEM = 100;
+const MAX_ATTACHMENT_NAME_STEM_BYTES = 180;
+
+/** Stems Windows reserves for devices regardless of the extension that follows (`CON.txt` is the
+ *  console, not a file). Matched case-insensitively, because the reservation is too. */
+const WINDOWS_DEVICE_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+/** UTF-8 width of one code point. Computed rather than measured: this package is Node-free AND
+ *  DOM-free by construction (`lib: ["ES2022"]`, `types: []` in its tsconfig), so neither `Buffer`
+ *  nor `TextEncoder` is in scope here — and that guard is load-bearing, because the module is
+ *  bundled into a browser and imported by the Node service. */
+function utf8Width(codePoint: number): number {
+  return codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+}
+
+/**
+ * Truncate to BOTH bounds at once, always on a code-POINT boundary. `for…of` yields whole code
+ * points, so a surrogate pair is never cut in half into a lone surrogate.
+ *
+ * The two bounds are applied in the same pass deliberately. Doing the character bound first with
+ * `String.prototype.slice` would count UTF-16 code UNITS, which is exactly the cut this loop
+ * exists to avoid: `'a'.repeat(97) + '😀😀'` sliced at 100 units ends on half of the second
+ * emoji, and the byte pass would then faithfully preserve the half. Node writes a lone surrogate
+ * to the filesystem as `U+FFFD`, so the cost is a library entry ending in `�` — cheap, and
+ * cheaper still to not produce.
+ */
+function truncateToBounds(value: string, maxChars: number, maxBytes: number): string {
+  let out = '';
+  let bytes = 0;
+  let chars = 0;
+  for (const char of value) {
+    bytes += utf8Width(char.codePointAt(0) ?? 0);
+    chars += 1;
+    if (bytes > maxBytes || chars > maxChars) return out;
+    out += char;
+  }
+  return out;
+}
+
+/**
+ * Turn the filename a browser reported into one that is safe to use as a path segment, or `null`
+ * when nothing usable survives.
+ *
+ * This is the load-bearing half of the attachment library (#929): the whole feature is "write a
+ * file under a name an untrusted client gave us", so the name is stripped to a bare segment —
+ * directory separators, `..`, control characters and the characters Windows refuses all go — and
+ * then the EXTENSION is pinned to the media type the schema already validated. That last part is
+ * the one that matters: without it a `text/plain` upload named `install.sh` would land as an
+ * executable-looking file inside the user's project, having passed a media-type allowlist that
+ * believed it was screening for exactly that.
+ *
+ * The user's own extension is kept when it is a spelling of the validated type
+ * (`notes.markdown`, `server.log`); anything else keeps the stem and gains the canonical
+ * extension, so `install.sh` becomes `install.sh.txt` — still recognisable, no longer a lie.
+ */
+export function sanitizeAttachmentName(name: string, mediaType: string): string | null {
+  // Basename on both separator conventions: the client is a browser on an unknown OS, and a
+  // Windows `C:\Users\me\notes.md` must not survive as a nested path.
+  const base = name.split(/[/\\]/).pop() ?? '';
+  const cleaned = base
+    // eslint-disable-next-line no-control-regex -- stripping control characters is the point
+    .replace(/[\u0000-\u001f\u007f\u200e-\u200f\u202a-\u202e\u2066-\u2069]/g, '')
+    .replace(/[<>:"|?*]/g, '-')
+    .replace(/\s+/g, ' ')
+    // Leading dots would make the copy a hidden file (and `.`/`..` a path operation).
+    .replace(/^\.+/, '')
+    .trim();
+  if (cleaned === '') return null;
+
+  const canonical = attachmentExtension(mediaType);
+  // `img` is `attachmentExtension`'s catch-all for an image subtype it does not name individually
+  // (SVG, BMP, TIFF...) — not a real extension to enforce. Without this, a name that already
+  // carries a legitimate spelling of that subtype (`diagram.svg`) would get `img` appended on top
+  // of the real one instead of validated (`diagram.svg.img`), so the subtype itself is accepted
+  // here as an additional spelling — still tied to the media type the schema already validated,
+  // not to whatever extension the name happened to have.
+  //
+  // `isImageMediaType` is the bare regex `/^image\//`, so everything after `image/` is a string the
+  // client chose, not a validated value — a character class here would let `{mediaType:'image/sh',
+  // name:'deploy.sh'}` keep the `.sh` extension. A closed set of real image subtype spellings keeps
+  // the pin applying to anything else.
+  const subtypeExt = canonical === 'img' ? mediaType.split('/')[1]?.split('+')[0]?.toLowerCase() : undefined;
+  const allowed =
+    ALLOWED_NAME_EXTENSIONS[mediaType] ??
+    (subtypeExt && IMAGE_SUBTYPE_SPELLINGS.has(subtypeExt) ? [canonical, subtypeExt] : [canonical]);
+  const dot = cleaned.lastIndexOf('.');
+  const ext = dot > 0 ? cleaned.slice(dot + 1).toLowerCase() : '';
+  const keepsExtension = allowed.includes(ext);
+  const rawStem = keepsExtension ? cleaned.slice(0, dot) : cleaned;
+  const stem = truncateToBounds(rawStem, MAX_ATTACHMENT_NAME_STEM, MAX_ATTACHMENT_NAME_STEM_BYTES)
+    // Trailing dots and spaces last, after truncation could have exposed one: Windows refuses an
+    // entry that ends in either, and `notes.` would otherwise become `notes..txt`.
+    .replace(/[. ]+$/, '')
+    .trim();
+  if (stem === '') return null;
+  // The last Windows filename rule, and the only one that is not about characters: these stems
+  // name DEVICES whatever extension follows, so `CON.txt` is the console rather than a file and a
+  // write to it would go somewhere no one can read back. The write is best-effort and would
+  // degrade quietly, which is exactly why it is worth the one line here.
+  const safeStem = WINDOWS_DEVICE_NAMES.test(stem) ? `${stem}-` : stem;
+  return `${safeStem}.${keepsExtension ? ext : canonical}`;
+}
+
+/**
+ * One inline attachment, base64 — ≤4 per request, ~5 MB each once decoded.
+ *
+ * An image rides along as a block the model can view; a file (#950) is written to the run's
+ * attachment folder and reaches the agent as a PATH only, which is the form its file tools want,
+ * the only form that survives the codex/opencode backends (they drop image blocks before the
+ * model sees them), and the one that keeps a multi-megabyte PDF out of the prompt bounds.
+ *
+ * `name` is the user's own filename, additive and optional (#929). It never names the file in the
+ * RUN folder — that keeps its `pasted-<n>.<ext>` numbering, which several readers depend on — it
+ * is what the per-project attachment library files the copy under, and it is bounded here only
+ * loosely because `sanitizeAttachmentName` is what actually decides whether it may touch a path.
+ * A client that omits it behaves exactly as it did before this key existed.
+ */
 export const attachmentInputSchema = z.object({
-  /** For files: original extension + pre-persisted server-provided filename; for images:
-   *  generated by `generateUniqueImageName`. */
-  name: z.string(),
-  /** base64 data URI or raw base64 — the route accepts both. */
-  data: z.string(),
+  mediaType: z.string().refine(isAttachmentMediaType, {
+    message: 'unsupported attachment type — images, plain text, markdown and PDF only',
+  }),
+  data: z.string().min(1).max(7_000_000),
+  name: z.string().max(255).optional(),
 });
 export type AttachmentInput = z.input<typeof attachmentInputSchema>;
+
+/** @deprecated Attachments are no longer images only — use `attachmentInputSchema`. Kept because
+ *  the `images` key it validates is the wire contract and did not change name. */
+export const imageInputSchema = attachmentInputSchema;
+export type ImageInput = AttachmentInput;
 
 /** One step of an inline chain (spec 008): the step definition keys we actually honor. */
 const createRunStepInputSchema = z.object({
@@ -624,6 +930,9 @@ export const createRunInputKeys = z.object({
    * The user must manually start it later via `POST /runs/:id/start-queued`.
    */
   queueOnly: z.boolean().optional(),
+  /** Task group assignment: user-defined group for organizing related tasks. */
+  taskGroupId: z.string().optional(),
+  taskGroupName: z.string().trim().min(1).max(100).optional(),
 });
 export type CreateRunInputKeys = z.input<typeof createRunInputKeys>;
 

@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -103,6 +106,7 @@ const originalEnv = {
   CEZ_COPILOT_BIN: process.env.CEZ_COPILOT_BIN,
   CEZ_HTTP_AGENT_CONFIG: process.env.CEZ_HTTP_AGENT_CONFIG,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
@@ -127,6 +131,7 @@ beforeEach(() => {
   delete process.env.CEZ_COPILOT_BIN;
   delete process.env.CEZ_HTTP_AGENT_CONFIG;
   delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_AUTH_TOKEN;
   delete process.env.OPENAI_API_KEY;
   delete process.env.GEMINI_API_KEY;
   delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -1463,6 +1468,7 @@ describe('ProviderAuthService', () => {
   describe('API key authentication (precheck)', () => {
     const savedEnv = {
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       AZURE_OPENAI_API_KEY: process.env.AZURE_OPENAI_API_KEY,
       CURSOR_API_KEY: process.env.CURSOR_API_KEY,
@@ -1718,6 +1724,346 @@ describe('ProviderAuthService', () => {
       expect(providers.find((p) => p.provider === 'opencode')?.status).toBe('connected');
       expect(providers.find((p) => p.provider === 'kilo')?.status).toBe('connected');
       expect(providers.find((p) => p.provider === 'pi')?.status).toBe('connected');
+    });
+  });
+
+  describe("custom endpoint in the agent's OWN config file (precheck)", () => {
+    // A provider switcher such as cc-switch never exports an endpoint — it writes it into the
+    // agent's own config file (`~/.claude/settings.json`, `~/.codex/config.toml`) and the CLI then
+    // uses it with nothing in the environment. For Codex the CLI even answers "Not logged in" for
+    // such a provider, so cezar called a working setup disconnected. See `provider-file-config.ts`.
+    const sandboxes: string[] = [];
+    const savedDirs = {
+      CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+      CODEX_HOME: process.env.CODEX_HOME,
+    };
+
+    const sandbox = (): string => {
+      const dir = mkdtempSync(join(tmpdir(), 'cez-provider-file-'));
+      sandboxes.push(dir);
+      return dir;
+    };
+
+    const writeCodexConfig = (home: string, toml: string): void => {
+      mkdirSync(home, { recursive: true });
+      writeFileSync(join(home, 'config.toml'), toml, 'utf8');
+    };
+
+    const writeClaudeSettings = (home: string, settings: string): void => {
+      mkdirSync(home, { recursive: true });
+      writeFileSync(join(home, 'settings.json'), settings, 'utf8');
+    };
+
+    /** The CLI answers for Codex exactly as a custom-provider setup makes it answer: "Not logged
+     *  in" on exit 1 — a confident negative the config file has to override. */
+    const codexCliSaysNotLoggedIn = runner((executable) => executable.includes('codex')
+      ? { stdout: 'Not logged in', stderr: '', exitCode: 1 }
+      : resultFor(executable));
+
+    afterEach(() => {
+      for (const [key, value] of Object.entries(savedDirs)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      for (const dir of sandboxes.splice(0)) rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('reports Codex connected from a cc-switch config.toml, without calling the CLI', async () => {
+      const home = sandbox();
+      writeCodexConfig(home, [
+        'model_provider = "custom"',
+        'model = "deepseek-v4.1-flash"',
+        '',
+        '[model_providers.custom]',
+        'name = "My Codex"',
+        'base_url = "https://a6api.com/v1"',
+        'wire_api = "responses"',
+        'requires_openai_auth = false',
+        'experimental_bearer_token = "sk-test"',
+      ].join('\n'));
+      process.env.CODEX_HOME = home;
+      const runCommand = codexCliSaysNotLoggedIn;
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'codex')?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(
+        expect.stringContaining('codex'), expect.anything(), expect.anything());
+    });
+
+    it('accepts a custom provider that carries an inline bearer token', async () => {
+      const home = sandbox();
+      writeCodexConfig(home, [
+        'model_provider = "custom"',
+        '',
+        '[model_providers.custom]',
+        'base_url = "https://a6api.com/v1"',
+        'experimental_bearer_token = "sk-test"',
+      ].join('\n'));
+      process.env.CODEX_HOME = home;
+      const service = new ProviderAuthService({ runCommand: codexCliSaysNotLoggedIn });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'codex')?.status).toBe('connected');
+    });
+
+    it('accepts a custom provider whose env_key names a variable that is set', async () => {
+      const home = sandbox();
+      writeCodexConfig(home, [
+        'model_provider = "custom"',
+        '',
+        '[model_providers.custom]',
+        'base_url = "https://a6api.com/v1"',
+        'env_key = "CEZ_TEST_PROVIDER_KEY"',
+      ].join('\n'));
+      process.env.CODEX_HOME = home;
+      process.env.CEZ_TEST_PROVIDER_KEY = 'sk-test';
+      try {
+        const service = new ProviderAuthService({ runCommand: codexCliSaysNotLoggedIn });
+        const { providers } = await service.status();
+        expect(providers.find((p) => p.provider === 'codex')?.status).toBe('connected');
+      } finally {
+        delete process.env.CEZ_TEST_PROVIDER_KEY;
+      }
+    });
+
+    it('does NOT accept a bare base_url on a provider that still needs the ChatGPT login', async () => {
+      // A guard, not a regression test: the built-in `openai` provider keeps its login even when
+      // pointed at another host, so a base_url alone must not claim "connected".
+      const home = sandbox();
+      writeCodexConfig(home, [
+        'model_provider = "custom"',
+        '',
+        '[model_providers.custom]',
+        'base_url = "https://api.openai.com/v1"',
+      ].join('\n'));
+      process.env.CODEX_HOME = home;
+      const runCommand = codexCliSaysNotLoggedIn;
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'codex')?.status).toBe('disconnected');
+      expect(runCommand).toHaveBeenCalledWith('codex', ['login', 'status'], 10_000);
+    });
+
+    it('falls through to the CLI when config.toml is absent, empty or unparseable', async () => {
+      for (const toml of [undefined, '', 'model_provider = "custom"\n[model_providers.custom\n']) {
+        const home = sandbox();
+        if (toml !== undefined) writeCodexConfig(home, toml);
+        process.env.CODEX_HOME = home;
+        const runCommand = codexCliSaysNotLoggedIn;
+        const service = new ProviderAuthService({ runCommand });
+
+        const { providers } = await service.status();
+        expect(providers.find((p) => p.provider === 'codex')?.status).toBe('disconnected');
+        expect(runCommand).toHaveBeenCalledWith('codex', ['login', 'status'], 10_000);
+      }
+    });
+
+    it('reports Claude connected from a cc-switch settings.json env block, without the CLI', async () => {
+      const home = sandbox();
+      writeClaudeSettings(home, JSON.stringify({
+        env: { ANTHROPIC_BASE_URL: 'https://a6api.com', ANTHROPIC_AUTH_TOKEN: 'sk-test' },
+      }));
+      process.env.CLAUDE_CONFIG_DIR = home;
+      const runCommand = runner((executable) => executable === 'claude'
+        ? { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 }
+        : resultFor(executable));
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'claude')?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith(
+        expect.stringContaining('claude'), expect.anything(), expect.anything());
+    });
+
+    it('accepts a Claude token with no base URL — the official endpoint, no login needed', async () => {
+      const home = sandbox();
+      writeClaudeSettings(home, JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: 'sk-test' } }));
+      process.env.CLAUDE_CONFIG_DIR = home;
+      const service = new ProviderAuthService({
+        runCommand: runner((executable) => executable === 'claude'
+          ? { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 }
+          : resultFor(executable)),
+      });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'claude')?.status).toBe('connected');
+    });
+
+    it('falls through to the CLI for a settings.json with no env block or a bad one', async () => {
+      for (const settings of ['{"model":"opus"}', '{ not json', '{"env":{}}']) {
+        const home = sandbox();
+        writeClaudeSettings(home, settings);
+        process.env.CLAUDE_CONFIG_DIR = home;
+        const runCommand = runner((executable) => executable === 'claude'
+          ? { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 }
+          : resultFor(executable));
+        const service = new ProviderAuthService({ runCommand });
+
+        const { providers } = await service.status();
+        expect(providers.find((p) => p.provider === 'claude')?.status).toBe('disconnected');
+        expect(runCommand).toHaveBeenCalledWith('claude', ['auth', 'status', '--json'], 10_000);
+      }
+    });
+
+    it("reads a named account's OWN config dir, never the discovered default's", async () => {
+      // The #811 trap, one layer down: the file lives per account, so a precheck that resolved the
+      // default home for every row would report the default account's endpoint on another's card.
+      const defaultHome = sandbox();
+      const profileHome = sandbox();
+      writeClaudeSettings(profileHome, JSON.stringify({ env: { ANTHROPIC_BASE_URL: 'https://a6api.com' } }));
+      process.env.CLAUDE_CONFIG_DIR = defaultHome;
+      const runCommand = runner((executable) => executable === 'claude'
+        ? { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 }
+        : resultFor(executable));
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'claude')?.status).toBe('disconnected');
+      const row = await service.profileStatus('claude', { id: 'work', configDir: profileHome });
+      expect(row).toEqual({ provider: 'claude', status: 'connected', profileId: 'work' });
+    });
+  });
+
+  describe('Gemini and Antigravity stored logins (precheck)', () => {
+    // Neither CLI exposes an auth-status subcommand — `gemini --version` (0.61.0) and `agy
+    // --version` (1.3.0) print a version and nothing else — so cezar's probe could only ever
+    // answer 'unknown' for them, and the run gate (`unavailableProviderMessage`) blocks a run
+    // whose provider is not 'connected'. The stored login under `~/.gemini` is the only signal
+    // that exists. Neither CLI honours a relocation variable, so the home is HOME-derived and
+    // this suite pins HOME to a sandbox (`vitest.setup.ts`) — otherwise the developer's real
+    // `~/.gemini` would answer for every fixture.
+    const sandboxes: string[] = [];
+    const savedEnv = {
+      CEZ_GEMINI_BIN: process.env.CEZ_GEMINI_BIN,
+      CEZ_ANTIGRAVITY_BIN: process.env.CEZ_ANTIGRAVITY_BIN,
+      HOME: process.env.HOME,
+      USERPROFILE: process.env.USERPROFILE,
+    };
+
+    const sandboxHome = (): string => {
+      const dir = mkdtempSync(join(tmpdir(), 'cez-gemini-home-'));
+      sandboxes.push(dir);
+      return dir;
+    };
+
+    const writeGeminiFile = (home: string, relative: string, body: string): void => {
+      const path = join(home, '.gemini', relative);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, body, 'utf8');
+    };
+
+    /** The one probe both CLIs actually answer: a bare version, no auth signal at all. A FACTORY,
+     *  not a shared `vi.fn()` — the call log accumulates across a shared mock, so a later case
+     *  would "see" the previous case's CLI call and fail an assertion about its own. */
+    const versionOnlyRunner = (): RunProviderCommand => runner((executable) =>
+      executable === 'gemini' || executable === 'agy'
+        ? { stdout: '0.61.0', stderr: '', exitCode: 0 }
+        : resultFor(executable));
+
+    beforeEach(() => {
+      process.env.CEZ_GEMINI_BIN = 'gemini';
+      process.env.CEZ_ANTIGRAVITY_BIN = 'agy';
+    });
+
+    afterEach(() => {
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      for (const dir of sandboxes.splice(0)) rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('reports Gemini connected from its stored OAuth login, without calling the CLI', async () => {
+      const home = sandboxHome();
+      writeGeminiFile(home, 'oauth_creds.json', JSON.stringify({
+        access_token: 'ya29.test',
+        refresh_token: '1//test',
+        scope: 'https://www.googleapis.com/auth/cloud-platform',
+      }));
+      process.env.HOME = home;
+      const runCommand = versionOnlyRunner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'gemini')?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith('gemini', expect.anything(), expect.anything());
+    });
+
+    it('accepts a Gemini login recorded only in google_accounts.json', async () => {
+      // A login can leave the address behind without the token file (or with it already rotated
+      // out); `active` is a sign-in in its own right.
+      const home = sandboxHome();
+      writeGeminiFile(home, 'google_accounts.json', JSON.stringify({ active: 'me@example.com', old: [] }));
+      process.env.HOME = home;
+      const service = new ProviderAuthService({ runCommand: versionOnlyRunner() });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'gemini')?.status).toBe('connected');
+    });
+
+    it('reports Antigravity connected from its stored OAuth token, without calling the CLI', async () => {
+      const home = sandboxHome();
+      writeGeminiFile(home, 'antigravity-cli/antigravity-oauth-token', JSON.stringify({
+        auth_method: 'oauth',
+        token: 'ya29.test',
+        id_token: 'eyJ.test',
+      }));
+      process.env.HOME = home;
+      const runCommand = versionOnlyRunner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'antigravity')?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith('agy', expect.anything(), expect.anything());
+    });
+
+    it('falls through to the CLI for an absent, empty or unparseable stored login', async () => {
+      for (const [relative, body] of [
+        ['oauth_creds.json', null],
+        ['oauth_creds.json', '{}'],
+        ['oauth_creds.json', '{ not json'],
+        ['oauth_creds.json', JSON.stringify({ scope: 'x' })],
+      ] as const) {
+        const home = sandboxHome();
+        if (body !== null) writeGeminiFile(home, relative, body);
+        process.env.HOME = home;
+        const runCommand = versionOnlyRunner();
+        const service = new ProviderAuthService({ runCommand });
+
+        const { providers } = await service.status();
+        // The CLI's bare version parses to no auth signal, so the honest answer is 'unknown' —
+        // the credential file must not manufacture a 'connected' from a shape it cannot read.
+        expect(providers.find((p) => p.provider === 'gemini')?.status).toBe('unknown');
+        expect(runCommand).toHaveBeenCalledWith('gemini', ['--version'], 10_000);
+      }
+    });
+
+    it('does not let an Antigravity login claim Gemini, nor the reverse', async () => {
+      // The two products share `~/.gemini`, so this pins that each reads only its OWN credential:
+      // a precheck that accepted either file would report both connected on a machine signed into
+      // one of them.
+      const home = sandboxHome();
+      writeGeminiFile(home, 'antigravity-cli/antigravity-oauth-token', JSON.stringify({ token: 'ya29.test' }));
+      process.env.HOME = home;
+      const service = new ProviderAuthService({ runCommand: versionOnlyRunner() });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'gemini')?.status).toBe('unknown');
+      expect(providers.find((p) => p.provider === 'antigravity')?.status).toBe('connected');
+    });
+
+    it('falls through for Antigravity when its token file carries no credential', async () => {
+      const home = sandboxHome();
+      writeGeminiFile(home, 'antigravity-cli/antigravity-oauth-token', JSON.stringify({ auth_method: 'oauth' }));
+      process.env.HOME = home;
+      const runCommand = versionOnlyRunner();
+      const service = new ProviderAuthService({ runCommand });
+
+      const { providers } = await service.status();
+      expect(providers.find((p) => p.provider === 'antigravity')?.status).toBe('unknown');
+      expect(runCommand).toHaveBeenCalledWith('agy', ['--version'], 10_000);
     });
   });
 });

@@ -6,7 +6,7 @@ import { resolveClaudeBin } from './claude-bin.ts';
 const exec = promisify(execFile);
 
 export interface BackendCheck {
-  name: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'junie' | 'copilot' | 'kilo' | 'gemini' | 'antigravity' | 'gh' | 'git';
+  name: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'junie' | 'copilot' | 'kilo' | 'gemini' | 'antigravity' | 'http' | 'gh' | 'git';
   available: boolean;
   version?: string;
   hint?: string;
@@ -31,6 +31,7 @@ export async function detectEnvironment(): Promise<BackendCheck[]> {
     probeKilo(),
     probeGemini(),
     probeAntigravity(),
+    probeHttp(),
     probeGh(),
     probeGit(),
   ]);
@@ -283,6 +284,21 @@ async function probeAntigravity(): Promise<BackendCheck> {
       hint: 'optional: install Antigravity CLI to use the Antigravity runner — free for individuals with Google account',
     };
   }
+}
+
+async function probeHttp(): Promise<BackendCheck> {
+  // HTTP runner is always "available" since it needs no CLI installation
+  // Configuration happens via CEZ_HTTP_AGENT_CONFIG env var or agent accounts
+  const hasConfig = Boolean(process.env.CEZ_HTTP_AGENT_CONFIG);
+
+  return {
+    name: 'http',
+    available: true,
+    version: hasConfig ? 'configured' : 'not configured',
+    hint: hasConfig
+      ? 'HTTP agent configured via CEZ_HTTP_AGENT_CONFIG'
+      : 'optional: set CEZ_HTTP_AGENT_CONFIG to use any OpenAI-compatible endpoint (Groq, Ollama, etc.)',
+  };
 }
 
 async function probeGh(): Promise<BackendCheck> {

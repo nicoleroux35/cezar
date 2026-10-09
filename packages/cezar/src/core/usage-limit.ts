@@ -22,7 +22,7 @@
  * that is still refusing, and "we don't know when" is an honest answer the caller can surface.
  */
 
-import { isValidTimeZone, zonedParts, zonedWallTimeToUtc } from '@open-mercato/maestro-contract';
+import { isValidTimeZone, zonedParts, zonedWallTimeToUtc } from '@open-mercato/cezar-contract';
 
 export interface UsageLimitHit {
   /** When the provider says the limit lifts. Never in the past — a stale instant clamps to now. */

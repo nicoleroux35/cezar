@@ -1,5 +1,5 @@
 /**
- * Bundle `@open-mercato/maestro-contract` into `dist` after `tsc`.
+ * Bundle `@open-mercato/cezar-contract` into `dist` after `tsc`.
  *
  * The contract and the api-client are PRIVATE and ship no build of their own — they are linked as
  * workspace packages and consumed as TypeScript source, which is what every other consumer wants:
@@ -26,9 +26,10 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync, cpSync, mkdtempSync, symlinkSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 import { build } from 'esbuild';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -83,22 +84,65 @@ const tscBin = join(dirname(tsManifest), require_(tsManifest).bin.tsc);
 // lands beside `index.js` and its relative siblings (`./health.js` → `./health.d.ts`) resolve as
 // TypeScript expects. Those siblings have no runtime twin, which is correct: the bundle is
 // self-contained and nothing imports those paths at runtime.
-execFileSync(
-  process.execPath,
-  [
-    tscBin,
-    '--project',
-    join(contractRoot, 'tsconfig.json'),
-    '--emitDeclarationOnly',
-    '--declarationMap',
-    'false',
-    '--sourceMap',
-    'false',
-    '--outDir',
-    outdir,
-  ],
-  { stdio: 'inherit' },
+//
+// TypeScript 7's rewriteRelativeImportExtensions conflicts with emitDeclarationOnly: when enabled,
+// tsc refuses to emit declarations because the source has `.ts` extensions. We temporarily copy
+// the contract source to a staging directory with extensions stripped, compile that, then delete it.
+
+const stageDir = mkdtempSync(join(tmpdir(), 'cezar-contract-'));
+cpSync(join(contractRoot, 'src'), join(stageDir, 'src'), { recursive: true });
+
+// Create symlink to node_modules so zod can be resolved
+const contractNodeModules = join(contractRoot, 'node_modules');
+const workspaceNodeModules = join(contractRoot, '..', '..', 'node_modules');
+if (existsSync(contractNodeModules)) {
+  symlinkSync(contractNodeModules, join(stageDir, 'node_modules'), 'dir');
+} else if (existsSync(workspaceNodeModules)) {
+  symlinkSync(workspaceNodeModules, join(stageDir, 'node_modules'), 'dir');
+}
+
+// Strip .ts extensions from all imports
+for (const file of readdirSync(join(stageDir, 'src'))) {
+  if (!file.endsWith('.ts')) continue;
+  const path = join(stageDir, 'src', file);
+  const content = readFileSync(path, 'utf8');
+  const fixed = content.replace(/from ['"](\.[^'"]+)\.ts['"]/g, "from '$1'");
+  writeFileSync(path, fixed, 'utf8');
+}
+
+// Copy a minimal tsconfig without rewriteRelativeImportExtensions
+writeFileSync(
+  join(stageDir, 'tsconfig.json'),
+  JSON.stringify({
+    compilerOptions: {
+      target: 'ES2022',
+      module: 'NodeNext',
+      moduleResolution: 'NodeNext',
+      lib: ['ES2022'],
+      types: [],
+      declaration: true,
+      emitDeclarationOnly: true,
+      skipLibCheck: true,
+      rootDir: './src',
+      outDir: outdir,
+    },
+    include: ['src/**/*.ts'],
+  }),
+  'utf8',
 );
+
+try {
+  execFileSync(
+    process.execPath,
+    [tscBin, '--project', join(stageDir, 'tsconfig.json'), '--emitDeclarationOnly', '--outDir', outdir],
+    { stdio: 'pipe' },
+  );
+} catch (err) {
+  console.error('tsc failed:', err.stderr?.toString() || err.stdout?.toString() || err.message);
+  throw err;
+} finally {
+  rmSync(stageDir, { recursive: true, force: true });
+}
 if (!existsSync(join(outdir, 'index.d.ts'))) {
   console.error('inline-contract: tsc emitted no index.d.ts — the bundled contract would ship untyped');
   process.exit(1);

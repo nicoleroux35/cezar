@@ -58,6 +58,8 @@ export const KNOWN_PRESETS_BY_RUNNER: Record<RunnerId, readonly string[]> = {
   gemini: [],
   // Antigravity lists nothing: models are discovered from Google's catalog
   antigravity: [],
+  // HTTP lists nothing: models are configured per-endpoint
+  http: [],
 };
 
 /**

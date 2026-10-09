@@ -261,7 +261,9 @@ describe('POST /api/v1/todos/:id/start', () => {
 
   it('rejects an unknown runner with a 400 and never starts a run', async () => {
     writeTodos([{ id: 'todo-1', summary: 'Ship the thing', suggestedPrompt: 'Do the thing' }]);
-    const res = await start('todo-1', { runner: 'gemini' });
+    // See `continue-run.test.ts`: `gemini` became a real runner id in `f5190c7b`, so the
+    // unknown-runner case needs an id the contract's `runnerSchema` really does not carry.
+    const res = await start('todo-1', { runner: 'not-a-runner' });
     expect(res.status).toBe(400);
     expect(captured).toBeUndefined();
   });

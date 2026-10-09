@@ -125,6 +125,8 @@ export const BACKEND_MODEL_MAP: Readonly<Record<AgentBackend, BackendModelMap>> 
   gemini: { defaultProvider: 'google' },
   // Antigravity uses Google's models
   antigravity: { defaultProvider: 'google' },
+  // HTTP uses OpenAI-compatible endpoints
+  http: { defaultProvider: 'openai' },
 };
 
 const SLASH = '/';

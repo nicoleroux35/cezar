@@ -2,6 +2,7 @@ import { RUNNER_IDS, type RunnerId } from '../core/agent-runner.ts';
 import { claudeModelSettingsStrategy } from './model-settings/claude.ts';
 import { codexModelSettingsStrategy } from './model-settings/codex.ts';
 import { junieModelSettingsStrategy } from './model-settings/junie.ts';
+import { kiloModelSettingsStrategy } from './model-settings/kilo.ts';
 import { copilotModelSettingsStrategy } from './model-settings/copilot.ts';
 import { cursorModelSettingsStrategy } from './model-settings/cursor.ts';
 import { opencodeModelSettingsStrategy } from './model-settings/opencode.ts';
@@ -24,9 +25,15 @@ const MODEL_SETTINGS_STRATEGIES: Record<RunnerId, AgentModelSettingsStrategy> = 
   pi: piModelSettingsStrategy,
   junie: junieModelSettingsStrategy,
   copilot: copilotModelSettingsStrategy,
-  kilo: opencodeModelSettingsStrategy, // Kilo uses the same protocol as opencode
+  // Kilo is OpenCode's fork and reads the same config SHAPE, but NOT the same files: its own home
+  // is `$XDG_CONFIG_HOME/kilo` (its config file is `kilo.jsonc`), where `opencode.json` does not
+  // exist. Borrowing `opencodeModelSettingsStrategy` made the Settings → Agents picker report
+  // OpenCode's project model as Kilo's own (#1258) — hence a strategy that reads Kilo's catalog
+  // entries instead, the same way every other runner does.
+  kilo: kiloModelSettingsStrategy,
   gemini: { runner: 'gemini', read: async () => ({}) }, // Gemini has no settings file yet
   antigravity: { runner: 'antigravity', read: async () => ({}) }, // Antigravity has no settings file yet
+  http: { runner: 'http', read: async () => ({}) }, // HTTP has no settings file
 };
 
 export function readAgentModelSettings(

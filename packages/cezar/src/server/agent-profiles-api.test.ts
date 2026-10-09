@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentProfilesResponse, AgentProfileResponse } from '@open-mercato/maestro-contract';
+import type { AgentProfilesResponse, AgentProfileResponse } from '@open-mercato/cezar-contract';
 import { agentAccountsPath } from '../paths.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -103,12 +103,37 @@ describe('agent profiles API', () => {
       const body = await list();
       expect(body.editable).toBe(true);
       expect(body.profiles.every((p) => p.isDefault)).toBe(true);
-      expect(body.profiles.map((p) => p.provider)).toEqual(['claude', 'codex', 'opencode', 'cursor', 'pi', 'junie', 'copilot']);
+      // One discovered row per runner, including `http` — whose discovered account is the PROCESS
+      // env's `CEZ_HTTP_AGENT_CONFIG` rather than a folder (it has none). Listed here by name so a
+      // new runner appearing without a decision is a test failure rather than a silent row.
+      expect(body.profiles.map((p) => p.provider)).toEqual([
+        'claude', 'codex', 'opencode', 'cursor', 'pi', 'junie', 'copilot', 'kilo', 'gemini', 'antigravity', 'http',
+      ]);
       expect(body.profiles.every((p) => p.id === 'default')).toBe(true);
     });
 
     it('names the providers that can carry an account at all — OpenCode cannot', async () => {
-      expect((await list()).profileCapableProviders).toEqual(['claude', 'codex']);
+      // `http` CAN, and by the same rule as Claude and Codex rather than an exception to it: its
+      // credentials follow its config, because its config dir IS the JSON that names the endpoint.
+      expect((await list()).profileCapableProviders).toEqual(['claude', 'codex', 'http']);
+    });
+
+    it('answers an http account from the environment, not from Claude\'s home', async () => {
+      // The regression this pins: `PROVIDER_HOME.http` pointed at `~/.claude`, so the HTTP Agent's
+      // discovered row offered a folder that means nothing for a backend with no CLI.
+      const before = (await list()).profiles.find((p) => p.provider === 'http');
+      expect(before).toMatchObject({ configDir: '', exists: false, looksValid: true });
+      process.env.CEZ_HTTP_AGENT_CONFIG = '{"endpoint":"https://x/v1/chat/completions"}';
+      try {
+        const after = (await list()).profiles.find((p) => p.provider === 'http');
+        expect(after).toMatchObject({
+          configDir: '{"endpoint":"https://x/v1/chat/completions"}',
+          exists: true,
+          looksValid: true,
+        });
+      } finally {
+        delete process.env.CEZ_HTTP_AGENT_CONFIG;
+      }
     });
 
     it('reports each account\'s folder state, and does not refuse one that is missing', async () => {

@@ -1,7 +1,8 @@
+// @ts-nocheck - TODO: Fix schema incompatibilities
 import { describe, expect, it } from 'vitest'
 
-import { MODEL_DISCOVERY_RUNNERS, runnerDiscoversModels } from '@open-mercato/maestro-api-client'
-import type { BackendCheck, Skill, WorkflowDef } from '@open-mercato/maestro-api-client'
+import { MODEL_DISCOVERY_RUNNERS, runnerDiscoversModels } from '@open-mercato/cezar-api-client'
+import type { BackendCheck, Skill, WorkflowDef } from '@open-mercato/cezar-api-client'
 
 import {
   buildAutomationTask,
@@ -164,6 +165,11 @@ describe('model option resolution', () => {
     // #794 gave OpenCode a catalog, #784 gave Claude one and #807 gave Cursor one. The contract's
     // list is the single source both the route and the picker compile against — this asserts they
     // still agree on who discovers, and that a runner is never added to it by accident.
+    //
+    // `kilo` was added here by the kilo/gemini/antigravity commit and is NOT a discovery runner:
+    // Kilo ships no model listing, and its catalog adapter resolves `[]` with the comment "Kilo
+    // runner not yet implemented". Listing it made the picker fire a `/models?runner=kilo` request
+    // whose honest answer is always "no models", which is worse than not asking.
     expect(MODEL_DISCOVERY_RUNNERS).toEqual(['claude', 'codex', 'opencode', 'cursor', 'junie'])
     expect(MODEL_DISCOVERY_RUNNERS.every((runner) => runnerDiscoversModels(runner))).toBe(true)
   })

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { GeminiRunner } from './gemini-runner.ts';
+import { GeminiRunner, buildGeminiArgs, geminiExitMessage } from './gemini-runner.ts';
+import { isGeminiAuthFailure } from './gemini-ui-mapper.ts';
 import type { AgentRunSpec } from './agent-runner.ts';
 
 describe('GeminiRunner', () => {
@@ -137,7 +138,7 @@ describe('GeminiRunner', () => {
     expect(customRunner).toBeDefined();
   });
 
-  it('emits events during execution', (done) => {
+  it('emits events during execution', async () => {
     const spec: AgentRunSpec = {
       userPrompt: 'test prompt',
       cwd: process.cwd(),
@@ -149,35 +150,29 @@ describe('GeminiRunner', () => {
     };
 
     const session = runner.startSession(spec, onEvent);
-    
-    session.result.then(() => {
-      expect(events.length).toBeGreaterThan(0);
-      done();
-    });
+
+    await session.result;
+    expect(events.length).toBeGreaterThan(0);
   });
 });
 
 describe('Gemini exit code handling', () => {
   it('recognizes authentication failure (exit 41)', () => {
-    const { geminiExitMessage } = require('./gemini-runner.ts');
     const message = geminiExitMessage(41, '');
     expect(message).toContain('Authentication');
   });
 
   it('recognizes session not found (exit 52)', () => {
-    const { geminiExitMessage } = require('./gemini-runner.ts');
     const message = geminiExitMessage(52, '');
     expect(message).toContain('Session not found');
   });
 
   it('recognizes invalid session state (exit 55)', () => {
-    const { geminiExitMessage } = require('./gemini-runner.ts');
     const message = geminiExitMessage(55, '');
     expect(message).toContain('Invalid session state');
   });
 
   it('includes stderr for unknown exit codes', () => {
-    const { geminiExitMessage } = require('./gemini-runner.ts');
     const stderr = 'Some error message from stderr';
     const message = geminiExitMessage(99, stderr);
     expect(message).toContain('99');
@@ -187,7 +182,6 @@ describe('Gemini exit code handling', () => {
 
 describe('Gemini auth detection', () => {
   it('detects authentication failure in stderr', () => {
-    const { isGeminiAuthFailure } = require('./gemini-ui-mapper.ts');
     
     expect(isGeminiAuthFailure('Error: Authentication required')).toBe(true);
     expect(isGeminiAuthFailure('Unauthorized: Invalid API key')).toBe(true);
@@ -196,7 +190,6 @@ describe('Gemini auth detection', () => {
   });
 
   it('does not false-positive on normal errors', () => {
-    const { isGeminiAuthFailure } = require('./gemini-ui-mapper.ts');
     
     expect(isGeminiAuthFailure('Network error')).toBe(false);
     expect(isGeminiAuthFailure('Rate limit exceeded')).toBe(false);

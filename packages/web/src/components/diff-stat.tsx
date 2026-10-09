@@ -1,4 +1,4 @@
-import type { DiffStat } from '@open-mercato/maestro-api-client'
+import type { DiffStat } from '@open-mercato/cezar-api-client'
 import { cn } from '@/lib/utils'
 
 /**

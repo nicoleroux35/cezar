@@ -4,8 +4,8 @@ import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { RunEvent } from '@open-mercato/maestro-api-client'
-import type { UiToolItem } from '@open-mercato/maestro-api-client'
+import type { RunEvent } from '@open-mercato/cezar-api-client'
+import type { UiToolItem } from '@open-mercato/cezar-api-client'
 import { createQueryClient } from '@/api/query-client'
 
 import bashAndScreenshot from '../../../../cezar/src/core/__fixtures__/claude/bash-and-screenshot.expected.json'

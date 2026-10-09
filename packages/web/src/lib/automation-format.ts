@@ -5,7 +5,7 @@ import {
   zonedParts,
   type AutomationDefinition,
   type RunStatus,
-} from '@open-mercato/maestro-api-client'
+} from '@open-mercato/cezar-api-client'
 
 import type { StatusDotTone } from '@/components/status-dot'
 

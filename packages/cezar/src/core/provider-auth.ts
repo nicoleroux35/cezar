@@ -6,6 +6,14 @@ import { profileEnv } from './agent-profiles.ts';
 import { resolveClaudeBin } from './claude-bin.ts';
 import { quoteExecutable, withEnvPrefix } from './shell-env.ts';
 import { probeJunieAuthentication } from './junie-auth-probe.ts';
+import {
+  antigravityFileDeclaresAuth,
+  claudeFileDeclaresAuth,
+  codexFileDeclaresAuth,
+  geminiFileDeclaresAuth,
+  geminiHome,
+  providerConfigDir,
+} from './provider-file-config.ts';
 
 export const PROVIDER_IDS = ['claude', 'codex', 'opencode', 'cursor', 'pi', 'junie', 'copilot', 'kilo', 'gemini', 'antigravity', 'http'] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
@@ -86,8 +94,13 @@ interface ProviderDescriptor {
    * status call that blocks on a network check (plausible with a key but no cached browser session)
    * silently ate the fallback and reported 'unknown' no matter how valid the key was. Skipping the
    * spawn entirely removes that race instead of racing to out-guess it.
+   *
+   * It also covers the endpoint a provider switcher writes into the agent's OWN config file rather
+   * than the environment (`provider-file-config.ts`) — for such a Codex provider the CLI's own
+   * answer is a confident, wrong "Not logged in". That file is read for the caller's `configDir`,
+   * so a per-account row reads THAT account's config, never the discovered default's.
    */
-  precheck?: () => ProviderConnectionState | undefined;
+  precheck?: (context: { configDir?: string | null }) => ProviderConnectionState | undefined;
 }
 
 const COMMAND_TIMEOUT_MS = 10_000;
@@ -403,9 +416,13 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     installHint: 'Install Claude Code, then run `claude auth login` (or set ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL).',
     parse: parseClaudeStatus,
     // Claude Code can use ANTHROPIC_API_KEY directly, or custom endpoint via ANTHROPIC_BASE_URL
-    precheck: () => {
+    // The same endpoint can also live in `~/.claude/settings.json`'s `env` block, which is where a
+    // provider switcher such as cc-switch writes it instead of exporting anything.
+    precheck: ({ configDir }) => {
       if (process.env.ANTHROPIC_API_KEY?.trim()) return 'connected';
+      if (process.env.ANTHROPIC_AUTH_TOKEN?.trim()) return 'connected';
       if (process.env.ANTHROPIC_BASE_URL?.trim()) return 'connected';
+      if (claudeFileDeclaresAuth(providerConfigDir('claude', configDir))) return 'connected';
       return undefined;
     },
   },
@@ -416,12 +433,16 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     loginArgs: ['login'],
     installHint: 'Install the Codex CLI, then run `codex login` (or set OPENAI_API_KEY / OPENAI_BASE_URL).',
     parse: parseCodexStatus,
-    // Codex can use OPENAI_API_KEY or AZURE_OPENAI_API_KEY, or custom endpoints
-    precheck: () => {
+    // Codex can use OPENAI_API_KEY or AZURE_OPENAI_API_KEY, or a custom endpoint — in the
+    // environment, or as a `[model_providers.<id>]` block in `~/.codex/config.toml`, which is where
+    // cc-switch writes it. Such a provider has NO login: `codex login status` answers "Not logged
+    // in" while the CLI runs fine, so the config file is the only place that knows.
+    precheck: ({ configDir }) => {
       if (process.env.OPENAI_API_KEY?.trim()) return 'connected';
       if (process.env.AZURE_OPENAI_API_KEY?.trim()) return 'connected';
       if (process.env.OPENAI_BASE_URL?.trim()) return 'connected';
       if (process.env.AZURE_OPENAI_ENDPOINT?.trim()) return 'connected';
+      if (codexFileDeclaresAuth(providerConfigDir('codex', configDir))) return 'connected';
       return undefined;
     },
   },
@@ -575,10 +596,14 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     loginArgs: [],
     installHint: 'Install Gemini CLI (npm i -g @google/gemini-cli), then authenticate with your Google account or set GEMINI_API_KEY / GOOGLE_API_BASE_URL.',
     parse: parseGeminiStatus,
+    // Gemini's own CLI answers nothing about auth (`--version` prints a version; 0.61.0 has no
+    // `auth status`), so without this the row stayed 'unknown' forever and the run gate blocked
+    // Gemini entirely. Its stored OAuth login is the only signal that exists.
     precheck: () => {
       if (process.env.GEMINI_API_KEY?.trim()) return 'connected';
       if (process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()) return 'connected';
       if (process.env.GOOGLE_API_BASE_URL?.trim()) return 'connected';
+      if (geminiFileDeclaresAuth(geminiHome())) return 'connected';
       return undefined;
     },
   },
@@ -589,22 +614,42 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     loginArgs: [],
     installHint: 'Install Antigravity CLI, then run `agy` to sign in with your Google account (or set GOOGLE_GENERATIVE_AI_API_KEY / GOOGLE_API_BASE_URL).',
     parse: parseAntigravityStatus,
+    // Same blind spot as Gemini: `agy --help` (1.3.0) has no auth-status subcommand either.
     precheck: () => {
       if (process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()) return 'connected';
       if (process.env.GOOGLE_API_BASE_URL?.trim()) return 'connected';
+      if (antigravityFileDeclaresAuth(geminiHome())) return 'connected';
       return undefined;
     },
   },
   {
     id: 'http',
-    executable: () => 'node', // dummy, never called
+    // No CLI exists for this backend, so there is nothing a login or a status probe could spawn.
+    // `precheck` below always answers, which is what keeps this placeholder, `statusArgs` and
+    // `loginArgs` unreachable — and `POST /providers/connect` refuses `http` outright (there is no
+    // sign-in to open) instead of rendering a command from them. That refusal is the fix for a
+    // real bug: `loginCommand('http')` used to render `'node'`, so pressing Connect opened a
+    // terminal on a bare Node REPL that did nothing at all.
+    executable: () => 'node',
     statusArgs: [],
     loginArgs: [],
-    installHint: 'HTTP agent requires no installation. Configure via CEZ_HTTP_AGENT_CONFIG environment variable with endpoint URL and optional API key.',
+    installHint: 'HTTP agent requires no installation. Configure it as an agent account (Settings → Agent accounts → HTTP Agent) or set CEZ_HTTP_AGENT_CONFIG with endpoint URL and optional API key.',
     parse: () => null,
-    // HTTP agent status is determined by configuration presence
-    precheck: () => {
-      const config = process.env.CEZ_HTTP_AGENT_CONFIG?.trim();
+    // This backend's whole configuration is presence — and, for a stored account, the JSON itself.
+    //
+    // `CEZ_HTTP_AGENT_CONFIG` is the name `PROFILE_ENV_VAR.http` exports and the name
+    // `http-agent-runner.ts` reads, so a value here means exactly what `profileEnv` hands a run:
+    // the account's config dir. The two sources are tried in the same order for the same reason
+    // `startSession` tries them — the account's own `configDir` first, the process env as the
+    // zero-config fallback — so "is this account usable?" is answered by the very string the run
+    // would be spawned with, with no second rule to drift from it.
+    //
+    // The account branch is load-bearing, not tidiness: a stored http account does NOT set the
+    // process variable (only the spawned child gets it, via `profileEnv`), so a check that read
+    // `process.env` alone would answer `disconnected` for every account that works — and the row
+    // would offer a Connect button with nothing behind it.
+    precheck: ({ configDir }) => {
+      const config = configDir?.trim() || process.env.CEZ_HTTP_AGENT_CONFIG?.trim() || '';
       if (!config) return 'disconnected';
       try {
         const parsed = JSON.parse(config) as { endpoint?: string };
@@ -1071,7 +1116,7 @@ export class ProviderAuthService {
         };
       }
     }
-    const precheck = descriptor.precheck?.();
+    const precheck = descriptor.precheck?.({ configDir });
     if (precheck !== undefined) return { provider: descriptor.id, status: precheck };
     let result: ProviderCommandResult;
     // The default profile is probed with the SAME three-argument call it always was — no

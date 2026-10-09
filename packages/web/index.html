@@ -38,6 +38,9 @@
             document.documentElement.dataset.density = density
           if (localStorage.getItem('cez-width') === 'wide')
             document.documentElement.dataset.width = 'wide'
+          var language = localStorage.getItem('cez-language')
+          if (language === 'fr')
+            document.documentElement.dataset.language = 'fr'
         } catch (e) {
           // Storage unavailable — lime/comfortable defaults already apply.
         }

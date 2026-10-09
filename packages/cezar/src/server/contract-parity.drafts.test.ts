@@ -8,7 +8,7 @@ import type {
   draftImageContentSchema,
   draftImageSchema,
   runDraftsResponseSchema,
-} from '@open-mercato/maestro-contract';
+} from '@open-mercato/cezar-contract';
 import type { AppType } from './app-type.ts';
 
 /**

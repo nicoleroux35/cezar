@@ -34,11 +34,16 @@ vi.mock('../core/junie-auth-probe.ts', () => ({
   probeJunieAuthentication: vi.fn(async () => ({ connected: true })),
 }));
 
-/** One status command per provider — the size of a full probe round. Junie is probed through
- *  `probeJunieAuthentication` (mocked above), never `runCommand`, so it is not counted. */
-const PROBE_ROUND = PROVIDER_IDS.filter((provider) => provider !== 'junie').length;
+/** One status command per provider — the size of a full probe round. Derived rather than written
+ *  out so adding runner #12 does not mean editing a dozen literal counts.
+ *
+ *  Two descriptors never reach `runCommand` and so are not counted: Junie is probed through
+ *  `probeJunieAuthentication` (mocked above), and `http` answers entirely from its own `precheck`
+ *  (a config string is its whole configuration — there is no CLI to spawn). Both are still status
+ *  ROWS, which is why they appear in the expectations below but not here. */
+const PROBE_ROUND = PROVIDER_IDS.filter((provider) => provider !== 'junie' && provider !== 'http').length;
 
-const CONNECTED_OUTPUT: Record<ProviderId, string> = {
+const CONNECTED_OUTPUT = {
   claude: '{"loggedIn":true}',
   codex: 'Logged in using ChatGPT',
   opencode: [
@@ -59,9 +64,19 @@ const CONNECTED_OUTPUT: Record<ProviderId, string> = {
   // Copilot's probe drives its ACP server, so its "connected" evidence is the `session/new`
   // answer (`.ai/runs/2026-09-27-copilot-cli-runner/copilot-acp-notes.md`).
   copilot: '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"3f1b6f2e-0000-4000-8000-1f2e3d4c5b6a"}}',
-};
+  // The three backends `providerForExecutable` below does not resolve, so its `runCommand`
+  // throws for them and `probe()` degrades each row to 'unknown'. Only reachable when the model
+  // lock is off (under the lock nothing is probed at all), which is why the status expectations
+  // carry 'unknown' for all three.
+  kilo: 'kilo authenticated',
+  gemini: 'gemini authenticated',
+  antigravity: 'antigravity authenticated',
+  // `http` has no CLI: its descriptor answers from `precheck` before `runCommand`, so this entry
+  // exists only to keep the table total over `ProviderId`.
+  http: 'http authenticated',
+} satisfies Record<ProviderId, string>;
 
-const DISCONNECTED_OUTPUT: Record<ProviderId, string> = {
+const DISCONNECTED_OUTPUT = {
   claude: '{"loggedIn":false}',
   codex: 'Not logged in',
   opencode: [
@@ -75,7 +90,11 @@ const DISCONNECTED_OUTPUT: Record<ProviderId, string> = {
   pi: 'No models available. Use /login to authenticate.',
   junie: 'Junie version: 26.9.22 (3419.7)',
   copilot: '{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Authentication required"}}',
-};
+  kilo: 'kilo not authenticated',
+  gemini: 'gemini not authenticated',
+  antigravity: 'antigravity not authenticated',
+  http: 'http not authenticated',
+} satisfies Record<ProviderId, string>;
 
 const providerForExecutable = (executable: string): ProviderId => {
   if (executable === 'claude' || executable === 'codex' || executable === 'opencode' || executable === 'pi' || executable === 'junie' || executable === 'copilot') return executable;
@@ -103,6 +122,14 @@ describe('workspace provider API', () => {
   const savedModelsLocked = process.env.CEZ_AGENT_MODELS_LOCKED;
   const savedDryRun = process.env.CEZ_DRY_RUN;
   const savedRemote = process.env.CEZ_REMOTE;
+  // Every variable a descriptor's `precheck` reads — `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, the
+  // `*_BASE_URL` overrides, `CEZ_HTTP_AGENT_CONFIG` and the rest — is DELETED around each case by
+  // `vitest.setup.ts`, which owns the one authoritative list. A precheck answers before
+  // `runCommand` is ever reached, so a developer who happens to have exported one of those makes
+  // its provider 'connected' regardless of what this file's stubbed `runCommand` would have said,
+  // and shifts the probe-call counts asserted below. The list is not repeated here: a second copy
+  // is a second thing to forget to extend, and this suite reads the same on every host only
+  // because the global hook is a superset of the names `provider-auth.ts` reads.
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'cez-providers-api-'));
@@ -202,13 +229,37 @@ describe('workspace provider API', () => {
         {
           provider: 'opencode',
           status: 'not-installed',
-          hint: 'Install OpenCode, then run `opencode auth login`.',
+          hint: 'Install OpenCode, then run `opencode auth login` (or set provider API keys / base URLs).',
           enabled: true,
         },
         { provider: 'cursor', status: 'connected', enabled: true },
         { provider: 'pi', status: 'connected', enabled: true },
         { provider: 'junie', status: 'connected', enabled: true },
         { provider: 'copilot', status: 'connected', enabled: true },
+        // The three runners this fixture's `providerForExecutable` does not know, so their probe
+        // throws and `probe()` degrades each to 'unknown' rather than inventing a state.
+        {
+          provider: 'kilo',
+          status: 'unknown',
+          hint: 'Authentication could not be verified. Try again.',
+          enabled: true,
+        },
+        {
+          provider: 'gemini',
+          status: 'unknown',
+          hint: 'Authentication could not be verified. Try again.',
+          enabled: true,
+        },
+        {
+          provider: 'antigravity',
+          status: 'unknown',
+          hint: 'Authentication could not be verified. Try again.',
+          enabled: true,
+        },
+        // A row and not a probe: `http`'s whole configuration is its `CEZ_HTTP_AGENT_CONFIG`
+        // string, which no fixture here sets, so its `precheck` answers 'disconnected' without a
+        // hint (there is no install to hint at).
+        { provider: 'http', status: 'disconnected', enabled: true },
       ],
     });
   });
@@ -223,16 +274,10 @@ describe('workspace provider API', () => {
     }), '/api/v1/providers/status?refresh=1');
 
     expect(response.status).toBe(200);
+    // Every row, not the fixture's subset: under the lock the answer is the frozen 'connected'
+    // list, which is how a locked machine keeps offering every backend without probing one.
     expect(await response.json()).toEqual({
-      providers: [
-        { provider: 'claude', status: 'connected', enabled: true },
-        { provider: 'codex', status: 'connected', enabled: true },
-        { provider: 'opencode', status: 'connected', enabled: true },
-        { provider: 'cursor', status: 'connected', enabled: true },
-        { provider: 'pi', status: 'connected', enabled: true },
-        { provider: 'junie', status: 'connected', enabled: true },
-        { provider: 'copilot', status: 'connected', enabled: true },
-      ],
+      providers: PROVIDER_IDS.map((provider) => ({ provider, status: 'connected', enabled: true })),
     });
     expect(runCommand).not.toHaveBeenCalled();
   });
@@ -639,7 +684,9 @@ describe('workspace provider API', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Install OpenCode, then run `opencode auth login`.',
+      // The descriptor's own hint, verbatim: a custom endpoint or an API key makes this backend
+      // usable without the CLI login, so the guidance names both routes.
+      error: 'Install OpenCode, then run `opencode auth login` (or set provider API keys / base URLs).',
       command: "'opencode' auth login",
     });
     expect(openTerminal).not.toHaveBeenCalled();
@@ -657,6 +704,26 @@ describe('workspace provider API', () => {
       error: 'Authentication could not be verified. Try again.',
       command: "'claude' auth login",
     });
+    expect(openTerminal).not.toHaveBeenCalled();
+  });
+
+  it('POST refuses http outright — there is no sign-in to open, so nothing is rendered', async () => {
+    // The reported bug: `http`'s descriptor has a placeholder `executable` ('node') and empty
+    // `loginArgs`, so the generic path below rendered `loginCommand('http')` as the literal
+    // `node` and pressing Connect opened a terminal on a bare Node REPL that did nothing. The
+    // refusal must also not hand back a `command`: offering a copyable `node` would be offering
+    // the bug. `CEZ_HTTP_AGENT_CONFIG` is set here to prove the refusal does not depend on state
+    // — a configured http backend still has no login to open.
+    process.env.CEZ_HTTP_AGENT_CONFIG = '{"endpoint":"https://x/v1/chat/completions"}';
+    const openTerminal = vi.fn(async () => true);
+
+    const response = await connect(app({ openTerminal }), 'http');
+
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: string; command?: unknown };
+    expect(body.command).toBeUndefined();
+    expect(body.error).toContain('no sign-in');
+    expect(body.error).toContain('Settings → Agent accounts');
     expect(openTerminal).not.toHaveBeenCalled();
   });
 
