@@ -399,6 +399,10 @@ export const runnerModelsSchema = z.object({
   cursor: z.string().optional(),
   pi: z.string().optional(),
   copilot: z.string().optional(),
+  kilo: z.string().optional(),
+  gemini: z.string().optional(),
+  antigravity: z.string().optional(),
+  http: z.string().optional(),
 });
 export type RunnerModels = z.infer<typeof runnerModelsSchema>;
 

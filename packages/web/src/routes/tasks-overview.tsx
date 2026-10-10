@@ -1,4 +1,3 @@
-// @ts-nocheck - TODO: Fix component variant type mismatches
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArchiveIcon,
@@ -276,10 +275,10 @@ export function TasksOverview({
       const payload = buildReorderPayload(newOrder)
       await reorderDisplay(payload.items)
       // Invalidate runs cache to refetch with new order
-      queryClient.invalidateQueries({ queryKey: queryKeys.runs() })
-      toast.success('Order saved')
+      queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
+      toast('Order saved')
     } catch (error) {
-      toast.error('Failed to save order')
+      toast('Failed to save order', { tone: 'danger' })
       console.error('Reorder error:', error)
     }
   }
@@ -341,7 +340,7 @@ export function TasksOverview({
         {view === 'active' && visible.length > 0 ? (
           <Button
             type="button"
-            variant={reorderMode ? 'default' : 'ghost'}
+            variant={reorderMode ? 'outline' : 'ghost'}
             size="sm"
             data-slot="reorder-toggle"
             onClick={() => setReorderMode(!reorderMode)}
@@ -410,7 +409,10 @@ export function TasksOverview({
                   renderTask={(run) => (
                     <div className="rounded-lg border border-border bg-card p-4">
                       <div className="flex items-center gap-3">
-                        <StatusDot status={run.status} />
+                        <StatusDot
+                          tone={deriveAttention(run).tone}
+                          pulse={deriveAttention(run).pulse}
+                        />
                         <div className="flex-1">
                           <p className="font-medium text-sm">{runTitle(run)}</p>
                           <p className="text-xs text-muted-foreground">{shortAge(run.createdAt, now)}</p>
@@ -1094,7 +1096,7 @@ function TaskTableCell({
           {/* A paused task shows a Start button instead of just the status pill */}
           {run.status === 'queued' && run.paused ? (
             <div className="flex items-center gap-2">
-              <Pill dot="muted" pulse={false} title="Paused in queue">
+              <Pill dot="neutral" pulse={false} title="Paused in queue">
                 Paused
               </Pill>
               <StartPausedButton runId={run.id} />
@@ -1633,7 +1635,7 @@ function StartPausedButton({ runId }: { runId: string }) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
-      toast('Task started', { tone: 'success' })
+      toast('Task started')
     },
     onError: (error: Error) => {
       toast(error.message, { tone: 'danger' })
@@ -1643,7 +1645,7 @@ function StartPausedButton({ runId }: { runId: string }) {
   return (
     <Button
       size="sm"
-      variant="default"
+      variant="primary"
       onClick={(e) => {
         e.stopPropagation()
         start.mutate()

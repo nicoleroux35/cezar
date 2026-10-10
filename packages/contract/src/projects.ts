@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { forgeKindSchema } from './forges.ts';
 import { trackerKindSchema } from './tracker.ts';
 
 /**
@@ -34,8 +35,9 @@ export const projectListEntrySchema = z.object({
   /** Current branch when cheaply available (omitted e.g. on an unborn HEAD). */
   branch: z.string().optional(),
   /** Which forge this project's remote belongs to (#698) — classified server-side from the
-   *  remote URL alone. Gates the project group's GitHub nav item; omitted = no forge remote. */
-  forge: z.literal('github').optional(),
+   *  remote URL alone (`forgeKindOfRemote`, the same `forgeKindSchema` health reports).
+   *  Gates the project group's forge nav item; omitted = no forge remote. */
+  forge: forgeKindSchema.optional(),
   /**
    * The remote's web root, `https://github.com/owner/repo`. Rebuilt server-side from the parsed
    * remote rather than passed through, so a remote carrying credentials cannot leak into the

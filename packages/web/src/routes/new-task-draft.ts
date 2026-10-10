@@ -1,4 +1,3 @@
-// @ts-nocheck - TODO: Fix schema incompatibilities
 import {
   DISPATCH_MAX_IN_FLIGHT,
   DISPATCH_MAX_SUBTASKS,
@@ -55,6 +54,7 @@ export interface NewTaskDraft {
 export interface ComposerRunModeInput {
   hasGit: boolean
   variants: number
+  planFirst: boolean
   explicitAutonomous: boolean | null
   explicitWorktree: boolean | null
   interactive?: boolean
@@ -85,10 +85,11 @@ export function resolveComposerRunMode(input: ComposerRunModeInput): {
   // Dispatch sits between the explicit choice and the recommendation: only an explicit OFF
   // beats it, because an interactive skill's advice is about the parent pausing for the user,
   // and a dispatching parent is expected to keep going while its children work.
-  const autonomous = input.explicitAutonomous
-    ?? (dispatch ? true : undefined)
-    ?? recommended
-    ?? autonomousFallback
+  // Plan-first beats everything: planning is inherently interactive, so the run that follows
+  // the review overlay must be able to hand the ball back (#383).
+  const autonomous = input.planFirst
+    ? false
+    : (input.explicitAutonomous ?? (dispatch ? true : undefined) ?? recommended ?? autonomousFallback)
   const worktree = !input.hasGit
     ? false
     : input.variants > 1 || dispatch

@@ -1,4 +1,3 @@
-// @ts-nocheck - TODO: Fix schema incompatibilities
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CheckIcon,
@@ -12,7 +11,9 @@ import { useParams, useSearchParams } from 'react-router'
 
 import { Link, useNavigate } from '@/lib/project-router'
 
-import { createRun, getLaunchKey, putConfig, putUiState } from '@/api/client'
+import { createRun, getLaunchKey, postPlan, putConfig, putUiState } from '@/api/client'
+import { buildPlannedRunBody, pendingPlanOf, type PendingPlan } from './new-task-plan'
+import { PlanReview } from './plan-review'
 import { useProjectScope } from '@/api/project-scope-context'
 import { hasAccountChoice, useAgentAccounts } from '@/api/agent-accounts'
 import {
@@ -335,6 +336,7 @@ export function NewTaskRoute() {
   const runMode = resolveComposerRunMode({
     hasGit,
     variants,
+    planFirst: draft.planFirst,
     explicitAutonomous: draft.autonomous,
     explicitWorktree: draft.worktree,
     interactive: selectedSkill?.interactive,
@@ -365,6 +367,16 @@ export function NewTaskRoute() {
   const generateFollowupsOn = followupsToggleShown
     ? (draft.generateFollowups ?? uiState.data?.lastGenerateFollowups ?? true)
     : false
+
+  // ---- plan mode (#383 + spec 008) ----------------------------------------------------------
+  // `plan` is the overlay's state: the steps `POST /api/1/plan` proposed, edited by the user
+  // until they press ▶ Start — at which point they go to `POST /runs` as an INLINE chain,
+  // never written to the workflow catalog (spec 008). `planning` is that POST in flight and
+  // `starting` is the run it produced being created; both render as busy, and both keep the
+  // controls they disable honest.
+  const [plan, setPlan] = useState<PendingPlan | null>(null)
+  const [planning, setPlanning] = useState(false)
+  const [starting, setStarting] = useState(false)
 
   // ---- bookmarklet deep-link (spec 011 — legacy handleDeepLink, verbatim) -------------------
   // `auto=1` with a ref arms the unattended start; the composer stays hidden behind a
@@ -465,7 +477,7 @@ export function NewTaskRoute() {
     // Legacy focused the Run button so a bare Enter submits the reviewed form.
     document
       .querySelector<HTMLButtonElement>(
-        '[data-slot="composer"] button[aria-label="Start task"]',
+        '[data-slot="composer"] button[aria-label="Start task"], [data-slot="composer"] button[aria-label="Plan task"]',
       )
       ?.focus()
   }, [notice, sourcesReady]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -483,6 +495,20 @@ export function NewTaskRoute() {
     if (!sourcesReady) {
       // Rejection restores the draft — nothing typed is lost to a race with the pickers.
       throw new Error('Still loading workflows and skills — try again in a second.')
+    }
+    if (draft.planFirst) {
+      // Plan mode: submit means PLAN. A rejection propagates — the composer toasts and
+      // restores the draft; a success restores the text ourselves (the composer already
+      // cleared optimistically) so Discard hands back exactly what was typed. The review
+      // overlay is deliberate: it's where steps are edited and saved as a reusable chain.
+      setPlanning(true)
+      try {
+        setPlan(pendingPlanOf(text, submitted, await postPlan(text)))
+        update({ text })
+      } finally {
+        setPlanning(false)
+      }
+      return
     }
     const created = await createRun(
       buildCreateRunBody({
@@ -538,9 +564,52 @@ export function NewTaskRoute() {
     
     // Queue-only mode: stay on /new instead of navigating to the task thread
     if (draft.queueOnly) {
-      toast('Task added to queue — start it manually from the task list', { tone: 'success' })
+      toast('Task added to queue — start it manually from the task list')
     } else {
       navigate(startedRunPath(created))
+    }
+  }
+
+  /** ▶ Start on the reviewed plan: the (possibly edited) steps go INLINE, with the composer's
+   *  current picker choices — legacy `startPlannedRun` semantics on the new surface. A worktree
+   *  is forced here for the same reason dispatch forces one: the run is a chain whose steps
+   *  build on each other. */
+  const startPlanned = async () => {
+    if (plan === null || plan.steps.length === 0 || starting || !providersReady || runner === null) return
+    setStarting(true)
+    try {
+      const created = await createRun(
+        buildPlannedRunBody({
+          task: plan.task,
+          steps: plan.steps,
+          model,
+          modelsLocked,
+          runner,
+          runnerExplicit: draft.runner !== null,
+          defaultRunner,
+          variants,
+          images: plan.images,
+          generateFollowups: generateFollowupsOn,
+          todoId: deepLink.todo, // #374: planning first must not lose the inbox entry
+          dispatch,
+        }),
+      )
+      // The follow-up default rides along, but the toggle is hidden in plan mode and the draft
+      // holds no choice, so this is the workspace default — never persisted off by a forced
+      // value that would outlive the toggle coming back.
+      if (followupsToggleShown) {
+        void putUiState({ lastGenerateFollowups: generateFollowupsOn })
+          .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.uiState }))
+          .catch(() => {})
+      }
+      clearStartedDraft(draftProjectId)
+      setPlan(null)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
+      navigate(startedRunPath(created))
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), { tone: 'danger' })
+    } finally {
+      setStarting(false)
     }
   }
 
@@ -734,6 +803,7 @@ export function NewTaskRoute() {
               ) : null}
               <AutonomousToggle
                 on={autonomousOn}
+                disabled={draft.planFirst}
                 onChange={(on) => update({ autonomous: on })}
               />
               {followupsToggleShown ? (
@@ -815,6 +885,28 @@ export function NewTaskRoute() {
         <SuggestedChips onPick={(text) => update({ text })} />
       </div>
 
+      {plan !== null ? (
+        <PlanReview
+          plan={plan}
+          starting={starting}
+          startAvailable={providersReady}
+          startUnavailableReason={
+            providers.isPending
+              ? 'Checking agent providers…'
+              : providers.isError
+                ? 'Provider authentication could not be verified.'
+                : 'Connect an agent provider before starting a task.'
+          }
+          startUnavailableAction={
+            !providers.isPending ? (
+              <Link to="/settings/agents#providers">Configure providers</Link>
+            ) : undefined
+          }
+          onStepsChange={(steps) => setPlan((current) => (current ? { ...current, steps } : current))}
+          onStart={() => void startPlanned()}
+          onDiscard={() => setPlan(null)}
+        />
+      ) : null}
     </div>
   )
 }

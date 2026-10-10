@@ -553,8 +553,8 @@ export type CancelResponse = z.infer<typeof cancelResponseSchema>;
  * `DELETE /runs/:id/auto-resume` (spec 2026-08-03-auto-resume-after-usage-limit) — the per-task
  * cancellation gate in the session header. A run without a pending resume answers 409.
  */
-export const deleteAutoResumeResponseSchema = z.object({ deleted: z.literal(true) });
-export type DeleteAutoResumeResponse = z.infer<typeof deleteAutoResumeResponseSchema>;
+export const cancelAutoResumeResponseSchema = z.object({ cancelled: z.literal(true) });
+export type CancelAutoResumeResponse = z.infer<typeof cancelAutoResumeResponseSchema>;
 
 /** `POST /runs/archive-finished` — how many runs the sweep archived. */
 export const archiveFinishedResponseSchema = z.object({ archived: z.number() });
@@ -615,8 +615,8 @@ export const editQueuedMessageResponseSchema = z.object({ message: queuedMessage
 export type EditQueuedMessageResponse = z.infer<typeof editQueuedMessageResponseSchema>;
 
 /** `DELETE /runs/:id/queued-messages/:msgId` (#472) — `409 run already started` otherwise. */
-export const deleteQueuedMessageResponseSchema = z.object({ deleted: z.literal(true) });
-export type DeleteQueuedMessageResponse = z.infer<typeof deleteQueuedMessageResponseSchema>;
+export const removeQueuedMessageResponseSchema = z.object({ removed: z.literal(true) });
+export type RemoveQueuedMessageResponse = z.infer<typeof removeQueuedMessageResponseSchema>;
 
 /**
  * `POST /runs/:id/open-in-cli` — a terminal was spawned with `command` running in it. With no
@@ -639,29 +639,48 @@ export const commitInputSchema = z.object({
 });
 export type CommitInput = z.input<typeof commitInputSchema>;
 
-export const commitResponseSchema = z.object({
+export const gitCommitResponseSchema = z.object({
   committed: z.literal(true),
   sha: z.string(),
 });
-export type CommitResponse = z.infer<typeof commitResponseSchema>;
+export type GitCommitResponse = z.infer<typeof gitCommitResponseSchema>;
 
 /** `POST /runs/:id/git/push` — push the worktree's branch, setting upstream if it has none. */
-export const pushResponseSchema = z.object({ pushed: z.literal(true) });
-export type PushResponse = z.infer<typeof pushResponseSchema>;
+export const gitPushResponseSchema = z.object({
+  pushed: z.literal(true),
+  branch: z.string(),
+  remote: z.string(),
+  upstreamSet: z.boolean(),
+});
+export type GitPushResponse = z.infer<typeof gitPushResponseSchema>;
+
+/** A commit a run made on its worktree branch. */
+export const runCommitSchema = z.object({
+  sha: z.string(),
+  subject: z.string(),
+  author: z.string(),
+  /** Relative time ("3 hours ago") — git's `%cr`. */
+  when: z.string(),
+});
+export type RunCommit = z.infer<typeof runCommitSchema>;
 
 /** `GET /runs/:id/commits` — `<base>..HEAD` on the worktree branch, newest first. */
-export const commitSchema = z.object({
-  sha: z.string(),
-  message: z.string(),
-  author: z.string(),
-  date: z.string(),
-});
-export type Commit = z.infer<typeof commitSchema>;
+export const runCommitsResponseSchema = z.object({ commits: z.array(runCommitSchema) });
+export type RunCommitsResponse = z.infer<typeof runCommitsResponseSchema>;
 
-export const commitsResponseSchema = z.object({
-  commits: z.array(commitSchema),
+/**
+ * `POST /groups/:groupId/pick` — the winner (parked at `review` when it has a diff); the losers
+ * were cancelled if alive, archived, and their worktrees + branches removed.
+ *
+ * `winner` is OPTIONAL because that is what the wire says: `store.getRun(id)` can miss, and
+ * `JSON.stringify` drops a key whose value is `undefined`. The handler spreads the key in
+ * conditionally (`server.ts`, the `/groups/:groupId/pick` route) so its own type says the same
+ * thing — the two-way check in `contract-parity.workflows.test.ts` is what pins that.
+ */
+export const pickVariantResponseSchema = z.object({
+  winner: runRecordSchema.optional(),
 });
-export type CommitsResponse = z.infer<typeof commitsResponseSchema>;
+export type PickVariantResponse = z.infer<typeof pickVariantResponseSchema>;
 
 // `/groups/:groupId/*` is the RUN family seen sideways: a group is the runs sharing a `groupId`,
 // not a separate entity.
@@ -927,34 +946,13 @@ export type AttachmentInput = z.input<typeof attachmentInputSchema>;
 export const imageInputSchema = attachmentInputSchema;
 export type ImageInput = AttachmentInput;
 
-/** One step of an inline chain (spec 008): the step definition keys we actually honor. */
-const createRunStepInputSchema = z.object({
-  name: z.string(),
-  /** Exactly one of `prompt`/`skill`/`command` — the XOR is the refinement below. */
-  prompt: z.string().optional(),
-  skill: z.string().optional(),
-  command: z.string().optional(),
-  /** The runner and profile this step spawns under. Absent = follow `CreateRunInput.runner`
-   *  and the run's own `agentProfile` for agent steps. */
-  runner: runnerSchema.optional(),
-  agentProfile: z.string().optional(),
-});
-
-/**
- * The KEYS of `POST /runs`' body, before the XOR refinement that `createRunInputSchema` adds.
- *
- * Exported separately so downstream code can test a *widened* object (title + workflow + prompt)
- * and then narrow the result to what the route actually admits (title + (workflow XOR steps) +
- * prompt) — see `task-create.test.tsx`, which validates a handwritten object rather than a
- * runtime-constructed payload. Without this export, it would have to suppress the type error or
- * guess the discriminant.
- */
 export const createRunInputKeys = z.object({
-  title: z.string().trim().min(1).max(300),
   workflow: z.string().optional(),
   /** An inline chain (spec 008 — an approved plan runs as an ad-hoc workflow, never written to
-   *  the catalog). Optional, and mutually exclusive with `workflow`: exactly one of the two. */
-  steps: z.array(createRunStepInputSchema).optional(),
+   *  a file). The catalog's own step shape, not a copy of it: the route validates inline steps
+   *  with the same `workflowStepSchema` as saved workflows (step `id` required, `name`
+   *  optional), so this must stay that shape rather than a narrower copy. */
+  steps: z.array(workflowStepDefSchema).min(1).max(8).optional(),
   task: z.string().trim().min(1).max(100_000),
   images: z.array(attachmentInputSchema).max(4).default([]),
   model: z.string().optional(),
@@ -964,8 +962,14 @@ export const createRunInputKeys = z.object({
   agentProfile: z.string().optional(),
   generateFollowups: z.boolean().optional(),
   autonomous: z.boolean().optional(),
-  /** 1–3. Above 1 the response is `{ runs }` rather than a single record. */
-  variantCount: z.literal(1).or(z.literal(2)).or(z.literal(3)).default(1),
+  /** Parallel variants (spec 010): 1–3 competing runs in separate worktrees; ×2/×3 answers
+   *  `{ runs }` rather than a single record. Absent = 1. The server's own `startRunSchema`
+   *  spells it exactly this way. */
+  variants: z.number().int().min(1).max(3).optional(),
+  /** The inbox entry this task came from (#374) — the server records the run on it so it
+   *  leaves the inbox. Best-effort bookkeeping: an unknown or already-started id never fails
+   *  the run. For ×2/×3 the FIRST variant is recorded. */
+  todoId: z.string().min(1).max(200).optional(),
   worktree: z.literal(false).optional(),
   /**
    * Provenance from the dispatch entry point (`/runs/:id/dispatch`, spec 2026-09-10-dispatch).

@@ -92,13 +92,16 @@ const tscBin = join(dirname(tsManifest), require_(tsManifest).bin.tsc);
 const stageDir = mkdtempSync(join(tmpdir(), 'cezar-contract-'));
 cpSync(join(contractRoot, 'src'), join(stageDir, 'src'), { recursive: true });
 
-// Create symlink to node_modules so zod can be resolved
+// Create symlink to node_modules so zod can be resolved. npm creates an (empty)
+// node_modules dir in every workspace package even when everything hoists to the root,
+// so an existence check alone can link an empty dir — require zod to be resolvable inside.
 const contractNodeModules = join(contractRoot, 'node_modules');
 const workspaceNodeModules = join(contractRoot, '..', '..', 'node_modules');
-if (existsSync(contractNodeModules)) {
-  symlinkSync(contractNodeModules, join(stageDir, 'node_modules'), 'dir');
-} else if (existsSync(workspaceNodeModules)) {
-  symlinkSync(workspaceNodeModules, join(stageDir, 'node_modules'), 'dir');
+const hasZod = (dir) => existsSync(join(dir, 'zod', 'package.json'));
+const linkTarget = [contractNodeModules, workspaceNodeModules].find(hasZod)
+  ?? (existsSync(contractNodeModules) ? contractNodeModules : workspaceNodeModules);
+if (existsSync(linkTarget)) {
+  symlinkSync(linkTarget, join(stageDir, 'node_modules'), 'dir');
 }
 
 // Strip .ts extensions from all imports

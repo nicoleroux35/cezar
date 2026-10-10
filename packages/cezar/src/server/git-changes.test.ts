@@ -4,6 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+// cezar surfaces git's OWN stderr to the user, so on a non-English machine git
+// answers in that language and every assertion below on that text would be
+// comparing against a translation. Pinning the locale for the whole file keeps
+// the assertions meaningful without changing what production returns.
+process.env.LC_ALL = 'C';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import {
@@ -34,7 +40,9 @@ import { apiRequest } from './loopback-request.testkit.ts';
  */
 
 function g(dir: string, ...args: string[]): string {
-  return execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+  // `LC_ALL=C` pins git's diagnostics to English: cezar deliberately surfaces git's OWN
+  // stderr to the user (in their language), so assertions on that text must fix the locale.
+  return execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
 }
 
 /** `g`, with the clock moved: reflog entries take their timestamp from the committer
@@ -847,7 +855,7 @@ describe('session git API routes', () => {
   it('POST git/push sets upstream on first push to a real remote', async () => {
     const remote = mkdtempSync(join(tmpdir(), 'cez-remote-'));
     try {
-      execFileSync('git', ['init', '--bare', remote], { encoding: 'utf8' });
+      execFileSync('git', ['init', '--bare', remote], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
       g(worktree, 'remote', 'add', 'origin', remote);
 
       const first = await apiRequest(app, `/api/v1/runs/${run.id}/git/push`, { method: 'POST' });

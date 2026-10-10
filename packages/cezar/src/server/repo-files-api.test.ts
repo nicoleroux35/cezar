@@ -10,6 +10,9 @@ import type { RunManager } from '../workflows/run.ts';
 import { listRepoPaths, repoIndexContains } from './git-changes.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
+// Pin git's locale: assertions elsewhere in this family compare git's own
+// English diagnostics, and cezar passes them through to the user verbatim.
+process.env.LC_ALL = 'C';
 
 /**
  * The repository file browser's server half (spec `.ai/specs/2026-10-05-repo-file-browser.md`,

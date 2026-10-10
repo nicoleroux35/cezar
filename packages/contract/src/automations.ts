@@ -127,7 +127,7 @@ export type AutomationDispatch = z.infer<typeof automationDispatchSchema>;
  *    stores and answers it plainly, so it stays optional.
  */
 export const automationTaskSchema = createRunInputKeys
-  .omit({ task: true, images: true, title: true })
+  .omit({ task: true, images: true })
   .extend({
     /** The prompt template. `{{github.number}}`, `{{github.title}}`, `{{github.url}}` and
      *  `{{github.labels}}` are substituted per match; GitHub content is appended as untrusted
@@ -136,6 +136,9 @@ export const automationTaskSchema = createRunInputKeys
     variants: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
     systemPrompt: z.string().optional(),
     dispatch: automationDispatchSchema.optional(),
+    /** Full boolean, not the run-creation opt-out: the store's own task shape carries
+     *  `worktree?: boolean`, and the automation routes validate against it. */
+    worktree: z.boolean().optional(),
   });
 export type AutomationTask = z.infer<typeof automationTaskSchema>;
 
