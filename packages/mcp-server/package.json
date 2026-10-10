@@ -1,6 +1,6 @@
 {
   "name": "@open-mercato/cezar-mcp-server",
-  "version": "1.0.0",
+  "version": "0.14.0",
   "private": true,
   "type": "module",
   "description": "MCP server exposing cezar's orchestration capabilities",
@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
-    "@open-mercato/cezar-api-client": "workspace:*",
-    "@open-mercato/cezar-contract": "workspace:*",
+    "@open-mercato/cezar-api-client": "^0.14.0",
+    "@open-mercato/cezar-contract": "^0.14.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
