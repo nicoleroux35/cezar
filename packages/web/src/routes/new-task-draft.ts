@@ -55,7 +55,6 @@ export interface NewTaskDraft {
 export interface ComposerRunModeInput {
   hasGit: boolean
   variants: number
-  planFirst: boolean
   explicitAutonomous: boolean | null
   explicitWorktree: boolean | null
   interactive?: boolean
@@ -86,9 +85,10 @@ export function resolveComposerRunMode(input: ComposerRunModeInput): {
   // Dispatch sits between the explicit choice and the recommendation: only an explicit OFF
   // beats it, because an interactive skill's advice is about the parent pausing for the user,
   // and a dispatching parent is expected to keep going while its children work.
-  const autonomous = input.planFirst
-    ? false
-    : (input.explicitAutonomous ?? (dispatch ? true : undefined) ?? recommended ?? autonomousFallback)
+  const autonomous = input.explicitAutonomous
+    ?? (dispatch ? true : undefined)
+    ?? recommended
+    ?? autonomousFallback
   const worktree = !input.hasGit
     ? false
     : input.variants > 1 || dispatch

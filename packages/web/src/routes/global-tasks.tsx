@@ -27,16 +27,18 @@ import type { ProjectListEntry, RunIndexEntry, RunsIndexResponse } from '@open-m
 import { dispatchKindLabel, subtaskLabel, taskTreeRows, type TaskTreeInput } from '@/lib/task-tree'
 import { CenteredState } from '@/components/centered-state'
 import { FacetFilter, SegmentedControl, ToggleChip } from '@/components/facet-filter'
+import { Segmented } from '@/components/segmented'
 import { useListView } from '@/components/list-view'
 import { Pill } from '@/components/pill'
 import { ReferenceChip } from '@/components/reference-chip'
 import { ResolveConflictsForRun } from '@/components/reference-conflict-action'
 import { ReferenceStatusProvider } from '@/components/reference-status'
-import { StatusDot } from '@/components/status-dot'
 import { SubtaskToggle } from '@/components/subtask-toggle'
+import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { toast } from '@/components/ui/toaster'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { UnreadMarker } from '@/components/unread-marker'
 import { deriveAttention } from '@/lib/attention'
 import { shortAge } from '@/lib/format'
 import {
@@ -55,6 +57,8 @@ import {
   allWorkflows,
   facetCounts,
   filterGlobalTasks,
+  filterGlobalTasksByOrigin,
+  globalAutomationIndex,
   urlStateFromSearchParams,
   urlStateToSearchParams,
   groupGlobalTasks,
@@ -76,6 +80,7 @@ import { scopeTo } from '@/lib/project-router'
 import { allProjectTags } from '@/lib/project-tags'
 import { canBeUnread, isReadDoneItem, isUnread } from '@/lib/read-state'
 import { runTitle, type ListView } from '@/lib/task-groups'
+import { TASK_ORIGIN_OPTIONS, useTaskOrigin, type TaskOrigin } from '@/lib/task-origin'
 import { usageMetricVisibility } from '@/lib/token-metrics'
 import { useNow } from '@/lib/use-now'
 import { cn } from '@/lib/utils'
@@ -322,10 +327,25 @@ export function GlobalTasksRoute() {
     if (indexedStatuses) rememberReferenceStatuses(indexedStatuses)
   }, [indexedStatuses])
   const registry = React.useMemo(() => projects.data?.projects ?? [], [projects.data])
-  const tasks = React.useMemo(
+  const allTasks = React.useMemo(
     () => toGlobalTasks(index.data?.runs ?? [], registry),
     [index.data, registry],
   )
+  // Who started each row (a person, or an automation) — the remembered origin split narrows the
+  // list before any facet does, so the facet counts are counts of the list actually on screen.
+  // It lives in localStorage rather than the URL: it is a standing preference shared with the
+  // per-project table, not a narrowing worth pasting into a colleague's chat.
+  const [origin, setOrigin] = useTaskOrigin()
+  const automations = React.useMemo(() => globalAutomationIndex(allTasks), [allTasks])
+  const tasks = React.useMemo(
+    () => filterGlobalTasksByOrigin(allTasks, origin, automations),
+    [allTasks, origin, automations],
+  )
+  const originCounts = React.useMemo(() => {
+    const count = (value: TaskOrigin) =>
+      filterGlobalTasks(filterGlobalTasksByOrigin(allTasks, value, automations), filters, view).length
+    return { regular: count('regular'), automation: count('automation'), all: count('all') }
+  }, [allTasks, automations, filters, view])
   const visible = React.useMemo(
     () => filterGlobalTasks(tasks, filters, view),
     [tasks, filters, view],
@@ -403,7 +423,7 @@ export function GlobalTasksRoute() {
         </div>
         <div className="flex-1" />
         <span data-slot="global-tasks-count" className="text-[12.5px] text-soft-foreground tabular-nums">
-          {visible.length} of {tasks.length}
+          {visible.length} of {allTasks.length}
         </span>
         {search}
       </header>
@@ -426,6 +446,9 @@ export function GlobalTasksRoute() {
           projects={registry}
           tasks={tasks}
           view={view}
+          origin={origin}
+          onOriginChange={setOrigin}
+          originCounts={originCounts}
         />
 
         {truncated.length > 0 ? (
@@ -436,7 +459,13 @@ export function GlobalTasksRoute() {
         ) : null}
 
         {index.data === undefined ? null : visible.length === 0 ? (
-          <GlobalTasksEmptyState view={view} filtered={hasActiveFilters(filters)} />
+          <GlobalTasksEmptyState
+            view={view}
+            filtered={hasActiveFilters(filters)}
+            origin={origin}
+            hiddenByOrigin={origin !== 'all' && originCounts.all > 0}
+            onShowAll={() => setOrigin('all')}
+          />
         ) : (
           // No `projectId` on the provider, uniquely on this page: every chip under it names its
           // own, because the rows next to each other belong to different repositories.
@@ -543,6 +572,9 @@ function FilterBar({
   projects,
   tasks,
   view,
+  origin,
+  onOriginChange,
+  originCounts,
 }: {
   filters: GlobalTaskFilters
   onToggle: (facet: FacetId, value: string) => void
@@ -553,6 +585,10 @@ function FilterBar({
   projects: readonly ProjectListEntry[]
   tasks: readonly GlobalTask[]
   view: ListView
+  origin: TaskOrigin
+  onOriginChange: (origin: TaskOrigin) => void
+  /** Rows each origin would show under the current facets and view. */
+  originCounts: Record<TaskOrigin, number>
 }) {
   const tags = React.useMemo(() => allProjectTags(projects), [projects])
 
@@ -579,6 +615,14 @@ function FilterBar({
       className="flex flex-col gap-2 rounded-lg border border-border bg-card p-2.5 shadow-xs"
     >
       <div className="flex flex-wrap items-center gap-1.5">
+        <Segmented
+          slot="task-origin"
+          label="Show tasks started by"
+          value={origin}
+          options={TASK_ORIGIN_OPTIONS.map((option) => ({ ...option, count: originCounts[option.value] }))}
+          onChange={onOriginChange}
+        />
+        <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
         {/* No project facet, deliberately — see the note in `lib/global-tasks.ts`. Narrowing to
             one project is that project's own Tasks page, which every project name here links to. */}
         <FacetFilter
@@ -882,6 +926,7 @@ function TaskRow({
             )}
           >
             {runTitle(run)}
+            {unread ? <UnreadMarker /> : null}
           </Link>
           {/* What a DISPATCHED row is for — `review` or `implement`. Null on every root. */}
           {dispatchKindLabel(run) ? (
@@ -899,15 +944,6 @@ function TaskRow({
               label={subtasks}
               expanded={subtasksExpanded}
               onToggle={() => onToggleSubtasks(run.id)}
-            />
-          ) : null}
-          {unread ? (
-            <StatusDot
-              tone="violet"
-              role="img"
-              aria-label="unread"
-              title="Unread — not opened since it finished"
-              className="shrink-0"
             />
           ) : null}
         </span>
@@ -968,14 +1004,14 @@ function TaskRow({
 /**
  * Mark one row read or unread — an open eye to stamp the receipt, a closed one to take it back.
  *
- * Offered only where a read state EXISTS: `canBeUnread` is the same decider behind the unread dot
- * itself, so the button appears on exactly the rows that can wear one — finished, not archived,
+ * Offered only where a read state EXISTS: `canBeUnread` is the same decider behind the unread
+ * weight itself, so the button appears on exactly the rows that can be unread — finished, not archived,
  * not a task merely waiting out a usage limit. A running task has nothing to have read yet, and a
  * button that did nothing would say otherwise.
  *
  * The icon shows the ACTION, not the state: unread rows offer the open eye ("mark read"), read
  * ones the closed eye ("mark unread"). The state is already visible a few columns left, as the
- * violet dot beside the title.
+ * title's weight.
  */
 function ReadToggle({
   task,
@@ -1273,7 +1309,42 @@ function Dash() {
 }
 
 /** What an empty global list honestly means, given how it got empty. */
-function GlobalTasksEmptyState({ view, filtered }: { view: ListView; filtered: boolean }) {
+function GlobalTasksEmptyState({
+  view,
+  filtered,
+  origin = 'all',
+  hiddenByOrigin = false,
+  onShowAll = () => undefined,
+}: {
+  view: ListView
+  filtered: boolean
+  origin?: TaskOrigin
+  /** The origin split is what emptied this view: switching to All would show rows. */
+  hiddenByOrigin?: boolean
+  onShowAll?: () => void
+}) {
+  if (hiddenByOrigin) {
+    return (
+      <div data-slot="global-tasks-empty" data-empty-kind="origin-hidden">
+        <CenteredState
+          heading="h2"
+          icon={<LayersIcon />}
+          tone="neutral"
+          title={origin === 'regular' ? 'No regular tasks here' : 'No automation tasks here'}
+          subtitle={
+            origin === 'regular'
+              ? 'Tasks started by automations are hidden.'
+              : 'Only tasks started by automations are shown.'
+          }
+          actions={
+            <Button type="button" variant="outline" onClick={onShowAll}>
+              Show all tasks
+            </Button>
+          }
+        />
+      </div>
+    )
+  }
   if (filtered) {
     return (
       <CenteredState

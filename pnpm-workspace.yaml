@@ -1,6 +1,0 @@
-packages:
-  - packages/contract
-  - packages/api-client
-  - packages/cezar
-  - packages/web
-  - packages/mcp-server

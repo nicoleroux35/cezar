@@ -49,6 +49,9 @@ function mount(starCount: StarCountPayload | undefined = AVAILABLE, seed: RunRec
   vi.stubGlobal('fetch', vi.fn(() => new Promise<never>(() => {})))
   const client = createQueryClient()
   clients.push(client)
+  client.setQueryData(workspaceQueryKeys.config, {
+    branding: { name: 'cezar', logoUrl: null },
+  })
   if (starCount) client.setQueryData(workspaceQueryKeys.starCount, starCount)
   client.setQueryData(queryKeys.runs.list(), seed)
   render(
@@ -83,6 +86,23 @@ afterEach(() => {
 })
 
 describe('StarPromo', () => {
+  it('does not fetch product stars or show product copy when custom branding is active', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<never>(() => {})))
+    const client = createQueryClient()
+    clients.push(client)
+    client.setQueryData(workspaceQueryKeys.config, {
+      branding: { name: 'Acme Tools', logoUrl: null },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <StarPromo />
+      </QueryClientProvider>,
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByText(/cezar|GitHub stars/i)).toBeNull()
+    expect(client.getQueryData(workspaceQueryKeys.starCount)).toBeUndefined()
+  })
+
   it('asks when a run ends well, the user has three successes and is at the screen', () => {
     const { patch } = mount()
     touch()

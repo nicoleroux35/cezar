@@ -12,7 +12,7 @@ import { useParams, useSearchParams } from 'react-router'
 
 import { Link, useNavigate } from '@/lib/project-router'
 
-import { createRun, getLaunchKey, postPlan, putConfig, putUiState } from '@/api/client'
+import { createRun, getLaunchKey, putConfig, putUiState } from '@/api/client'
 import { useProjectScope } from '@/api/project-scope-context'
 import { hasAccountChoice, useAgentAccounts } from '@/api/agent-accounts'
 import {
@@ -97,16 +97,11 @@ import {
   type TaskSource,
 } from './new-task-form'
 import { parseNewTaskParams } from './new-task-params'
-import { buildPlannedRunBody, pendingPlanOf, type PendingPlan } from './new-task-plan'
-import { PlanReview } from './plan-review'
 
 /**
  * `/new` — the full-screen new-task hero (spec §"New task (full-screen, #386)"; visual
  * contract docs/mockups/new-task.html): centered composer card on the twinkle surface, the
  * picker pill row inside the card below the textarea, suggested-task ghost chips underneath.
- * In plan-first mode (#383, the `Start | Plan first` segment) submit runs `POST /api/plan`
- * and opens the review overlay (plan-review.tsx) instead of starting a run.
- *
  * This route also owns the saved-bookmarklet contract (spec 011, BACKWARD_COMPATIBILITY.md):
  * a full document load of `/new?skill=&ref=&auto=1&key=` auto-starts a run unattended when the
  * key matches `GET /api/launch-key`, and only prefills otherwise — `handleDeepLink()` in
@@ -337,12 +332,9 @@ export function NewTaskRoute() {
   // Autonomous (#autonomous): the run never pauses for the user. An explicit toggle this session
   // wins; then an interactive skill recommends handing the ball back; otherwise the configured
   // workspace default applies ('source-dependent' → skills default ON, everything else OFF).
-  // Plan-first forces it OFF (and disables the toggle): planning is inherently interactive, so
-  // the run must be able to hand the ball back.
   const runMode = resolveComposerRunMode({
     hasGit,
     variants,
-    planFirst: draft.planFirst,
     explicitAutonomous: draft.autonomous,
     explicitWorktree: draft.worktree,
     interactive: selectedSkill?.interactive,
@@ -373,11 +365,6 @@ export function NewTaskRoute() {
   const generateFollowupsOn = followupsToggleShown
     ? (draft.generateFollowups ?? uiState.data?.lastGenerateFollowups ?? true)
     : false
-
-  // ---- plan mode (#383 + spec 008) ----------------------------------------------------------
-  const [plan, setPlan] = useState<PendingPlan | null>(null)
-  const [planning, setPlanning] = useState(false)
-  const [starting, setStarting] = useState(false)
 
   // ---- bookmarklet deep-link (spec 011 — legacy handleDeepLink, verbatim) -------------------
   // `auto=1` with a ref arms the unattended start; the composer stays hidden behind a
@@ -416,6 +403,17 @@ export function NewTaskRoute() {
     if (config.isPending) return
     deepLinkHandled.current = true
     if (defaultRunner === undefined) {
+      setNotice({ kind: 'prefill' })
+      setAutoStarting(false)
+      return
+    }
+    // A saved bookmarklet has no runner choice of its own: it implicitly targets the
+    // project's configured default. `resolveRunner` deliberately falls back to another
+    // connected runner for the editable composer, but that fallback must not turn an
+    // unattended launch into a task on a different subscription (or hide an unauthorized
+    // default behind a successful-looking start). Leave the prompt in the composer so the
+    // user can explicitly choose what should run.
+    if (runner !== defaultRunner) {
       setNotice({ kind: 'prefill' })
       setAutoStarting(false)
       return
@@ -467,12 +465,12 @@ export function NewTaskRoute() {
     // Legacy focused the Run button so a bare Enter submits the reviewed form.
     document
       .querySelector<HTMLButtonElement>(
-        '[data-slot="composer"] button[aria-label="Start task"], [data-slot="composer"] button[aria-label="Plan task"]',
+        '[data-slot="composer"] button[aria-label="Start task"]',
       )
       ?.focus()
   }, [notice, sourcesReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const submit = async (text: string, images: AttachmentInput[]) => {
+  const submit = async (text: string, submitted: AttachmentInput[]) => {
     if (!providersReady || runner === null) {
       throw new Error(
         providers.isPending
@@ -486,20 +484,6 @@ export function NewTaskRoute() {
       // Rejection restores the draft — nothing typed is lost to a race with the pickers.
       throw new Error('Still loading workflows and skills — try again in a second.')
     }
-    if (draft.planFirst) {
-      // Plan mode: submit means PLAN. A rejection propagates — the composer toasts and
-      // restores the draft; a success restores the text ourselves (the composer already
-      // cleared optimistically) so Discard hands back exactly what was typed. The review
-      // overlay is deliberate: it's where steps are edited and saved as a reusable chain.
-      setPlanning(true)
-      try {
-        setPlan(pendingPlanOf(text, images, await postPlan(text)))
-        update({ text })
-      } finally {
-        setPlanning(false)
-      }
-      return
-    }
     const created = await createRun(
       buildCreateRunBody({
         task: text,
@@ -511,7 +495,7 @@ export function NewTaskRoute() {
         agentProfile,
         defaultRunner,
         variants,
-        images,
+        images: submitted,
         worktree: worktreeOn,
         autonomous: autonomousOn,
         generateFollowups: generateFollowupsOn,
@@ -557,47 +541,6 @@ export function NewTaskRoute() {
       toast('Task added to queue — start it manually from the task list', { tone: 'success' })
     } else {
       navigate(startedRunPath(created))
-    }
-  }
-
-  /** ▶ Start on the reviewed plan: the (possibly edited) steps go INLINE, with the composer's
-   *  current picker choices — legacy `startPlannedRun` semantics on the new surface. */
-  const startPlanned = async () => {
-    if (plan === null || plan.steps.length === 0 || starting || !providersReady || runner === null) return
-    setStarting(true)
-    try {
-      const created = await createRun(
-        buildPlannedRunBody({
-          task: plan.task,
-          steps: plan.steps,
-          model,
-          modelsLocked,
-          runner,
-          runnerExplicit: draft.runner !== null,
-          defaultRunner,
-          variants,
-          images: plan.images,
-          generateFollowups: generateFollowupsOn,
-          todoId: deepLink.todo, // #374: planning first must not lose the inbox entry
-          dispatch,
-        }),
-      )
-      // Run-mode choices live in the current draft; stable defaults come from workspace policy.
-      // persisting the forced `false` would overwrite their real preference, so turning
-      // CEZ_FOLLOWUPS back on later would silently come up off.
-      if (followupsToggleShown) {
-        void putUiState({ lastGenerateFollowups: generateFollowupsOn })
-          .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.uiState }))
-          .catch(() => {})
-      }
-      clearStartedDraft(draftProjectId)
-      setPlan(null)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
-      navigate(startedRunPath(created))
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), { tone: 'danger' })
-    } finally {
-      setStarting(false)
     }
   }
 
@@ -791,7 +734,6 @@ export function NewTaskRoute() {
               ) : null}
               <AutonomousToggle
                 on={autonomousOn}
-                disabled={draft.planFirst}
                 onChange={(on) => update({ autonomous: on })}
               />
               {followupsToggleShown ? (
@@ -873,28 +815,6 @@ export function NewTaskRoute() {
         <SuggestedChips onPick={(text) => update({ text })} />
       </div>
 
-      {plan !== null ? (
-        <PlanReview
-          plan={plan}
-          starting={starting}
-          startAvailable={providersReady}
-          startUnavailableReason={
-            providers.isPending
-              ? 'Checking agent providers…'
-              : providers.isError
-                ? 'Provider authentication could not be verified.'
-                : 'Connect an agent provider before starting a task.'
-          }
-          startUnavailableAction={
-            !providers.isPending ? (
-              <Link to="/settings/agents#providers">Configure providers</Link>
-            ) : undefined
-          }
-          onStepsChange={(steps) => setPlan((current) => (current ? { ...current, steps } : current))}
-          onStart={() => void startPlanned()}
-          onDiscard={() => setPlan(null)}
-        />
-      ) : null}
     </div>
   )
 }
