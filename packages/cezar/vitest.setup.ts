@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeEach } from 'vitest'
@@ -68,6 +68,13 @@ const pinSandboxAgentHomes = (): void => {
 // identity passes it explicitly (`-c user.name=…`), and every path cezar derives from a home goes
 // through `CEZ_HOME` or the agent homes pinned above.
 const sandboxUserHome = join(sandboxHome, 'user-home')
+// The sandbox home must EXIST: `~` resolves to it through `os.homedir()`, and the
+// register-project route stats the spelled path before it can refuse it as home. A
+// nonexistent `~` fails that stat first and reports "no such folder: ~" instead of the
+// home-directory refusal the route exists to give (projects-api "refuses $HOME itself").
+// Creating the directory itself does NOT create the credential paths under it (`.gemini`,
+// `.claude`, …), so the probes this redirect exists for still read nothing.
+mkdirSync(sandboxUserHome, { recursive: true })
 
 const pinSandboxUserHome = (): void => {
   process.env.HOME = sandboxUserHome
@@ -100,20 +107,39 @@ const clearProviderCredentialEnv = (): void => {
   for (const name of PROVIDER_CREDENTIAL_ENV) delete process.env[name]
 }
 
+// Model-OVERRIDE variables, the same unpinned-state trap one level up: a developer who exports
+// `ANTHROPIC_MODEL` (a common way to point Claude Code at a gateway) makes the claude model-settings
+// strategy answer with it, because it reads that variable BEFORE any settings file
+// (`agent-config/model-settings/claude.ts`, mirroring Claude Code's own priority). Fixtures that
+// assert the configured default — `config-api.test.ts`'s `defaultModels` — then report the
+// developer's model instead, red on that machine only. Deleted, not defaulted: a case that wants an
+// override passes its own `env` object (as `agent-config/models.test.ts` does), which this hook
+// never touches.
+const PROVIDER_MODEL_ENV = [
+  'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+] as const
+
+const clearProviderModelEnv = (): void => {
+  for (const name of PROVIDER_MODEL_ENV) delete process.env[name]
+}
+
 pinSandboxHome()
 pinSandboxAgentHomes()
 pinSandboxUserHome()
 clearProviderCredentialEnv()
+clearProviderModelEnv()
 beforeEach(pinSandboxHome)
 beforeEach(pinSandboxAgentHomes)
 beforeEach(pinSandboxUserHome)
 beforeEach(clearProviderCredentialEnv)
+beforeEach(clearProviderModelEnv)
 // Registered before any suite's own hooks, so vitest runs it last on the way out —
 // after a case's `afterEach` has deleted the pin.
 afterEach(pinSandboxHome)
 afterEach(pinSandboxAgentHomes)
 afterEach(pinSandboxUserHome)
 afterEach(clearProviderCredentialEnv)
+afterEach(clearProviderModelEnv)
 afterAll(() => {
   rmSync(sandboxHome, { recursive: true, force: true })
 })

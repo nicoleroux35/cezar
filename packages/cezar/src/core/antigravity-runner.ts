@@ -276,6 +276,15 @@ class AntigravitySession implements AgentSession {
       this.runTimeoutTimer = null;
     }
 
+    // A child that never started — spawn failed, so it has no pid — will never emit `exit`,
+    // so the SIGTERM→SIGKILL watchdog below would sit on its 8s+4s timers with nothing to
+    // clear them, keeping the process alive long after `end()` returned. There is also no
+    // stdin to close and no process to signal. `handleSpawnError` owns the resolution.
+    if (this.child.pid === undefined) {
+      this.isOpen = false;
+      return;
+    }
+
     // Graceful shutdown: close stdin then SIGTERM→SIGKILL watchdog
     this.child.stdin.end();
 
@@ -303,6 +312,15 @@ class AntigravitySession implements AgentSession {
     if (this.runTimeoutTimer) {
       clearTimeout(this.runTimeoutTimer);
       this.runTimeoutTimer = null;
+    }
+
+    // A child that never started — spawn failed, so it has no pid — has no process to signal,
+    // and `kill()` on a spawn-failed handle that already has a queued stdin write blocks the
+    // event loop synchronously, taking the run-timeout timer and the whole process with it.
+    // There is nothing to interrupt; `handleSpawnError` owns the resolution.
+    if (this.child.pid === undefined) {
+      this.isOpen = false;
+      return;
     }
 
     this.child.kill('SIGTERM');
@@ -419,6 +437,13 @@ class AntigravitySession implements AgentSession {
 
   private handleSpawnError(err: Error): void {
     this.isOpen = false;
+    // A missing `agy` binary emits `error` and never `exit`, so `handleExit` (which owns the
+    // timer cleanup) never runs — leaving the run-timeout timer armed for its full wall clock and
+    // the process alive with it. Release it here, the way `end()`/`interrupt()` do.
+    if (this.runTimeoutTimer) {
+      clearTimeout(this.runTimeoutTimer);
+      this.runTimeoutTimer = null;
+    }
     this.emitError('Failed to spawn Antigravity CLI', err);
     this.resolveResult(this.buildResult('failed'));
   }

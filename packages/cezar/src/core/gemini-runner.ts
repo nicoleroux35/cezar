@@ -152,6 +152,13 @@ class GeminiAcpSession implements AgentSession {
   private timedOut = false;
   private runTimeoutTimer: NodeJS.Timeout | null = null;
 
+  // The v1 projection's own accumulation, kept here (not read back out of the mapper state):
+  // `AcpUiMapperState` carries no `text`/`toolCalls` fields, so `buildResult` reading them — as
+  // it used to, through `(this.ui as any)` — always produced an empty result.
+  private readonly textChunks: string[] = [];
+  private readonly toolCalls: AgentToolCallRecord[] = [];
+  private tokensUsed = 0;
+
   private resolveResult!: (result: AgentRunResult) => void;
   private rejectResult!: (error: Error) => void;
 
@@ -209,14 +216,16 @@ class GeminiAcpSession implements AgentSession {
   }
 
   private onFrame(dir: 'in' | 'out', frame: AcpMessage): void {
-    if (dir === 'in') {
-      const mapping = mapAcpFrame(frame, this.ui, geminiDialect);
-      this.ui = mapping.state;
+    // BOTH directions: `mapAcpFrame` learns the turn from cezar's OUTBOUND `session/prompt` (it sets
+    // `turnId` there) and drops every inbound `session/update` until it has. Minding only `dir ===
+    // 'in'` — as this used to — left `turnId` unset, so the mapper rendered nothing and a gemini run
+    // came back empty. `mapAcpFrame` also needs the `{ dir, frame }` wrapper, not the bare message.
+    const mapping = mapAcpFrame({ dir, frame }, this.ui, geminiDialect);
+    this.ui = mapping.state;
 
-      for (const uiEvent of mapping.events) {
-        this.emitUiEvent(uiEvent);
-        this.handleUiEvent(uiEvent);
-      }
+    for (const uiEvent of mapping.events) {
+      this.emitUiEvent(uiEvent);
+      this.handleUiEvent(uiEvent);
     }
   }
 
@@ -252,6 +261,15 @@ class GeminiAcpSession implements AgentSession {
       this.runTimeoutTimer = null;
     }
 
+    // A child that never started — spawn failed, so it has no pid — will never emit `exit`,
+    // so the SIGTERM→SIGKILL watchdog below would sit on its 8s+4s timers with nothing to
+    // clear them, keeping the process alive long after `end()` returned. There is also no
+    // stdin to close and no process to signal. `handleSpawnError` owns the resolution.
+    if (this.child.pid === undefined) {
+      this.isOpen = false;
+      return;
+    }
+
     // Graceful shutdown: close stdin then SIGTERM→SIGKILL watchdog
     this.child.stdin.end();
     
@@ -275,12 +293,21 @@ class GeminiAcpSession implements AgentSession {
   interrupt(): void {
     if (!this.isOpen) return;
     this.terminatedByCezar = true;
-    
+
     if (this.runTimeoutTimer) {
       clearTimeout(this.runTimeoutTimer);
       this.runTimeoutTimer = null;
     }
-    
+
+    // A child that never started — spawn failed, so it has no pid — has no process to signal,
+    // and `kill()` on a spawn-failed handle that already has a queued stdin write blocks the
+    // event loop synchronously, taking the run-timeout timer and the whole process with it.
+    // There is nothing to interrupt; `handleSpawnError` owns the resolution.
+    if (this.child.pid === undefined) {
+      this.isOpen = false;
+      return;
+    }
+
     this.child.kill('SIGTERM');
   }
 
@@ -422,16 +449,22 @@ class GeminiAcpSession implements AgentSession {
 
   private handleSpawnError(err: Error): void {
     this.isOpen = false;
+    // A missing `gemini` binary emits `error` and never `exit`, so `handleExit` (which owns the
+    // timer cleanup) never runs — leaving the run-timeout timer armed for its full wall clock and
+    // the process alive with it. Release it here, the way `end()`/`interrupt()` do.
+    if (this.runTimeoutTimer) {
+      clearTimeout(this.runTimeoutTimer);
+      this.runTimeoutTimer = null;
+    }
     this.emitError('Failed to spawn Gemini CLI', err);
     this.resolveResult(this.buildResult('failed'));
   }
 
   private buildResult(outcome: 'success' | 'failed', note?: string): AgentRunResult {
-    const usage = this.ui.sessionUsage ?? { input: 0, output: 0 };
     return {
-      text: (this.ui as any).text ?? '',
-      toolCalls: (this.ui as any).toolCalls ?? [],
-      tokensUsed: usage.input + usage.output,
+      text: this.textChunks.join('').trim(),
+      toolCalls: this.toolCalls,
+      tokensUsed: this.tokensUsed,
       sessionId: this.acpSessionId,
     };
   }
@@ -442,11 +475,49 @@ class GeminiAcpSession implements AgentSession {
     return Buffer.concat(chunks).toString('utf8');
   }
 
+  /**
+   * v1 derived from v2 (AGENT_PROTOCOL.md §2: every v1 event stays derivable from the v2 stream).
+   * The ACP mapper speaks the item-lifecycle vocabulary — `item.delta` / `item.started` /
+   * `item.completed` / `usage.updated` / `image` / `session.error` — so this switches on THOSE
+   * names. (It previously checked v1-style names like `message.delta` and `tool.started`, which no
+   * `UiEvent` carries, so every event fell through and a gemini run emitted no v1 events at all.)
+   */
   private emitUiEvent(event: UiEvent): void {
-    // Emit v1 events for backward compatibility
-    const v1Event = uiEventToV1(event);
-    if (v1Event && this.onEvent) {
-      this.onEvent(v1Event);
+    if (!this.onEvent) return;
+    switch (event.type) {
+      case 'item.delta':
+        if (event.field === 'text') {
+          this.textChunks.push(event.delta);
+          this.onEvent({ type: 'text', text: event.delta });
+        }
+        return;
+      case 'item.started':
+        if (event.item.kind === 'tool') {
+          const input = event.item.input ?? { title: event.item.title };
+          this.toolCalls.push({ id: event.item.id, name: event.item.name, input });
+          this.onEvent({ type: 'tool-call', id: event.item.id, tool: event.item.name, input });
+        }
+        return;
+      case 'item.completed':
+        if (event.item.kind === 'tool') {
+          const failed = event.item.status === 'failed' || event.item.status === 'declined';
+          this.onEvent({
+            type: 'tool-result',
+            toolCallId: event.item.id,
+            result: (failed ? event.item.error : event.item.output) ?? '',
+            isError: failed,
+          });
+        }
+        return;
+      case 'image':
+        this.onEvent({ type: 'image', mediaType: event.mediaType, data: event.data });
+        return;
+      case 'usage.updated':
+        this.tokensUsed = event.usage.total;
+        this.onEvent({ type: 'token-usage', tokensUsed: this.tokensUsed });
+        return;
+      default:
+        return;
     }
   }
 
@@ -471,20 +542,6 @@ function toAcpBlocks(content: ContentBlock[]): AcpContentBlock[] {
     }
     return { type: 'text', text: '' };
   }) as any;
-}
-
-function uiEventToV1(event: UiEvent): AgentEvent | null {
-  // Simplified v1 mapping - expand as needed
-  switch ((event as any).type) {
-    case 'message.delta':
-      return { type: 'text', text: (event as any).delta } as any;
-    case 'tool.started':
-      return { type: 'tool-call', name: (event as any).name } as any;
-    case 'turn.completed':
-      return { type: 'done' } as any;
-    default:
-      return null;
-  }
 }
 
 function truncate(text: string, maxLength: number): string {

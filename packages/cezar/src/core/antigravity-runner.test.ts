@@ -4,13 +4,22 @@ import type { AgentRunSpec } from './agent-runner.ts';
 
 describe('AntigravityRunner', () => {
   let runner: AntigravityRunner;
+  // Same as the gemini suite: never depend on an installed `agy` CLI. Pin the
+  // dry-run mock per case (and restore), so the session cases spawn the bundled
+  // mock instead of a nonexistent binary — the `uses mock binary in CEZ_DRY_RUN
+  // mode` case's `delete` used to leak into them.
+  let savedDryRun: string | undefined;
 
   beforeEach(() => {
+    savedDryRun = process.env.CEZ_DRY_RUN;
+    process.env.CEZ_DRY_RUN = '1';
     runner = new AntigravityRunner();
   });
 
   afterEach(async () => {
     await runner.interrupt();
+    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
+    else process.env.CEZ_DRY_RUN = savedDryRun;
   });
 
   it('has the correct backend identifier', () => {

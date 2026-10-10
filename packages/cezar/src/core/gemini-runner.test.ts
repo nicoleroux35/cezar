@@ -5,13 +5,23 @@ import type { AgentRunSpec } from './agent-runner.ts';
 
 describe('GeminiRunner', () => {
   let runner: GeminiRunner;
+  // The suite must not depend on a `gemini` CLI being installed (CI has none, and
+  // a bare spawn fails EACCES/ENOENT), so pin the dry-run mock for every case and
+  // restore the caller's value afterwards. Without this, the `uses mock binary in
+  // CEZ_DRY_RUN mode` case's `delete` leaked into the session cases below it and
+  // left them spawning a nonexistent binary.
+  let savedDryRun: string | undefined;
 
   beforeEach(() => {
+    savedDryRun = process.env.CEZ_DRY_RUN;
+    process.env.CEZ_DRY_RUN = '1';
     runner = new GeminiRunner();
   });
 
   afterEach(async () => {
     await runner.interrupt();
+    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
+    else process.env.CEZ_DRY_RUN = savedDryRun;
   });
 
   it('has the correct backend identifier', () => {
@@ -150,6 +160,14 @@ describe('GeminiRunner', () => {
     };
 
     const session = runner.startSession(spec, onEvent);
+
+    // An ACP session is long-lived — the mock keeps serving follow-up prompts and never
+    // exits on its own — so `result` only settles when the session is ended. Wait for the
+    // mock's first turn to arrive, then end it, the way the interrupt case does.
+    for (let i = 0; i < 100 && events.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    session.end();
 
     await session.result;
     expect(events.length).toBeGreaterThan(0);
