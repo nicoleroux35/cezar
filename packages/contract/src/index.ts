@@ -29,3 +29,5 @@ export * from './star-count.ts';
 export * from './forge.ts';
 export * from './forges.ts';
 export * from './monitoring.ts';
+export * from './secrets.ts';
+export * from './e2e.ts';

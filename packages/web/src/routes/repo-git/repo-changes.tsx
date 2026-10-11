@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import { ApiError } from '@/api/client'
 import { useRepoChanges } from '@/api/queries'
 import { CenteredState } from '@/components/centered-state'
-import { Diff, type DiffHandle, type DiffMode } from '@/components/diff'
+import { canPreviewMarkdown, Diff, type DiffHandle, type DiffMode } from '@/components/diff'
 import { useIsDesktop } from '@/lib/use-desktop'
 import { useTranslations } from '@/i18n/use-translations'
 
@@ -30,6 +30,7 @@ export function RepoChangesSection() {
 
   const [mode, setMode] = useState<DiffMode>('unified')
   const [wrap, setWrap] = useState(false)
+  const [preview, setPreview] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
   const diffRef = useRef<DiffHandle | null>(null)
 
@@ -38,6 +39,7 @@ export function RepoChangesSection() {
 
   const files = changes.data?.files ?? []
   const tree = useMemo(() => buildFileTree(files), [files])
+  const hasMarkdown = useMemo(() => files.some(canPreviewMarkdown), [files])
 
   const effectiveMode: DiffMode = desktop ? mode : 'unified'
   const effectiveWrap = desktop ? wrap : true
@@ -58,7 +60,14 @@ export function RepoChangesSection() {
         {changes.data ? <AnimatedDiffStat stat={changes.data.stat} /> : null}
         {/* Same rule as the task toolbar: toggles exist ≥md only — phones force unified+wrap. */}
         <span className="ml-auto hidden items-center gap-1 md:flex">
-          <DiffViewToggles mode={mode} wrap={wrap} onModeChange={setMode} onWrapChange={setWrap} />
+          <DiffViewToggles
+            mode={mode}
+            wrap={wrap}
+            preview={preview}
+            onModeChange={setMode}
+            onWrapChange={setWrap}
+            onPreviewChange={hasMarkdown ? setPreview : undefined}
+          />
         </span>
       </div>
 
@@ -105,6 +114,7 @@ export function RepoChangesSection() {
               viewRef={diffRef}
               mode={effectiveMode}
               wrap={effectiveWrap}
+              preview={desktop && hasMarkdown && preview}
               className="min-w-0 md:py-4"
             />
           </div>
