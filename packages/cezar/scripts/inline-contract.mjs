@@ -104,12 +104,16 @@ if (existsSync(linkTarget)) {
   symlinkSync(linkTarget, join(stageDir, 'node_modules'), 'dir');
 }
 
-// Strip .ts extensions from all imports
+// Rewrite `.ts` specifiers to `.js`, which is what `rewriteRelativeImportExtensions` would have
+// done had we been able to leave it on. Stripping the extension instead leaves `from './health'`,
+// and under the `moduleResolution: NodeNext` this staging tsconfig sets, an extensionless relative
+// import is `TS2835` — the whole build failed there. `.js` is also what makes the declarations
+// land as `./health.d.ts`, which is the shape `index.d.ts` resolves against.
 for (const file of readdirSync(join(stageDir, 'src'))) {
   if (!file.endsWith('.ts')) continue;
   const path = join(stageDir, 'src', file);
   const content = readFileSync(path, 'utf8');
-  const fixed = content.replace(/from ['"](\.[^'"]+)\.ts['"]/g, "from '$1'");
+  const fixed = content.replace(/from ['"](\.[^'"]+)\.ts['"]/g, "from '$1.js'");
   writeFileSync(path, fixed, 'utf8');
 }
 
