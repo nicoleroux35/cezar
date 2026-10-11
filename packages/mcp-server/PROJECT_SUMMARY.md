@@ -1,5 +1,13 @@
 # Serveur MCP Cezar - Résumé du projet
 
+> **⚠️ Document historique — état au 2024-10-06.**
+> Les compteurs et les listes d'outils ci-dessous décrivent le serveur tel qu'il était à cette
+> date (73 outils, dont des outils de *skills* en écriture et d'association tracker ↔ tâche qui
+> n'existent plus : l'API cezar ne les expose pas). L'état courant fait foi :
+> [COVERAGE.md](./COVERAGE.md) (81 outils, un par un), [API_REFERENCE.md](./API_REFERENCE.md),
+> [README.md](./README.md). Conservé pour l'historique, ne pas s'y fier pour l'inventaire.
+
+
 ## Ce qui a été créé
 
 Un nouveau package npm (`@open-mercato/cezar-mcp-server`) qui expose les fonctionnalités de cezar via le protocole MCP (Model Context Protocol).
@@ -60,7 +68,7 @@ packages/mcp-server/
          │
 ┌────────▼────────┐
 │ Cezar Server    │ (existant)
-│ :5192           │
+│ :4321           │
 └────────┬────────┘
          │
 ┌────────▼────────┐
@@ -97,7 +105,7 @@ npm run build:mcp
       "command": "node",
       "args": ["/chemin/vers/cezar/packages/mcp-server/dist/index.js"],
       "env": {
-        "CEZAR_URL": "http://127.0.0.1:5192",
+        "CEZ_API_URL": "http://127.0.0.1:4321",
         "CEZAR_PROJECT_ID": "default"
       }
     }

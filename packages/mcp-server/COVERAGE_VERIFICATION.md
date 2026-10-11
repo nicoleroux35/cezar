@@ -1,5 +1,13 @@
 # Vérification de couverture MCP à 100%
 
+> **⚠️ Document historique — état au 2024-10-06.**
+> Les compteurs et les listes d'outils ci-dessous décrivent le serveur tel qu'il était à cette
+> date (73 outils, dont des outils de *skills* en écriture et d'association tracker ↔ tâche qui
+> n'existent plus : l'API cezar ne les expose pas). L'état courant fait foi :
+> [COVERAGE.md](./COVERAGE.md) (81 outils, un par un), [API_REFERENCE.md](./API_REFERENCE.md),
+> [README.md](./README.md). Conservé pour l'historique, ne pas s'y fier pour l'inventaire.
+
+
 ## Méthodologie de vérification
 
 J'ai analysé **toutes les routes API** de `packages/cezar/src/server/server.ts` et comparé avec les **73 outils MCP** implémentés.

@@ -23,8 +23,8 @@ function sendJsonRpc(method, params = {}) {
       stdio: ['pipe', 'pipe', 'inherit'],
       env: {
         ...process.env,
-        CEZAR_URL: process.env.CEZAR_URL || 'http://127.0.0.1:5192',
-        CEZAR_PROJECT_ID: process.env.CEZAR_PROJECT_ID || 'default',
+        CEZ_API_URL: process.env.CEZ_API_URL || 'http://127.0.0.1:4321',
+        CEZ_PROJECT_ID: process.env.CEZ_PROJECT_ID || 'default',
       },
     });
 

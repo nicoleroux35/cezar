@@ -7,10 +7,16 @@
   "bin": {
     "cezar-mcp": "./dist/index.js"
   },
+  "exports": {
+    ".": "./src/index.ts",
+    "./endpoints": "./src/endpoints.ts",
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:coverage": "node scripts/check-coverage.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

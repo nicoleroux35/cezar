@@ -4,11 +4,7 @@
       "command": "node",
       "args": [
         "/chemin/absolu/vers/cezar/packages/mcp-server/dist/index.js"
-      ],
-      "env": {
-        "CEZAR_URL": "http://127.0.0.1:5192",
-        "CEZAR_PROJECT_ID": "default"
-      }
+      ]
     }
   }
 }
