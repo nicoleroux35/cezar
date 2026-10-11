@@ -45,6 +45,7 @@ function renderOverview(props: Partial<ComponentProps<typeof TasksOverview>> = {
   const onArchiveFinished = props.onArchiveFinished ?? vi.fn()
   const onMarkAllRead = props.onMarkAllRead ?? vi.fn()
   const onRename = props.onRename ?? vi.fn()
+  const onDeleteRuns = props.onDeleteRuns ?? vi.fn()
   const utils = render(
     <QueryClientProvider client={createQueryClient()}>
       <MemoryRouter initialEntries={['/']}>
@@ -63,6 +64,7 @@ function renderOverview(props: Partial<ComponentProps<typeof TasksOverview>> = {
                 onArchiveFinished={onArchiveFinished}
                 onMarkAllRead={onMarkAllRead}
                 onRename={onRename}
+                onDeleteRuns={onDeleteRuns}
               />
             }
           />
@@ -72,13 +74,22 @@ function renderOverview(props: Partial<ComponentProps<typeof TasksOverview>> = {
       </MemoryRouter>
     </QueryClientProvider>
   )
-  return { ...utils, onViewChange, onArchiveFinished, onMarkAllRead, onRename }
+  return { ...utils, onViewChange, onArchiveFinished, onMarkAllRead, onRename, onDeleteRuns }
 }
 
 const location = () => screen.getByTestId('location').textContent
 const tableRow = (id: string) => document.querySelector(`[data-slot="task-table-row"][data-run-id="${id}"]`)
 const card = (id: string) => document.querySelector(`[data-slot="task-card"][data-run-id="${id}"]`)
 const cellsOf = (id: string): string[] => [...(tableRow(id)?.querySelectorAll('td') ?? [])].map((td) => td.textContent ?? '')
+/* Both widths are always in the DOM (the desktop header is `hidden md:flex`, the mobile strip
+   `md:hidden`, and jsdom applies neither), so the shared controls are addressed as pairs. */
+const clearMenus = () => screen.getAllByRole('button', { name: /Clear by status/ })
+const selectToggles = () => screen.getAllByRole('button', { name: 'Select tasks' })
+/** Radix opens on pointerdown, not click. */
+async function openClearMenu(): Promise<HTMLElement> {
+  fireEvent.pointerDown(clearMenus()[0])
+  return screen.findByRole('menu')
+}
 
 afterEach(cleanup)
 
@@ -832,6 +843,164 @@ describe('TasksOverview — header', () => {
   })
 })
 
+describe('TasksOverview — bulk deletion', () => {
+  it('offers no status sweep while every row on screen belongs to the engine', () => {
+    renderOverview({
+      runs: [run({ id: 'live', status: 'running' }), run({ id: 'parked', status: 'queued' })],
+    })
+    expect(screen.queryAllByRole('button', { name: /Clear by status/ })).toHaveLength(0)
+    // Selection mode is still there: ticking a row is not itself a deletion.
+    expect(selectToggles()).toHaveLength(2)
+  })
+
+  it('clears one status after a confirm, and takes exactly the rows the menu counted', async () => {
+    const { onDeleteRuns } = renderOverview({
+      runs: [
+        run({ id: 'd1', status: 'done' }),
+        run({ id: 'd2', status: 'done' }),
+        run({ id: 'f1', status: 'failed' }),
+        run({ id: 'c1', status: 'cancelled' }),
+        run({ id: 'live', status: 'running' }),
+      ],
+    })
+
+    const menu = await openClearMenu()
+    // Counts of the rows on screen, in the menu order — and no running entry at all: the server
+    // answers those with a 409, so the menu does not offer a click it knows will fail.
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Done2',
+      'Failed1',
+      'Cancelled1',
+      'Everything deletable4',
+    ])
+
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Done/ }))
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog.textContent).toContain('2 × Done')
+    // The confirm explains itself BEFORE anything is sent.
+    expect(onDeleteRuns).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    expect(onDeleteRuns).toHaveBeenCalledWith(['d1', 'd2'])
+  })
+
+  it('clears everything deletable in the view in one go', async () => {
+    const { onDeleteRuns } = renderOverview({
+      runs: [
+        run({ id: 'd1', status: 'done' }),
+        run({ id: 'f1', status: 'failed' }),
+        run({ id: 'live', status: 'running' }),
+      ],
+    })
+    const menu = await openClearMenu()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Everything deletable/ }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+
+    expect(onDeleteRuns).toHaveBeenCalledWith(['d1', 'f1'])
+  })
+
+  it('sweeps the archived list when that tab is the one showing', async () => {
+    const { onDeleteRuns } = renderOverview({
+      view: 'archived',
+      runs: [
+        run({ id: 'a1', status: 'done', archived: true }),
+        run({ id: 'a2', status: 'failed', archived: true }),
+      ],
+    })
+    const menu = await openClearMenu()
+    // The menu follows the view: the active list is behind the other tab, not in this one.
+    expect(within(menu).getByRole('menuitem', { name: /Failed/ })).not.toBeNull()
+
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Failed/ }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+    expect(onDeleteRuns).toHaveBeenCalledWith(['a2'])
+  })
+
+  it('backs out of the confirm and deletes nothing', async () => {
+    const { onDeleteRuns } = renderOverview({ runs: [run({ id: 'd1', status: 'done' })] })
+    const menu = await openClearMenu()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Everything deletable/ }))
+
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Keep them' }))
+    expect(onDeleteRuns).not.toHaveBeenCalled()
+  })
+
+  it('keeps the checkboxes out of the table until selection mode is on', () => {
+    renderOverview({ runs: [run({ id: 'a' }), run({ id: 'b' })] })
+    expect(document.querySelectorAll('[data-slot="task-select-checkbox"]')).toHaveLength(0)
+
+    fireEvent.click(selectToggles()[0])
+    // Both layouts wear them — the table for ≥md, the cards below it.
+    expect(document.querySelectorAll('[data-slot="tasks-table"] [data-slot="task-select-checkbox"]')).toHaveLength(2)
+    expect(document.querySelectorAll('[data-slot="task-cards"] [data-slot="task-select-checkbox"]')).toHaveLength(2)
+    // The leading cell, not an extra one at the end of the row.
+    expect(tableRow('a')?.querySelector('td[data-slot="task-select"]')?.previousElementSibling).toBeNull()
+  })
+
+  it('selects rows one at a time or all at once, and deletes the ticked ones', async () => {
+    const { onDeleteRuns } = renderOverview({
+      runs: [
+        run({ id: 'a', createdAt: ago(3 * 60_000) }),
+        run({ id: 'b', createdAt: ago(2 * 60_000) }),
+        run({ id: 'c', createdAt: ago(60_000) }),
+      ],
+    })
+    fireEvent.click(selectToggles()[0])
+    const bar = document.querySelector('[data-slot="selection-bar"]') as HTMLElement
+
+    fireEvent.click(within(tableRow('a') as HTMLElement).getByRole('checkbox'))
+    // Ticking is not navigating: the row's click target steps around its own controls.
+    expect(location()).toBe('/')
+    expect(bar.querySelector('[data-slot="selection-count"]')?.textContent).toBe('1')
+    expect((within(tableRow('a') as HTMLElement).getByRole('checkbox') as HTMLInputElement).checked).toBe(true)
+
+    fireEvent.click(within(bar).getByRole('button', { name: 'Select all' }))
+    expect(bar.querySelector('[data-slot="selection-count"]')?.textContent).toBe('3')
+    // The header checkbox follows the bar's state.
+    expect((bar.querySelector('[data-slot="select-all-checkbox"]') as HTMLInputElement).checked).toBe(true)
+
+    fireEvent.click(within(bar).getByRole('button', { name: 'Delete (3)' }))
+    // In the order the table shows them — newest first — so the sweep is the list you looked at.
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+    expect(onDeleteRuns).toHaveBeenCalledWith(['c', 'b', 'a'])
+  })
+
+  it('says how many of the ticked rows are still running, before the delete', async () => {
+    const { onDeleteRuns } = renderOverview({
+      runs: [
+        run({ id: 'a', status: 'done', createdAt: ago(2 * 60_000) }),
+        run({ id: 'b', status: 'running', createdAt: ago(60_000) }),
+      ],
+    })
+    fireEvent.click(selectToggles()[0])
+    fireEvent.click(within(document.querySelector('[data-slot="selection-bar"]') as HTMLElement).getByRole('button', { name: 'Select all' }))
+
+    expect(document.querySelector('[data-slot="selection-blocked"]')?.textContent).toBe(
+      '1 still running — cannot be deleted',
+    )
+    // Both go: which of them the server refuses is the route's answer to report, not a reason to
+    // silently drop a row the user can see and ticked.
+    fireEvent.click(screen.getByRole('button', { name: 'Delete (2)' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+    // The running row sorts above the done one, so the sweep follows the table's order.
+    expect(onDeleteRuns).toHaveBeenCalledWith(['b', 'a'])
+  })
+
+  it('leaves selection mode through Done, taking the ticks with it', () => {
+    renderOverview({ runs: [run({ id: 'a' })] })
+    fireEvent.click(selectToggles()[0])
+    fireEvent.click(within(tableRow('a') as HTMLElement).getByRole('checkbox'))
+    expect((within(tableRow('a') as HTMLElement).getByRole('checkbox') as HTMLInputElement).checked).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(document.querySelectorAll('[data-slot="task-select-checkbox"]')).toHaveLength(0)
+    expect(document.querySelector('[data-slot="selection-bar"]')).toBeNull()
+
+    // Coming back is a clean slate, not the selection you left behind.
+    fireEvent.click(selectToggles()[0])
+    expect((within(tableRow('a') as HTMLElement).getByRole('checkbox') as HTMLInputElement).checked).toBe(false)
+  })
+});
+
 describe('TasksOverview — empty and loading states', () => {
   it('renders nothing while the run list is unknown — no premature empty state', () => {
     renderOverview({ runs: undefined })
@@ -1195,6 +1364,36 @@ describe('TasksOverviewRoute — wired to the app', () => {
     })
   })
 
+  it('DELETEs the ticked tasks one by one and asks the endpoint again', async () => {
+    renderApp([
+      run({ id: 'd1', status: 'done' }),
+      run({ id: 'd2', status: 'failed' }),
+      run({ id: 'live', status: 'running' }),
+    ])
+    await waitFor(() => expect(tableRow('d1')).not.toBeNull())
+
+    fireEvent.click(selectToggles()[0])
+    fireEvent.click(within(tableRow('d1') as HTMLElement).getByRole('checkbox'))
+    fireEvent.click(within(tableRow('d2') as HTMLElement).getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete (2)' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
+
+    const deleted = (id: string) =>
+      fetchMock.mock.calls.filter(
+        ([path, init]) => String(path) === '/api/v1/runs/' + id && init?.method === 'DELETE',
+      )
+    await waitFor(() => expect(deleted('d1')).toHaveLength(1))
+    await waitFor(() => expect(deleted('d2')).toHaveLength(1))
+    // …and nothing else: the unticked running task is not the sweep's business.
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(2)
+
+    // Same doctrine as the broom and the rename: the endpoint’s answer is the truth.
+    await waitFor(() => {
+      const listFetches = fetchMock.mock.calls.filter(([path]) => String(path) === '/api/v1/runs')
+      expect(listFetches.length).toBeGreaterThan(1)
+    })
+  })
+
   it('PATCHes a table rename to /api/v1/runs/:id and refetches the authoritative list', async () => {
     renderApp([run({ id: 'rn1', title: 'Old name', status: 'done' })])
     await waitFor(() => expect(tableRow('rn1')).not.toBeNull())
@@ -1432,6 +1631,82 @@ describe('TasksOverview — origin and facet filters', () => {
     expect(document.querySelector('[data-slot="tasks-empty"]')?.getAttribute('data-empty-kind')).toBe('origin-hidden')
     fireEvent.click(screen.getByRole('button', { name: 'Show all tasks' }))
     expect(onOriginChange).toHaveBeenCalledWith('all')
+  })
+})
+
+/**
+ * Reorder mode: the drag surface for tasks and groups. The rule that matters is that a group
+ * UNFOLDS there — a reorder gesture that could not open a group could not reorder the tasks
+ * inside it, which is most of what a group is for. The payload mapping itself is pure-tested in
+ * `lib/task-groups.test.ts`; what is DOM-testable here is the fold, the nesting (members stay
+ * inside the group card) and that every row on screen, member included, is its own sortable row
+ * — the one that carries its own drag handle.
+ */
+describe('TasksOverview — reorder mode', () => {
+  const enterReorder = () =>
+    fireEvent.click(document.querySelector('[data-slot="reorder-toggle"]') as HTMLButtonElement)
+  const groupCard = (name: string) =>
+    [...document.querySelectorAll('[data-slot="reorder-group"]')].find(
+      (el) => el.getAttribute('data-group-name') === name,
+    ) ?? null
+  const memberIds = (scope: Element) =>
+    [...scope.querySelectorAll('[data-slot="reorder-task"]')].map((el) => el.getAttribute('data-run-id'))
+  const groupToggle = (name: string) =>
+    within(groupCard(name) as HTMLElement).getByRole('button', { name: new RegExp(`Expand|Collapse ${name}`) })
+
+  const fixture = () => [
+    run({ id: 'in1', title: 'Member one', taskGroupName: 'Release', createdAt: ago(30_000) }),
+    run({ id: 'in2', title: 'Member two', taskGroupName: 'Release', createdAt: ago(60_000) }),
+    run({ id: 'loose', title: 'Loose task', createdAt: ago(90_000) }),
+  ]
+
+  it('unfolds a group to its tasks, which stay inside the group card', () => {
+    renderOverview({ runs: fixture() })
+    enterReorder()
+
+    // Folded on arrival, and the fold is a real control rather than a painted chevron.
+    const toggle = groupToggle('Release')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(memberIds(groupCard('Release') as Element)).toEqual([])
+    // The loose task is a top-level row, outside any group card.
+    expect(groupCard('Release')?.querySelector('[data-run-id="loose"]')).toBeNull()
+
+    fireEvent.click(toggle)
+    expect(groupToggle('Release').getAttribute('aria-expanded')).toBe('true')
+    expect(memberIds(groupCard('Release') as Element)).toEqual(['in1', 'in2'])
+    expect(groupCard('Release')?.querySelector('[data-run-id="loose"]')).toBeNull()
+
+    // And folds back the same way it opened.
+    fireEvent.click(groupToggle('Release'))
+    expect(groupToggle('Release').getAttribute('aria-expanded')).toBe('false')
+    expect(memberIds(groupCard('Release') as Element)).toEqual([])
+  })
+
+  it('makes every visible row sortable — group, ungrouped tasks and the members alike', () => {
+    renderOverview({ runs: fixture() })
+    enterReorder()
+    expect(screen.getAllByRole('button', { name: 'Drag to reorder' })).toHaveLength(2)
+
+    fireEvent.click(groupToggle('Release'))
+    // The group's own handle, its two members', and the loose task's: an expanded group is
+    // exactly where inner reordering becomes possible, so its rows must join the sortable set.
+    expect(screen.getAllByRole('button', { name: 'Drag to reorder' })).toHaveLength(4)
+    // The two members carry their own handles inside the group card, beside their row — one each,
+    // which is what makes their order draggable rather than the group's.
+    expect(
+      [...(groupCard('Release') as Element).querySelectorAll('button[aria-label="Drag to reorder"]')],
+    ).toHaveLength(2)
+  })
+
+  it('keeps the fold the table view already had — the two modes share one accordion', () => {
+    renderOverview({ runs: fixture() })
+    // Opening the group in the table, then entering reorder mode, must not fold it back:
+    // `expandedTaskGroups` is one state, not one per mode.
+    fireEvent.click(document.querySelector('[data-slot="task-group-header"] button') as HTMLButtonElement)
+    expect(document.querySelector('[data-slot="task-table-row"][data-run-id="in1"]')).not.toBeNull()
+    enterReorder()
+    expect(groupToggle('Release').getAttribute('aria-expanded')).toBe('true')
+    expect(memberIds(groupCard('Release') as Element)).toEqual(['in1', 'in2'])
   })
 })
 

@@ -413,39 +413,60 @@ export function groupByTaskGroup(runs: readonly RunRecord[]): {
 }
 
 /**
- * Prepare reorder payload from a drag & drop operation.
+ * One row of the reorder list, in the order it is shown: an ungrouped task, a group, or a task
+ * that belongs to an expanded group — its `groupName` is what ties it home.
+ */
+export type ReorderRow =
+  | { type: 'task'; id: string; run: RunRecord; /** The group this task is rendered inside, if any. */ groupName?: string }
+  | { type: 'group'; id: string; group: TaskGroup }
+
+/**
+ * The payload for `POST /runs/reorder-display`, built from the rows the reorder list is showing.
  *
- * Takes the new order of items (mix of ungrouped tasks and groups) and
- * prepares the data structure for POST /runs/reorder-display.
+ * The payload is a flat sequence — a bare id for an ungrouped task, `{ groupName, taskIds }` for
+ * a group — and the server walks it assigning sequential `displayOrder`, so a group's members are
+ * ALWAYS contiguous in it. The rows therefore map down with two rules:
  *
- * @param orderedItems - Array where each element is either:
- *   - { type: 'task', run: RunRecord } for an ungrouped task
- *   - { type: 'group', group: TaskGroup } for a group with all its tasks
+ *  - Top-level order is the order of the rows that are NOT inside a group.
+ *  - A group's members are ordered by their rank among their own group-mates in the row list.
+ *    That is also what happens to a drag that carried a member OUT of its group: it lands at the
+ *    top or the bottom of that group, because a reorder gesture never reassigns a `taskGroupName`.
+ *
+ * A group collapsed during the drag contributes no member rows, so its existing order is kept
+ * (its members tie on rank and fall back to the order they already have).
  */
 export function buildReorderPayload(
-  orderedItems: Array<
-    | { type: 'task'; run: RunRecord }
-    | { type: 'group'; group: TaskGroup }
-  >
+  rows: readonly ReorderRow[]
 ): {
-  items: Array<
-    | string
-    | {
-        groupName: string
-        taskIds: string[]
-      }
-  >
+  items: Array<string | { groupName: string; taskIds: string[] }>
 } {
-  const items = orderedItems.map((item) => {
-    if (item.type === 'task') {
-      return item.run.id
-    } else {
-      return {
-        groupName: item.group.name,
-        taskIds: item.group.runs.map((r) => r.id),
-      }
+  // Where each task sits among its OWN group-mates in the row list.
+  const groupRank = new Map<string, number>()
+  const groupSeq = new Map<string, number>()
+  for (const row of rows) {
+    if (row.type !== 'task' || row.groupName === undefined) continue
+    const next = (groupSeq.get(row.groupName) ?? 0) + 1
+    groupSeq.set(row.groupName, next)
+    groupRank.set(row.id, next)
+  }
+
+  const items: Array<string | { groupName: string; taskIds: string[] }> = []
+  for (const row of rows) {
+    // Rendered inside an expanded group: its place is in that group's `taskIds`, below.
+    if (row.type === 'task' && row.groupName !== undefined) continue
+    if (row.type === 'task') {
+      items.push(row.run.id)
+      continue
     }
-  })
+    const rankOf = (id: string) => groupRank.get(id) ?? Number.MAX_SAFE_INTEGER
+    items.push({
+      groupName: row.group.name,
+      taskIds: row.group.runs
+        .map((member, index) => ({ member, index }))
+        .sort((a, b) => rankOf(a.member.id) - rankOf(b.member.id) || a.index - b.index)
+        .map(({ member }) => member.id),
+    })
+  }
 
   return { items }
 }

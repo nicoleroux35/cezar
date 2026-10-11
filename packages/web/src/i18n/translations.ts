@@ -286,6 +286,76 @@ export const translations = {
     fr: 'Effacer la recherche',
   },
 
+  // Tasks page - Bulk deletion (selection sweep + status sweep)
+  'tasks.action.selectTasks': {
+    en: 'Select tasks',
+    fr: 'Sélectionner des tâches',
+  },
+  'tasks.action.selectAll': {
+    en: 'Select all',
+    fr: 'Tout sélectionner',
+  },
+  'tasks.action.selectAllVisible': {
+    en: 'Select every task in this list',
+    fr: 'Sélectionner toutes les tâches de cette liste',
+  },
+  'tasks.action.deselectAll': {
+    en: 'Deselect all',
+    fr: 'Tout désélectionner',
+  },
+  'tasks.action.selected': {
+    en: 'selected',
+    fr: 'sélectionnées',
+  },
+  'tasks.action.selectionBlocked': {
+    en: 'still running — cannot be deleted',
+    fr: 'en cours — suppression impossible',
+  },
+  'tasks.action.done': {
+    en: 'Done',
+    fr: 'Terminer',
+  },
+  'tasks.action.delete': {
+    en: 'Delete',
+    fr: 'Supprimer',
+  },
+  'tasks.action.clearByStatus': {
+    en: 'Clear by status',
+    fr: 'Vider par statut',
+  },
+  'tasks.action.clearEverything': {
+    en: 'Everything deletable',
+    fr: 'Tout ce qui est supprimable',
+  },
+  'tasks.action.deleteTasksTitle': {
+    en: 'Delete these tasks?',
+    fr: 'Supprimer ces tâches ?',
+  },
+  'tasks.action.deleteTasksBody': {
+    en: 'Each one is removed with its transcript, worktree and branch. This cannot be undone.',
+    fr: 'Chaque tâche est supprimée avec son transcript, son worktree et sa branche. Action irréversible.',
+  },
+  'tasks.action.keepThem': {
+    en: 'Keep them',
+    fr: 'Les conserver',
+  },
+  'tasks.action.deleting': {
+    en: 'Deleting…',
+    fr: 'Suppression…',
+  },
+  'tasks.action.deletedOne': {
+    en: 'Task deleted',
+    fr: 'Tâche supprimée',
+  },
+  'tasks.action.deletedMany': {
+    en: 'tasks deleted',
+    fr: 'tâches supprimées',
+  },
+  'tasks.action.deleteFailedSome': {
+    en: 'could not be deleted',
+    fr: 'n’ont pas pu être supprimées',
+  },
+
   // Tasks page - Empty states
   'tasks.empty.noTasks': {
     en: 'No tasks',

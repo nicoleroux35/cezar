@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArchiveIcon,
   CheckCheckIcon,
+  CheckSquareIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
   Clock3Icon,
@@ -20,18 +21,19 @@ import {
   ScaleIcon,
   SearchIcon,
   SearchXIcon,
+  Trash2Icon,
   WorkflowIcon,
   XIcon,
 } from 'lucide-react'
 import * as React from 'react'
 import { Link, useNavigate } from '@/lib/project-router'
 
-import { archiveFinished, markAllRunsSeen, patchRun, reorderDisplay } from '@/api/client'
+import { archiveFinished, deleteRun, markAllRunsSeen, patchRun, reorderDisplay } from '@/api/client'
 import { useRunUsage } from '@/api/global-events'
 import { queryKeys, useHealth, usePinRun, useReferenceProjectId, useRuns, writePatchedRunToCaches } from '@/api/queries'
 import { useTranslations } from '@/i18n/use-translations'
 import { BUCKET_TRANSLATION_KEYS } from '@/lib/task-groups'
-import type { RunRecord } from '@open-mercato/cezar-api-client'
+import type { RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { DiffStatLabel } from '@/components/diff-stat'
 import { DirectionalUsage } from '@/components/directional-usage'
@@ -45,7 +47,25 @@ import { ReferenceStatusProvider } from '@/components/reference-status'
 import { Segmented } from '@/components/segmented'
 import { StatusDot } from '@/components/status-dot'
 import { SubtaskToggle } from '@/components/subtask-toggle'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from '@/components/ui/toaster'
 import { TaskGroupHeader } from '@/components/task-group-header'
 import { ReorderableTaskList } from '@/components/reorderable-task-list'
@@ -54,6 +74,13 @@ import { UnreadMarker } from '@/components/unread-marker'
 import { deriveAttention } from '@/lib/attention'
 import { shortAge } from '@/lib/format'
 import { isReadDoneItem, isUnread, unreadDoneCount } from '@/lib/read-state'
+import {
+  deletableRuns,
+  isDeletableRun,
+  STATUS_TRANSLATION_KEYS,
+  statusClearOptions,
+  type StatusClearOption,
+} from '@/lib/task-bulk-delete'
 import {
   isColumnExpanded,
   normalizeExpandedColumns,
@@ -74,7 +101,17 @@ import {
   type TaskFacetId,
   type TaskTableFilters,
 } from '@/lib/task-filters'
-import { listCounts, queuePositions, runTitle, sortRuns, groupByTaskGroup, buildReorderPayload, type TaskGroup, type ListView } from '@/lib/task-groups'
+import {
+  listCounts,
+  queuePositions,
+  runTitle,
+  sortRuns,
+  groupByTaskGroup,
+  buildReorderPayload,
+  type ReorderRow,
+  type TaskGroup,
+  type ListView,
+} from '@/lib/task-groups'
 import { TASK_ORIGIN_OPTIONS, useTaskOrigin, type TaskOrigin } from '@/lib/task-origin'
 import { dispatchKindLabel, subtaskLabel, taskTreeRows } from '@/lib/task-tree'
 import {
@@ -124,6 +161,8 @@ export function TasksOverview({
   origin = 'all',
   onOriginChange = () => undefined,
   automationNames,
+  onDeleteRuns,
+  deleting = false,
 }: {
   /** Undefined while `/api/runs` has not answered: the header renders, the body stays empty —
    *  an empty state before we know there are no runs would be a lie. */
@@ -157,6 +196,11 @@ export function TasksOverview({
   /** Automation id → name, for the Automation facet. An id it does not know (a deleted
    *  automation, or automations off) is shown as itself. */
   automationNames?: ReadonlyMap<string, string>
+  /** Bulk delete — the ticked selection and the status sweep both land here. The route owns the
+   *  request, the toasts and the invalidation; this component owns the confirm. */
+  onDeleteRuns: (ids: readonly string[]) => void
+  /** True while a bulk delete is in flight: the confirm waits on it rather than fire twice. */
+  deleting?: boolean
 }) {
   const { t } = useTranslations()
   const [query, setQuery] = React.useState('')
@@ -182,6 +226,18 @@ export function TasksOverview({
     })
   // Reorder mode: allows drag & drop to reorganize tasks and groups
   const [reorderMode, setReorderMode] = React.useState(false)
+  // Selection mode: the row checkboxes that make bulk deletion possible. OFF by default — a table
+  // that arrived pre-ticked would turn one stray click on a checkbox into a deletion candidate,
+  // and the mode has its own Done button, so entering it is a deliberate gesture.
+  const [selectionMode, setSelectionMode] = React.useState(false)
+  const [ticked, setTicked] = React.useState<ReadonlySet<string>>(new Set())
+  // What the confirm dialog is asking about — the ids, and WHICH gesture collected them, because
+  // "delete the 3 you ticked" and "delete all 5 done tasks" are different promises to confirm.
+  const [pendingDelete, setPendingDelete] = React.useState<{
+    ids: readonly string[]
+    kind: 'selected' | 'status'
+    status?: RunStatus
+  } | null>(null)
   const queryClient = useQueryClient()
 
   // The facets are session-local, like the search text; only the origin is remembered.
@@ -198,6 +254,67 @@ export function TasksOverview({
   // A live search overrides the fold wholesale: `filterRuns` keeps a child whose parent also
   // matched NESTED under it, and a match the accordion then hid would read as a search miss.
   const searching = query.trim() !== ''
+
+  // ---- the two deletion gestures, derived from the list actually on screen -------------------
+  // The ticked selection is read back through `visible`: a row a filter hid while it was ticked
+  // is not deleted on its behalf, so what the sweep takes is always what the user can see. Same
+  // reason the view flip below resets it — the Archived list is a different list.
+  const tickedRuns = React.useMemo(() => visible.filter((run) => ticked.has(run.id)), [visible, ticked])
+  const allTicked = visible.length > 0 && tickedRuns.length === visible.length
+  // How many of the ticked rows the engine still owns. The checkbox is shown for every row rather
+  // than withheld — the mode is one gesture, and a list that hid its boxes mid-selection would
+  // read as broken — so the refusal is stated HERE, before the click, instead of surfacing as a
+  // server 409 after it.
+  const blockedCount = React.useMemo(() => tickedRuns.filter((run) => !isDeletableRun(run)).length, [tickedRuns])
+  const clearOptions = React.useMemo(() => statusClearOptions(visible), [visible])
+  const deletableCount = React.useMemo(() => deletableRuns(visible).length, [visible])
+  React.useEffect(() => {
+    setTicked(new Set())
+  }, [view])
+
+  const toggleTicked = (id: string) =>
+    setTicked((current) => {
+      const next = new Set(current)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  // "Select all" is the list as it stands — facets, search and the view applied, including the
+  // rows folded inside a collapsed group. The count beside it says how many that is, so nothing
+  // is ticked behind the user's back.
+  const toggleAllTicked = () => setTicked(allTicked ? new Set() : new Set(visible.map((run) => run.id)))
+  const leaveSelectionMode = () => {
+    setSelectionMode(false)
+    setTicked(new Set())
+  }
+  const confirmDelete = () => {
+    if (!pendingDelete) return
+    onDeleteRuns(pendingDelete.ids)
+    setPendingDelete(null)
+  }
+  // Each of these is rendered TWICE — once in the desktop header, once in the mobile strip below
+  // the filters — because the header is `hidden md:flex` and neither deletion gesture may be
+  // desktop-only. One element, two mounts, one of them always hidden by CSS.
+  const clearMenu =
+    clearOptions.length > 0 ? (
+      <ClearByStatusMenu
+        view={view}
+        options={clearOptions}
+        deletableCount={deletableCount}
+        onClearStatus={(status) =>
+          setPendingDelete({
+            ids: visible.filter((run) => run.status === status).map((run) => run.id),
+            kind: 'status',
+            status,
+          })
+        }
+        onClearEverything={() =>
+          setPendingDelete({ ids: deletableRuns(visible).map((run) => run.id), kind: 'status' })
+        }
+      />
+    ) : null
+  const selectToggle = (
+    <SelectModeToggle active={selectionMode} onToggle={() => setSelectionMode(!selectionMode)} />
+  )
   // Dispatched children nest under the task that ordered them, in that task's own place in the
   // sort above (spec `.ai/specs/2026-09-10-dispatch.md`). One derivation, both layouts: the table
   // and the cards are the same rows at two widths, and a tree that disagreed between them would
@@ -223,6 +340,9 @@ export function TasksOverview({
         now={now}
         columns={columns}
         expandedColumns={expandedColumns}
+        selectable={selectionMode}
+        selected={ticked.has(node.run.id)}
+        onToggleSelect={toggleTicked}
       />
     ))
   }
@@ -244,6 +364,9 @@ export function TasksOverview({
         showTokens={showTokens}
         showCost={showCost}
         onTogglePin={pinToggle}
+        selectable={selectionMode}
+        selected={ticked.has(node.run.id)}
+        onToggleSelect={toggleTicked}
       />
     ))
   }
@@ -251,26 +374,24 @@ export function TasksOverview({
   // Positions come from the full list, never the filtered one: a search must not renumber the
   // queue the engine is actually going to drain.
   const positions = queuePositions(all)
-  // Prepare items for drag & drop reordering
-  const reorderableItems = React.useMemo(() => {
-    return [
-      ...taskGroups.map((group) => ({
-        type: 'group' as const,
-        id: `group-${group.name}`,
-        group,
-      })),
-      ...ungrouped.map((run) => ({
-        type: 'task' as const,
-        id: run.id,
-        run,
-      })),
-    ]
-  }, [taskGroups, ungrouped])
+  // Prepare items for drag & drop reordering. The rows are the reorder list AS SHOWN: an
+  // expanded group is followed by its own tasks, each tagged with the group it belongs to, so
+  // the drag order and the payload describe the same nesting (and a member can never be
+  // dragged out of its group's block by the render itself).
+  const reorderableItems = React.useMemo<ReorderRow[]>(() => {
+    const rows: ReorderRow[] = []
+    for (const group of taskGroups) {
+      rows.push({ type: 'group', id: `group-${group.name}`, group })
+      if (expandedTaskGroups.has(group.name)) {
+        for (const run of group.runs) rows.push({ type: 'task', id: run.id, run, groupName: group.name })
+      }
+    }
+    for (const run of ungrouped) rows.push({ type: 'task', id: run.id, run })
+    return rows
+  }, [taskGroups, ungrouped, expandedTaskGroups])
 
   // Handle reorder: save new order to backend
-  const handleReorder = async (
-    newOrder: Array<{ type: 'task'; id: string; run: RunRecord } | { type: 'group'; id: string; group: TaskGroup }>
-  ) => {
+  const handleReorder = async (newOrder: ReorderRow[]) => {
     try {
       const payload = buildReorderPayload(newOrder)
       await reorderDisplay(payload.items)
@@ -307,6 +428,11 @@ export function TasksOverview({
             {t('tasks.view.archived')}
           </OverviewTab>
         </div>
+        {/* The status sweep, beside the tabs that decide WHICH list it sweeps: the counts inside
+            are the rows currently on screen, so Active and Archived are two different menus.
+            Count-gated like the broom and the read receipt — with nothing deletable on screen the
+            button is not offered rather than shown as a no-op. */}
+        {clearMenu}
         <div className="flex-1" />
         {/* Count-gated, like the broom beside it: offered only while there is unread history to
             clear (#unread-done-items). Archived runs are never unread, so this only ever lights
@@ -349,6 +475,9 @@ export function TasksOverview({
             {reorderMode ? 'Done' : 'Reorder'}
           </Button>
         ) : null}
+        {/* Icon-only, with an aria-label for the same reason the others have text: the header is
+            a fixed h-14 that already carries four controls, and this one is used in bursts. */}
+        {selectToggle}
         <div className="relative w-60">
           <SearchIcon
             className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-soft-foreground"
@@ -379,6 +508,26 @@ export function TasksOverview({
             automationNames={automationNames}
           />
         ) : null}
+        {/* Below `md` the header above is hidden, so the two deletion controls ride here instead
+            of being desktop-only. Same components, one visible at a time. */}
+        <div className="mb-3 flex items-center justify-end gap-1.5 md:hidden">
+          {clearMenu}
+          {selectToggle}
+        </div>
+        {/* The selection bar: only while the mode is on, and it says the one thing the checkboxes
+            do not — how many rows the Delete button would take. */}
+        {selectionMode ? (
+          <SelectionBar
+            total={visible.length}
+            selectedCount={tickedRuns.length}
+            blockedCount={blockedCount}
+            allSelected={allTicked}
+            onToggleAll={toggleAllTicked}
+            onDelete={() => setPendingDelete({ ids: tickedRuns.map((run) => run.id), kind: 'selected' })}
+            onDone={leaveSelectionMode}
+            deleting={deleting}
+          />
+        ) : null}
         {runs === undefined ? null : visible.length === 0 ? (
           <TasksEmptyState
             view={view}
@@ -400,14 +549,19 @@ export function TasksOverview({
                 <div className="rounded-lg border border-border bg-muted/30 p-4">
                   <p className="text-sm text-muted-foreground">
                     <GripVerticalIcon className="inline size-4 align-text-bottom" aria-hidden="true" />
-                    {' '}Drag tasks and groups to reorder them. Click "Done" to save.
+                    {' '}Drag tasks and groups to reorder them. Click a group to unfold its tasks.
+                    Click "Done" to save.
                   </p>
                 </div>
                 <ReorderableTaskList
                   items={reorderableItems}
                   onReorder={handleReorder}
                   renderTask={(run) => (
-                    <div className="rounded-lg border border-border bg-card p-4">
+                    <div
+                      className="rounded-lg border border-border bg-card p-4"
+                      data-slot="reorder-task"
+                      data-run-id={run.id}
+                    >
                       <div className="flex items-center gap-3">
                         <StatusDot
                           tone={deriveAttention(run).tone}
@@ -420,17 +574,29 @@ export function TasksOverview({
                       </div>
                     </div>
                   )}
-                  renderGroup={(group) => (
-                    <div className="rounded-lg border border-border bg-card">
-                      <TaskGroupHeader
-                        name={group.name}
-                        count={group.runs.length}
-                        queuedCount={group.runs.filter((r) => r.status === 'queued').length}
-                        expanded={false}
-                        onToggle={() => {}}
-                      />
-                    </div>
-                  )}
+                  renderGroup={(group, renderMembers) => {
+                    const isExpanded = expandedTaskGroups.has(group.name)
+                    return (
+                      <div
+                        className="rounded-lg border border-border bg-card"
+                        data-slot="reorder-group"
+                        data-group-name={group.name}
+                      >
+                        <TaskGroupHeader
+                          name={group.name}
+                          count={group.runs.length}
+                          queuedCount={group.runs.filter((r) => r.status === 'queued').length}
+                          expanded={isExpanded}
+                          onToggle={() => toggleTaskGroup(group.name)}
+                        />
+                        {isExpanded ? (
+                          <div className="flex flex-col gap-2 border-t border-border p-2">
+                            {renderMembers()}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  }}
                 />
               </div>
             ) : (
@@ -444,6 +610,10 @@ export function TasksOverview({
               <TooltipProvider>
                 <table className="w-full border-collapse">
                   <colgroup>
+                    {/* The selection column leads, and is auto-layout like the rest: it exists
+                        only while selection mode is on, so it must not reserve a permanent 34px
+                        from the Task column on every other visit. */}
+                    {selectionMode ? <col data-column-id="select" style={{ width: '34px' }} /> : null}
                     {columns.map((column) => {
                       const expanded = isColumnExpanded(column.id, expandedColumns)
                       return (
@@ -458,6 +628,15 @@ export function TasksOverview({
                   </colgroup>
                   <thead>
                     <tr>
+                      {selectionMode ? (
+                        <th scope="col" data-column-id="select" className="h-[38px] border-b border-border px-2.5 first:pl-4">
+                          <SelectAllCheckbox
+                            checked={allTicked}
+                            disabled={visible.length === 0}
+                            onToggle={toggleAllTicked}
+                          />
+                        </th>
+                      ) : null}
                       {columns.map((column) => (
                         <TaskColumnHeader
                           key={column.id}
@@ -478,7 +657,7 @@ export function TasksOverview({
                       return (
                         <React.Fragment key={`group-${group.name}`}>
                           <tr>
-                            <td colSpan={columns.length} className="p-0">
+                            <td colSpan={columns.length + (selectionMode ? 1 : 0)} className="p-0">
                               <TaskGroupHeader
                                 name={group.name}
                                 count={group.runs.length}
@@ -580,6 +759,38 @@ export function TasksOverview({
       >
         <PlusIcon className="size-[22px]" aria-hidden="true" />
       </Link>
+
+      {/* The one confirm both gestures share. Never a native confirm() — the design guardian bans
+          it — and always with the count spelled out: "delete 5 tasks" is a promise the user can
+          weigh, "are you sure?" is not. */}
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <AlertDialogContent data-slot="bulk-delete-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('tasks.action.deleteTasksTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-semibold text-foreground">
+                {pendingDelete?.kind === 'status'
+                  ? pendingDelete.status
+                    ? `${pendingDelete.ids.length} × ${t(STATUS_TRANSLATION_KEYS[pendingDelete.status])}`
+                    : `${pendingDelete.ids.length} · ${t('tasks.action.clearEverything')}`
+                  : `${pendingDelete?.ids.length ?? 0} · ${t('tasks.action.selected')}`}
+              </span>{' '}
+              — {t('tasks.action.deleteTasksBody')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('tasks.action.keepThem')}</AlertDialogCancel>
+            <AlertDialogAction
+              data-slot="bulk-delete-confirm"
+              disabled={deleting}
+              onClick={confirmDelete}
+              className="bg-danger text-danger-foreground hover:brightness-[0.96]"
+            >
+              {deleting ? t('tasks.action.deleting') : t('tasks.action.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -836,6 +1047,211 @@ function OverviewTab({
   )
 }
 
+/**
+ * The status sweep — "empty this list by status", in the header beside the tabs that choose which
+ * list it is.
+ *
+ * One entry per deletable status actually on screen, each carrying the number of rows it would
+ * take, then a final "everything deletable" that does the whole view at once. The counts are
+ * computed from the rows as they stand (origin, facets, search, view), so the menu promises
+ * exactly what it will do — and a status with nothing to take is absent rather than a zero.
+ *
+ * Statuses the engine still owns (`running`, `queued`, `waiting`) never appear: the server answers
+ * those with a 409, so the menu does not offer a click it knows will fail. The last entry counts
+ * the same way — it is "everything deletable", not "everything".
+ */
+function ClearByStatusMenu({
+  view,
+  options,
+  deletableCount,
+  onClearStatus,
+  onClearEverything,
+}: {
+  view: ListView
+  options: readonly StatusClearOption[]
+  deletableCount: number
+  onClearStatus: (status: RunStatus) => void
+  onClearEverything: () => void
+}) {
+  const { t } = useTranslations()
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="ghost" size="sm" data-slot="clear-by-status">
+          <Trash2Icon className="size-3.5" aria-hidden="true" />
+          {t('tasks.action.clearByStatus')}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-60" data-slot="clear-by-status-menu">
+        <DropdownMenuLabel>
+          {view === 'archived' ? t('tasks.view.archived') : t('tasks.view.active')}
+        </DropdownMenuLabel>
+        {options.map((option) => (
+          <DropdownMenuItem
+            key={option.status}
+            variant="destructive"
+            data-slot="clear-status-item"
+            data-status={option.status}
+            onClick={() => onClearStatus(option.status)}
+          >
+            {t(STATUS_TRANSLATION_KEYS[option.status])}
+            <span className="ml-auto font-mono text-xs tabular-nums">{option.count}</span>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          data-slot="clear-everything-item"
+          onClick={onClearEverything}
+        >
+          {t('tasks.action.clearEverything')}
+          <span className="ml-auto font-mono text-xs tabular-nums">{deletableCount}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/**
+ * Selection mode's switch. Rendered twice — once in the desktop header, once in the mobile strip
+ * below the filters — because the header is `hidden md:flex` and the checkboxes it reveals are the
+ * only way into the row-level sweep on either width.
+ */
+function SelectModeToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  const { t } = useTranslations()
+  return (
+    <Button
+      type="button"
+      variant={active ? 'outline' : 'ghost'}
+      size="icon-sm"
+      data-slot="select-mode-toggle"
+      aria-label={t('tasks.action.selectTasks')}
+      aria-pressed={active}
+      onClick={onToggle}
+    >
+      <CheckSquareIcon className="size-3.5" aria-hidden="true" />
+    </Button>
+  )
+}
+
+/**
+ * What selection mode is FOR: the count, select-all in both directions, and the delete it feeds.
+ *
+ * It exists rather than letting the header's trash button carry the count because the header is
+ * 56px tall and shared with five other controls, while this bar appears only for the gesture and
+ * can say "3 selected" in a sentence. The Delete button is disabled at zero — an enabled button
+ * whose only outcome is an error is not an affordance.
+ */
+function SelectionBar({
+  total,
+  selectedCount,
+  blockedCount,
+  allSelected,
+  onToggleAll,
+  onDelete,
+  onDone,
+  deleting,
+}: {
+  total: number
+  selectedCount: number
+  /** Of the selected, how many the engine still owns — the delete will not take those. */
+  blockedCount: number
+  allSelected: boolean
+  onToggleAll: () => void
+  onDelete: () => void
+  onDone: () => void
+  deleting: boolean
+}) {
+  const { t } = useTranslations()
+  return (
+    <div
+      data-slot="selection-bar"
+      className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 shadow-xs"
+    >
+      <SelectAllCheckbox checked={allSelected} disabled={total === 0} onToggle={onToggleAll} />
+      <span data-slot="selection-count" className="text-[12.5px] font-semibold tabular-nums">
+        {selectedCount}
+      </span>
+      <span className="text-[12.5px] text-muted-foreground">{t('tasks.action.selected')}</span>
+      {/* Said before the click rather than toasted after it: a task the engine still owns cannot
+          be deleted, and the count is the difference between "3 deleted" and "3 of 5 gone". */}
+      {blockedCount > 0 ? (
+        <span data-slot="selection-blocked" className="text-[12.5px] text-danger">
+          {blockedCount} {t('tasks.action.selectionBlocked')}
+        </span>
+      ) : null}
+      <Button type="button" variant="ghost" size="sm" onClick={onToggleAll} disabled={total === 0}>
+        {allSelected ? t('tasks.action.deselectAll') : t('tasks.action.selectAll')}
+      </Button>
+      <div className="flex-1" />
+      <Button type="button" variant="outline" size="sm" data-slot="selection-done" onClick={onDone}>
+        {t('tasks.action.done')}
+      </Button>
+      <Button
+        type="button"
+        variant="danger-ghost"
+        size="sm"
+        data-slot="delete-selected"
+        disabled={selectedCount === 0 || deleting}
+        onClick={onDelete}
+      >
+        <Trash2Icon className="size-3.5" aria-hidden="true" />
+        {selectedCount > 0 ? `${t('tasks.action.delete')} (${selectedCount})` : t('tasks.action.delete')}
+      </Button>
+    </div>
+  )
+}
+
+/** One row's (or card's) checkbox. A real `<input type="checkbox">` rather than a styled button:
+ *  the checked state is the whole meaning, and it should come from the platform rather than from
+ *  `aria-checked` this component has to keep in sync by hand. */
+function TaskSelectCheckbox({
+  run,
+  checked,
+  onToggle,
+  className,
+}: {
+  run: RunRecord
+  checked: boolean
+  onToggle: () => void
+  className?: string
+}) {
+  return (
+    <input
+      type="checkbox"
+      data-slot="task-select-checkbox"
+      aria-label={`Select ${runTitle(run)}`}
+      checked={checked}
+      onChange={onToggle}
+      className={cn('size-3.5 shrink-0 accent-primary', className)}
+    />
+  )
+}
+
+/** The table head's and the bar's select-all. Disabled on an empty list, where "all" is nothing. */
+function SelectAllCheckbox({
+  checked,
+  disabled,
+  onToggle,
+}: {
+  checked: boolean
+  disabled: boolean
+  onToggle: () => void
+}) {
+  const { t } = useTranslations()
+  return (
+    <input
+      type="checkbox"
+      data-slot="select-all-checkbox"
+      aria-label={t('tasks.action.selectAllVisible')}
+      checked={checked}
+      disabled={disabled}
+      onChange={onToggle}
+      className="size-3.5 shrink-0 align-middle accent-primary"
+    />
+  )
+}
+
 function Th({
   children,
   right = false,
@@ -966,6 +1382,9 @@ function TableRow({
   now,
   columns,
   expandedColumns,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }: {
   run: RunRecord
   /** Nesting level under the task that dispatched this one; 0 for a top-level row. */
@@ -981,6 +1400,10 @@ function TableRow({
   now: number
   columns: readonly TaskColumnDefinition[]
   expandedColumns: NormalizedExpandedColumns
+  /** Selection mode is on: this row wears a checkbox. */
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
 }) {
   const navigate = useNavigate()
   const attention = deriveAttention(run)
@@ -993,6 +1416,7 @@ function TableRow({
     <tr
       data-slot="task-table-row"
       data-run-id={run.id}
+      data-selected={selectable && selected ? 'true' : undefined}
       // The nesting is carried on the ROW, not only in the Task cell's padding: a test (and a
       // stylesheet) should be able to ask how deep a row sits without parsing an indent.
       data-depth={depth}
@@ -1002,6 +1426,18 @@ function TableRow({
       }}
       className="group/row cursor-pointer hover:bg-muted"
     >
+      {/* Leading, and outside the column map: selection is a mode of the table, not one of its
+          columns, so it neither folds nor survives into the workspace column state. */}
+      {selectable ? (
+        <td data-slot="task-select" className={TD_BASE}>
+          <TaskSelectCheckbox
+            run={run}
+            checked={selected}
+            onToggle={() => onToggleSelect?.(run.id)}
+            className="align-middle"
+          />
+        </td>
+      ) : null}
       {columns.map((column) => {
         if (column.id === 'memory') return null
         if (column.id === 'cpu') {
@@ -1368,6 +1804,9 @@ function TaskCard({
   showTokens,
   showCost,
   onTogglePin,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }: {
   run: RunRecord
   /** Nesting level under the task that dispatched this one; 0 for a top-level card. */
@@ -1381,6 +1820,10 @@ function TaskCard({
   showTokens: boolean
   showCost: boolean
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
+  /** Selection mode is on: this card wears a checkbox. */
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
 }) {
   const navigate = useNavigate()
   const attention = deriveAttention(run)
@@ -1399,19 +1842,31 @@ function TaskCard({
       data-slot="task-card"
       data-run-id={run.id}
       data-depth={depth}
+      data-selected={selectable && selected ? 'true' : undefined}
       // The card stack's nesting: the child card is inset from the left edge and keeps the whole
       // card width it had, rather than being squeezed — at phone width a shrinking card would
       // cost the title the room the indent was supposed to explain.
       style={depth > 0 ? { marginLeft: `${depth * 14}px` } : undefined}
       onClick={(event) => {
-        // `button` as well as `a` since the card grew the pin (#935): a control inside the card
-        // owns its own click, exactly as the desktop row has always had it.
-        if ((event.target as Element).closest('a, button')) return
+        // `button` as well as `a` since the card grew the pin (#935), and `input` since it grew
+        // the selection checkbox: a control inside the card owns its own click, exactly as the
+        // desktop row has always had it.
+        if ((event.target as Element).closest('a, button, input')) return
         navigate(to)
       }}
       className="cursor-pointer rounded-lg border border-border bg-card px-3.5 py-3 shadow-xs"
     >
       <div className="flex items-start gap-2.5">
+        {/* First, so the thumb finds it in the same place on every card — the table's checkbox is
+            the leading column, and the two layouts should not disagree about where it lives. */}
+        {selectable ? (
+          <TaskSelectCheckbox
+            run={run}
+            checked={selected}
+            onToggle={() => onToggleSelect?.(run.id)}
+            className="mt-1"
+          />
+        ) : null}
         <Pill dot={attention.tone} pulse={attention.pulse} className="mt-px shrink-0" title={scheduled?.title}>
           {attention.label}
           {scheduled ? <span className="tabular-nums">{scheduled.label}</span> : null}
@@ -1530,6 +1985,7 @@ function BranchChip({ branch }: { branch: string }) {
  * likely have patched each archived run already, but the endpoint's answer is the truth.
  */
 export function TasksOverviewRoute() {
+  const { t } = useTranslations()
   const runs = useRuns()
   const health = useHealth()
   const metricVisibility = usageMetricVisibility(health.data)
@@ -1558,6 +2014,46 @@ export function TasksOverviewRoute() {
   })
   // Pinning (#935) — this page is the scoped project's own table, so no explicit project id.
   const pin = usePinRun()
+  // Bulk deletion — the ticked selection and the status sweep both land here.
+  //
+  // Sequential on purpose: each delete also removes a worktree and a branch, so a dozen of them
+  // fired at once is a dozen concurrent git operations in one repo. Failures are COUNTED rather
+  // than thrown so one 409 — a task that came back to life between the menu and the click — never
+  // loses the other nine, and the toast names how many went and how many did not.
+  const deleteRuns = useMutation({
+    mutationFn: async (ids: readonly string[]) => {
+      let deleted = 0
+      const failures: string[] = []
+      for (const id of ids) {
+        try {
+          await deleteRun(id)
+          deleted += 1
+        } catch (error) {
+          failures.push(error instanceof Error ? error.message : String(error))
+        }
+      }
+      return { deleted, failures }
+    },
+    onSuccess: (result) => {
+      if (result.deleted > 0) {
+        toast(
+          result.deleted === 1
+            ? t('tasks.action.deletedOne')
+            : `${result.deleted} ${t('tasks.action.deletedMany')}`,
+        )
+      }
+      if (result.failures.length > 0) {
+        toast(
+          `${result.failures.length} ${t('tasks.action.deleteFailedSome')} — ${result.failures[0]}`,
+          { tone: 'danger' },
+        )
+      }
+      // Same doctrine as the broom and the rename: the endpoint's answer is the truth. The SSE
+      // stream will likely have carried each `run-deleted` already; this is the authoritative half.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
+    },
+    onError: (error: Error) => toast(error.message, { tone: 'danger' }),
+  })
   const now = useNow(30_000)
   const taskTableColumns = useTaskTableColumns()
   const [origin, setOrigin] = useTaskOrigin()
@@ -1618,6 +2114,8 @@ export function TasksOverviewRoute() {
         origin={origin}
         onOriginChange={setOrigin}
         automationNames={automationNames}
+        onDeleteRuns={(ids) => deleteRuns.mutate(ids)}
+        deleting={deleteRuns.isPending}
       />
     </ReferenceStatusProvider>
   )
