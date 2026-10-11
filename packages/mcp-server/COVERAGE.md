@@ -1,4 +1,4 @@
-# Couverture — les 63 outils MCP
+# Couverture — les 81 outils MCP
 
 Ce fichier est la liste des outils exposés par `src/index.ts`, engendrée à partir de la source.
 `packages/cezar/src/server/mcp-endpoint-drift.test.ts` tient le **côté routes** honnête : chaque
@@ -8,19 +8,19 @@ asserté — il est relu ici depuis la source quand elle change.
 
 | Catégorie | Outils |
 | --- | --- |
-| TASKS | 22 |
+| TASKS | 31 |
 | VARIANTS | 2 |
-| WORKFLOWS | 5 |
+| WORKFLOWS | 8 |
 | SKILLS | 2 |
 | PROJECTS | 5 |
 | FORGE | 4 |
 | TRACKERS | 4 |
 | AUTOMATIONS | 7 |
 | DASHBOARD & INSIGHTS | 5 |
-| GIT & REPO | 3 |
+| GIT & REPO | 9 |
 | AGENT CONFIG & PROFILES | 3 |
 | SYSTEM | 1 |
-| **TOTAL** | **63** |
+| **TOTAL** | **81** |
 
 ## Ce qui n'est pas exposé, et pourquoi
 
@@ -59,6 +59,15 @@ L'API cezar ne propose pas ces surfaces, donc aucun outil MCP ne peut les couvri
 - **`cezar_push_task`** — Push the task branch to its remote (sets upstream when needed).
 - **`cezar_create_pr`** — Create a draft pull request for the task.
 - **`cezar_remove_worktree`** — Remove a task worktree directory (keeps the branch).
+- **`cezar_start_queued_task`** — Start a task created with queueOnly (it sits paused in the queue until started). This is the ONLY way out of the queue — without it a queued task stays queued forever.
+- **`cezar_dispatch_task`** — Make an EXISTING task delegate: create one child task under it (spec 2026-09-10-dispatch). Creation-time delegation is the `dispatch` argument of cezar_create_task; this is the same for a task already running. Refusals (child cap, budget, settled parent) come back as the reason.
+- **`cezar_report_task`** — Record a task's own report (the cezar dispatch protocol: status, result, evidence). Refused with 404 when the task is not part of a dispatch tree.
+- **`cezar_edit_queued_message`** — Rewrite the text of one message stacked on a queued task. The task must still be queued. (The route also accepts image attachments; this tool sends text only.)
+- **`cezar_delete_queued_message`** — Remove one message stacked on a queued task. The task must still be queued.
+- **`cezar_reorder_queue`** — Set the order the queued tasks will be started in (the whole list, by id).
+- **`cezar_get_task_history`** — Read a task's event history (the run's NDJSON), newest page first. Pass the cursor from the previous page to walk further back.
+- **`cezar_get_task_history_context`** — The context events of a task's history — what the agent was told, as opposed to what it did.
+- **`cezar_get_task_handoff`** — Read a task's handoff journal (handoff.md) as markdown — the resume notes and progress log a task leaves behind.
 
 ### VARIANTS (×2, ×3)
 
@@ -72,6 +81,9 @@ L'API cezar ne propose pas ces surfaces, donc aucun outil MCP ne peut les couvri
 - **`cezar_create_workflow`** — Save a workflow as `.ai/cezar/workflows/<slug>.yaml`. Provide either `steps` or the portable `skills` shorthand, not both.
 - **`cezar_update_workflow`** — Overwrite an existing saved workflow. Same body as create, with overwrite forced on.
 - **`cezar_delete_workflow`** — Delete a saved workflow (built-ins have no file and cannot be deleted).
+- **`cezar_list_workflow_nodes`** — The node catalog for graph workflows (version 2): every node type, its fields and its ports. Read this before authoring a graph.
+- **`cezar_validate_workflow`** — Parse and validate a workflow YAML WITHOUT saving it — either form (a `steps` chain, or a version-2 graph). Answers the normalized definition when it is sound, or the parse/validation problems.
+- **`cezar_validate_workflow_graph`** — Structural check of an unsaved version-2 graph (nodes + edges, no YAML): answers the issues the editor would show as you edit. See cezar_list_workflow_nodes for the node catalog.
 
 ### SKILLS (read-only over HTTP)
 
@@ -123,6 +135,12 @@ L'API cezar ne propose pas ces surfaces, donc aucun outil MCP ne peut les couvri
 - **`cezar_get_repo_info`** — Get repository information (root, remote, base branch, commit log).
 - **`cezar_get_repo_status`** — Get git status for the project working tree (modified/untracked files, branch).
 - **`cezar_get_branches`** — List the git branches of the project.
+- **`cezar_get_repo_tree`** — The repository’s whole path index (what `git ls-files` returns) — every file the Files view can open, in one bounded answer. Ignored and untracked paths are absent by construction.
+- **`cezar_list_repo_files`** — Read ONE file from the project’s real checkout (not a task worktree). Only a path in the repository index is readable — an ignored or untracked file answers 409.
+- **`cezar_get_repo_diff`** — The project working tree’s uncommitted diff vs HEAD, as raw patch text.
+- **`cezar_get_repo_changes`** — The project working tree’s uncommitted changes as structured data (added/modified/deleted, with per-file diffs and a stat). The JSON sibling of cezar_get_repo_diff.
+- **`cezar_get_repo_commit`** — One commit of the project: its message, stat and patch.
+- **`cezar_create_repo_branch`** — Switch the project to a branch, creating it first when it does not exist. Predictable git failures (bad name, unknown `from`, dirty-tree conflict) come back as the reason. **This one switches the user’s real checkout.**
 
 ### AGENT CONFIG & PROFILES
 

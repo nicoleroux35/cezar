@@ -9,20 +9,20 @@ est ce que l'API cezar sait faire.
 
 ## Ce que ça expose
 
-**63 outils** et **11 ressources**, sur les surfaces suivantes :
+**81 outils** et **11 ressources**, sur les surfaces suivantes :
 
 | Surface | Outils | Ce que ça couvre |
 | --- | --- | --- |
-| Tâches | 22 | créer (variantes ×2/×3, autonome, dispatch, file d'attente), lister, éditer, archiver, épingler, lu/non-lu, message, annuler, terminer, continuer, diff, commits, changes, commit, push, PR, worktree |
+| Tâches | 31 | créer (variantes ×2/×3, autonome, dispatch, file d'attente), lister, éditer, archiver, épingler, lu/non-lu, message, annuler, terminer, continuer, diff, commits, changes, commit, push, PR, worktree — plus la file d'attente (démarrer, réordonner, éditer/supprimer un message en attente) et le dossier d'une tâche (historique, contexte, handoff) |
 | Variantes | 2 | lire un groupe ×2/×3, choisir le gagnant |
-| Workflows | 5 | lister, lire, créer, remplacer, supprimer |
+| Workflows | 8 | lister, lire, créer, remplacer, supprimer — plus l'aide à l'écriture : catalogue de nœuds, validation d'un YAML, validation d'un graphe |
 | Skills | 2 | lister, lire — **lecture seule** (voir Limitations) |
 | Projets | 5 | lister, lire, ajouter un dossier, retirer, modifier (tags, `maxParallel`) |
 | Forge (GitHub…) | 4 | issues ouvertes, PR ouvertes, recherche tous états, statut de référence |
 | Trackers (Jira, Linear) | 4 | lister, rechercher, lire un item, état de la connexion |
 | Automations | 7 | lister, lire, créer, modifier, activer/pauser, lancer, supprimer |
 | Dashboard | 5 | vue workspace, overview, coûts, insights, index des tâches |
-| Git & repo | 3 | info repo, status, branches (une seule route `GET /repo` sert les trois) |
+| Git & repo | 9 | info repo, status, branches (une seule route `GET /repo` sert les trois) — plus l'exploration : arbre des fichiers, lecture d'un fichier, diff, changes, un commit, création/bascule de branche |
 | Config agents | 3 | fichiers de config des agents, profils de compte, modèles découverts |
 | Système | 1 | santé, capacités, agents disponibles |
 
@@ -109,6 +109,14 @@ quand même dessus ne répondrait qu'un 404.
   partout ; l'écriture répond 409 quand `localHandoff` est faux (mode distant).
 - **Pas de self-update de cezar.**
 
+## Écritures qui touchent votre copie de travail
+
+Presque tout ce serveur écrit dans le worktree d'une tâche. Une exception :
+
+- `cezar_create_repo_branch` **bascule le checkout** du dépôt réel — c'est le bouton « branche » de
+  la vue Files, et il fait exactement ça. Un client MCP qui l'appelle déplace la branche sous les
+  pieds de l'utilisateur : à n'utiliser qu'à bon escient, et à remettre en place ensuite.
+
 ## Un outil renvoie une erreur : que faire ?
 
 Les erreurs de l'API remontent telles quelles, avec le message du serveur :
@@ -141,7 +149,7 @@ Documentation :
 
 - [INSTALL.md](./INSTALL.md) — installation détaillée, par client
 - [EXAMPLES.md](./EXAMPLES.md) — scénarios d'utilisation
-- [COVERAGE.md](./COVERAGE.md) — les 63 outils, un par un
+- [COVERAGE.md](./COVERAGE.md) — les 81 outils, un par un
 - [API_REFERENCE.md](./API_REFERENCE.md) — référence par catégorie
 - [CHANGELOG.md](./CHANGELOG.md) — historique
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — guide développeur

@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:coverage": "node scripts/check-coverage.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

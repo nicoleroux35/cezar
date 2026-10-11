@@ -511,6 +511,129 @@ const TOOLS: Tool[] = [
       required: ['taskId'],
     },
   },
+  {
+    name: 'cezar_start_queued_task',
+    description:
+      'Start a task created with queueOnly (it sits paused in the queue until started). This is the ONLY way out of the queue — without it a queued task stays queued forever.',
+    inputSchema: {
+      type: 'object',
+      properties: { taskId: { type: 'string' } },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'cezar_dispatch_task',
+    description:
+      'Make an EXISTING task delegate: create one child task under it (spec 2026-09-10-dispatch). Creation-time delegation is the `dispatch` argument of cezar_create_task; this is the same for a task already running. Refusals (child cap, budget, settled parent) come back as the reason.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The parent task id' },
+        objective: { type: 'string', description: 'The whole assignment the child receives' },
+        title: { type: 'string', description: 'Short label for the child task' },
+        kind: { type: 'string', enum: ['implement', 'review'], description: 'review makes it a reviewer of a branch' },
+        reviewOf: { type: 'array', items: { type: 'string' }, description: 'Branch(es) or run ids a review child inspects' },
+        scope: { type: 'string', description: 'Files or directories the child may touch' },
+        allowedTools: { type: 'array', items: { type: 'string' }, description: 'Tools the child may use' },
+        maxCost: { type: 'number', description: 'Hard cost ceiling for the child, in USD' },
+        successCriteria: { type: 'string', description: 'How the child knows it is done' },
+        requiredEvidence: { type: 'string', description: 'What the child must show in its report' },
+        retryLimit: { type: 'integer', description: 'Retries allowed, 0–3' },
+        runner: { type: 'string', enum: [...RUNNER_IDS], description: 'Child backend (default: the parent\'s)' },
+        model: { type: 'string', description: 'Child model (default: the parent\'s)' },
+      },
+      required: ['taskId', 'objective'],
+    },
+  },
+  {
+    name: 'cezar_report_task',
+    description:
+      'Record a task\'s own report (the cezar dispatch protocol: status, result, evidence). Refused with 404 when the task is not part of a dispatch tree.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string' },
+        status: { type: 'string', enum: ['done', 'partial', 'failed', 'blocked'] },
+        result: { type: 'string', description: 'What was done and the state now' },
+        evidence: { type: 'array', items: { type: 'string' }, description: 'Commands run and what they printed' },
+        confidence: { type: 'number', description: '0–1' },
+        sideEffects: { type: 'array', items: { type: 'string' } },
+        errors: { type: 'array', items: { type: 'string' } },
+        recommendedNextAction: { type: 'string' },
+        verdict: { type: 'string', enum: ['approve', 'changes', 'reject'], description: 'A review task\'s verdict on the branch it reviewed' },
+        suggestions: { type: 'array', items: { type: 'string' }, description: 'What the root should know, outside this task\'s order' },
+      },
+      required: ['taskId', 'status', 'result'],
+    },
+  },
+  {
+    name: 'cezar_edit_queued_message',
+    description:
+      'Rewrite the text of one message stacked on a queued task. The task must still be queued. (The route also accepts image attachments; this tool sends text only.)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string' },
+        messageId: { type: 'string', description: 'Id from the task\'s queuedMessages' },
+        text: { type: 'string', description: 'The message\'s new text' },
+      },
+      required: ['taskId', 'messageId', 'text'],
+    },
+  },
+  {
+    name: 'cezar_delete_queued_message',
+    description: 'Remove one message stacked on a queued task. The task must still be queued.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string' },
+        messageId: { type: 'string' },
+      },
+      required: ['taskId', 'messageId'],
+    },
+  },
+  {
+    name: 'cezar_reorder_queue',
+    description: 'Set the order the queued tasks will be started in (the whole list, by id).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskIds: { type: 'array', items: { type: 'string' }, description: 'Every queued task id, in the wanted order' },
+      },
+      required: ['taskIds'],
+    },
+  },
+  {
+    name: 'cezar_get_task_history',
+    description:
+      'Read a task\'s event history (the run\'s NDJSON), newest page first. Pass the cursor from the previous page to walk further back.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string' },
+        cursor: { type: 'string', description: 'Opaque cursor from the previous page' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'cezar_get_task_history_context',
+    description: 'The context events of a task\'s history — what the agent was told, as opposed to what it did.',
+    inputSchema: {
+      type: 'object',
+      properties: { taskId: { type: 'string' } },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'cezar_get_task_handoff',
+    description: 'Read a task\'s handoff journal (handoff.md) as markdown — the resume notes and progress log a task leaves behind.',
+    inputSchema: {
+      type: 'object',
+      properties: { taskId: { type: 'string' } },
+      required: ['taskId'],
+    },
+  },
 
   // ==========================================================================
   // VARIANTS (×2, ×3)
@@ -599,6 +722,52 @@ const TOOLS: Tool[] = [
       type: 'object',
       properties: { name: { type: 'string' } },
       required: ['name'],
+    },
+  },
+  {
+    name: 'cezar_list_workflow_nodes',
+    description:
+      'The node catalog for graph workflows (version 2): every node type, its fields and its ports. Read this before authoring a graph.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'cezar_validate_workflow',
+    description:
+      'Parse and validate a workflow YAML WITHOUT saving it — either form (a `steps` chain, or a version-2 graph). Answers the normalized definition when it is sound, or the parse/validation problems.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        yaml: { type: 'string', description: 'The workflow document to check' },
+      },
+      required: ['yaml'],
+    },
+  },
+  {
+    name: 'cezar_validate_workflow_graph',
+    description:
+      'Structural check of an unsaved version-2 graph (nodes + edges, no YAML): answers the issues the editor would show as you edit. See cezar_list_workflow_nodes for the node catalog.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        graph: {
+          type: 'object',
+          description: 'A version-2 graph: { nodes, edges, layout? }. Node shapes are in cezar_list_workflow_nodes.',
+          properties: {
+            nodes: { type: 'array', items: { type: 'object' }, description: 'At least one node; each has an id and a type' },
+            edges: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { from: { type: 'string' }, to: { type: 'string' } },
+                required: ['from', 'to'],
+              },
+            },
+            layout: { type: 'object', description: 'Optional node positions, keyed by node id' },
+          },
+          required: ['nodes', 'edges'],
+        },
+      },
+      required: ['graph'],
     },
   },
 
@@ -921,6 +1090,68 @@ const TOOLS: Tool[] = [
     description: 'List the git branches of the project.',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'cezar_get_repo_tree',
+    description:
+      'The repository’s whole path index (what `git ls-files` returns) — every file the Files view can open, in one bounded answer. Ignored and untracked paths are absent by construction.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'cezar_list_repo_files',
+    description:
+      'Read ONE file from the project’s real checkout (not a task worktree). Only a path in the repository index is readable — an ignored or untracked file answers 409.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Repository-relative path, as cezar_get_repo_tree returned it' },
+        raw: { type: 'boolean', description: 'Ask for the image bytes instead of the JSON answer (images only)' },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'cezar_get_repo_diff',
+    description: 'The project working tree’s uncommitted diff vs HEAD, as raw patch text.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'cezar_get_repo_changes',
+    description:
+      'The project working tree’s uncommitted changes as structured data (added/modified/deleted, with per-file diffs and a stat). The JSON sibling of cezar_get_repo_diff.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'cezar_get_repo_commit',
+    description: 'One commit of the project: its message, stat and patch.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sha: {
+          type: 'string',
+          description:
+            'A commit sha — 4 to 40 hex characters, as cezar_get_repo_info\'s log returns them. `HEAD` and other revs are NOT accepted: the route refuses anything that is not a hash.',
+        },
+        structured: {
+          type: 'boolean',
+          description: 'Structured answer ({sha, subject, author, when, files, stat}) instead of the raw patch',
+        },
+      },
+      required: ['sha'],
+    },
+  },
+  {
+    name: 'cezar_create_repo_branch',
+    description:
+      'Switch the project to a branch, creating it first when it does not exist. Predictable git failures (bad name, unknown `from`, dirty-tree conflict) come back as the reason.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Branch to switch to (created when absent)' },
+        from: { type: 'string', description: 'Base ref when creating (default: HEAD)' },
+      },
+      required: ['name'],
+    },
+  },
 
   // ==========================================================================
   // AGENT CONFIG & PROFILES
@@ -1056,6 +1287,14 @@ function asString(value: unknown, field: string): string {
   return value;
 }
 
+/** A required list of strings (`reorder-queue` wants every queued run id, in order). */
+function asStringArray(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`missing required string-array argument: ${field}`);
+  }
+  return value as string[];
+}
+
 /** The keys of the strict `dispatch` intent `POST /runs` accepts (`dispatchIntentSchema`). */
 const DISPATCH_INTENT_KEYS = ['maxSubtasks', 'inFlight', 'runner', 'model', 'budgetUsd'] as const;
 
@@ -1189,6 +1428,100 @@ async function handleToolCall(name: string, args: Args): Promise<unknown> {
     case 'cezar_remove_worktree':
       return runCall(ENDPOINTS.removeWorktree, asString(args.taskId, 'taskId'));
 
+    case 'cezar_start_queued_task':
+      return runCall(ENDPOINTS.startQueuedRun, asString(args.taskId, 'taskId'));
+
+    case 'cezar_reorder_queue':
+      return cezarApi(ENDPOINTS.reorderQueue, {
+        body: { runIds: asStringArray(args.taskIds, 'taskIds') },
+      });
+
+    case 'cezar_edit_queued_message': {
+      const body: Record<string, unknown> = {};
+      if (args.text !== undefined) body.text = args.text;
+      // The route requires text OR images; with no text there is nothing this tool can send,
+      // and a body of `{}` would be rejected as "message edit needs text or attachments".
+      if (body.text === undefined) throw new Error('cezar_edit_queued_message needs `text`');
+      return cezarApi(ENDPOINTS.editQueuedMessage, {
+        params: {
+          runId: asString(args.taskId, 'taskId'),
+          msgId: asString(args.messageId, 'messageId'),
+        },
+        body,
+      });
+    }
+
+    case 'cezar_delete_queued_message':
+      return cezarApi(ENDPOINTS.deleteQueuedMessage, {
+        params: {
+          runId: asString(args.taskId, 'taskId'),
+          msgId: asString(args.messageId, 'messageId'),
+        },
+      });
+
+    case 'cezar_dispatch_task': {
+      const runId = asString(args.taskId, 'taskId');
+      const body: Record<string, unknown> = {
+        objective: asString(args.objective, 'objective'),
+      };
+      // `dispatchInputSchema` is a strictObject and snake_cases its own keys — an unknown key is
+      // a 400, so map explicitly rather than forwarding whatever the client sent.
+      for (const [toolKey, routeKey] of [
+        ['title', 'title'],
+        ['kind', 'kind'],
+        ['reviewOf', 'review_of'],
+        ['scope', 'scope'],
+        ['allowedTools', 'allowed_tools'],
+        ['maxCost', 'max_cost'],
+        ['successCriteria', 'success_criteria'],
+        ['requiredEvidence', 'required_evidence'],
+        ['retryLimit', 'retry_limit'],
+        ['runner', 'runner'],
+        ['model', 'model'],
+      ] as const) {
+        if (args[toolKey] !== undefined) body[routeKey] = args[toolKey];
+      }
+      return cezarApi(ENDPOINTS.dispatchRun, { params: { runId }, body });
+    }
+
+    case 'cezar_report_task': {
+      const body: Record<string, unknown> = {
+        status: asString(args.status, 'status'),
+        result: asString(args.result, 'result'),
+      };
+      for (const [toolKey, routeKey] of [
+        ['evidence', 'evidence'],
+        ['confidence', 'confidence'],
+        ['sideEffects', 'side_effects'],
+        ['errors', 'errors'],
+        ['recommendedNextAction', 'recommended_next_action'],
+        ['verdict', 'verdict'],
+        ['suggestions', 'suggestions'],
+      ] as const) {
+        if (args[toolKey] !== undefined) body[routeKey] = args[toolKey];
+      }
+      return cezarApi(ENDPOINTS.reportRun, {
+        params: { runId: asString(args.taskId, 'taskId') },
+        body,
+      });
+    }
+
+    case 'cezar_get_task_history': {
+      const query: Record<string, string | undefined> = {};
+      if (args.cursor !== undefined) query.cursor = asString(args.cursor, 'cursor');
+      return cezarApi(ENDPOINTS.runHistory, {
+        params: { runId: asString(args.taskId, 'taskId') },
+        query,
+      });
+    }
+
+    case 'cezar_get_task_history_context':
+      return runCall(ENDPOINTS.runHistoryContext, asString(args.taskId, 'taskId'));
+
+    // Answers `text/markdown`, so `cezarApi` hands back the raw string.
+    case 'cezar_get_task_handoff':
+      return runCall(ENDPOINTS.runHandoff, asString(args.taskId, 'taskId'));
+
     // ======================================================================
     // VARIANTS
     // ======================================================================
@@ -1232,6 +1565,17 @@ async function handleToolCall(name: string, args: Args): Promise<unknown> {
 
     case 'cezar_delete_workflow':
       return cezarApi(ENDPOINTS.deleteWorkflow, { params: { name: asString(args.name, 'name') } });
+
+    case 'cezar_list_workflow_nodes':
+      return cezarApi(ENDPOINTS.workflowNodes);
+
+    case 'cezar_validate_workflow':
+      return cezarApi(ENDPOINTS.parseWorkflow, {
+        body: { yaml: asString(args.yaml, 'yaml') },
+      });
+
+    case 'cezar_validate_workflow_graph':
+      return cezarApi(ENDPOINTS.validateWorkflowGraph, { body: { graph: args.graph } });
 
     // ======================================================================
     // SKILLS
@@ -1449,6 +1793,34 @@ async function handleToolCall(name: string, args: Args): Promise<unknown> {
     case 'cezar_get_branches': {
       const repo = (await cezarApi(ENDPOINTS.repo)) as Record<string, unknown>;
       return repo.branches;
+    }
+
+    case 'cezar_get_repo_tree':
+      return cezarApi(ENDPOINTS.repoTree);
+
+    case 'cezar_list_repo_files':
+      return cezarApi(ENDPOINTS.repoFile, {
+        query: { path: asString(args.path, 'path'), raw: args.raw === true ? '1' : undefined },
+      });
+
+    // Answers `text/plain` (a raw patch), so `cezarApi` hands back the string.
+    case 'cezar_get_repo_diff':
+      return cezarApi(ENDPOINTS.repoDiff);
+
+    case 'cezar_get_repo_changes':
+      return cezarApi(ENDPOINTS.repoChanges);
+
+    case 'cezar_get_repo_commit':
+      return cezarApi(ENDPOINTS.repoCommit, {
+        params: { sha: asString(args.sha, 'sha') },
+        // The route reads `?structured=1` and falls back to the text blob otherwise.
+        query: { structured: args.structured === true ? '1' : undefined },
+      });
+
+    case 'cezar_create_repo_branch': {
+      const body: Record<string, unknown> = { name: asString(args.name, 'name') };
+      if (args.from !== undefined) body.from = args.from;
+      return cezarApi(ENDPOINTS.repoBranch, { body });
     }
 
     // ======================================================================

@@ -231,6 +231,25 @@ schéma du contrat.
 Le garde est non-vacuous : il refuse de passer si la table de routes lue est trop petite
 (`registeredRoutes.size > 100`) ou si aucune route MCP n'a été trouvée.
 
+### Le garde de dérive documentaire
+
+Le test ci-dessus tient les **routes** ; il ne dit rien des **compteurs**. C'est par là que la doc a
+dérivé : README et COVERAGE annonçaient 63 outils quand le serveur en exposait 81. Un second garde
+compare ce que le serveur **annonce** à ce que la doc **écrit** :
+
+```bash
+npm run build:mcp          # le garde lit dist/index.js
+npm -w @open-mercato/cezar-mcp-server run check:coverage
+```
+
+Il démarre le serveur construit sur stdio, demande `tools/list` et `resources/list` (aucun cockpit
+nécessaire : ces deux appels ne touchent pas l'API), puis vérifie que le TOTAL de COVERAGE.md et le
+« **N outils** » de README.md valent le nombre annoncé, que chaque outil documenté est annoncé et
+réciproquement, que le compte de ressources concorde, et que la description de COVERAGE.md commence
+par celle de l'outil (la doc peut ajouter une mise en garde, pas garder une formulation que le code
+a changée). **Ajouter un outil veut donc dire ajouter sa ligne dans COVERAGE.md, et corriger les
+compteurs dans README.md** — sinon ce garde échoue.
+
 ### Tests manuels avec un vrai client MCP
 
 1. Compiler : `npm run build:mcp`
@@ -299,9 +318,11 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 - [ ] `npm run typecheck:mcp` sans erreur (pas de `@ts-nocheck`)
 - [ ] `npm run build:mcp` sans erreur
 - [ ] `npm test -- packages/cezar/src/server/mcp-endpoint-drift.test.ts` vert
+- [ ] `npm -w @open-mercato/cezar-mcp-server run check:coverage` vert (ligne dans COVERAGE.md,
+      compteurs de README.md et d'API_REFERENCE.md à jour)
 - [ ] Schéma d'entrée décrivant la forme réelle (pas `{ type: 'object' }`)
 - [ ] Tests manuels passés avec test-mcp.js (au moins un appel réel par outil ajouté)
-- [ ] Documentation mise à jour (README.md, COVERAGE.md)
+- [ ] Documentation mise à jour (README.md, COVERAGE.md, API_REFERENCE.md)
 - [ ] Code formaté et commenté
 - [ ] Pas de secrets ou credentials en dur
 - [ ] Variables d'environnement documentées dans INSTALL.md

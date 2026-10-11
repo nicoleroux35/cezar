@@ -4,13 +4,36 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ## [1.1.0] - 2026-10-11
 
-### 🔧 Remise à niveau sur l'API cezar courante — 63 outils
+### 🔧 Remise à niveau sur l'API cezar courante — 81 outils
 
 L'inventaire ci-dessous, daté du 2024-10-06, décrit un serveur dont **plus de vingt outils
 appelaient des routes qui n'existent plus** : ils répondaient 404, ou — pire — 200 avec une
 mauvaise réponse quand un `:id` générique capturait le segment (`/tracker/items` était avalé par
 `/tracker/:id` et renvoyait `not_configured`). Les entrées du 2024-10-06 sont conservées telles
 quelles pour l'historique ; l'état courant est dans [COVERAGE.md](./COVERAGE.md).
+
+### Ajouté — 18 outils pour fermer les culs-de-sac et les lectures manquantes
+
+Une fois les outils existants réparés, l'inventaire restait incomplet sur un point qui n'est pas
+cosmétique : `cezar_create_task { queueOnly: true }` parquait une tâche **sans aucun moyen de la
+démarrer**. La route existe (`POST /runs/:id/start-queued`) et c'est la seule sortie de la file —
+un client MCP pouvait donc créer une tâche définitivement coincée. Les 18 outils ajoutés couvrent
+ce cul-de-sac, le dossier d'une tâche, l'écriture de workflows et l'exploration du dépôt :
+
+- **File d'attente** — `cezar_start_queued_task` (la sortie), `cezar_reorder_queue`,
+  `cezar_edit_queued_message`, `cezar_delete_queued_message`.
+- **Dossier d'une tâche** — `cezar_get_task_history` (NDJSON paginé), `cezar_get_task_history_context`,
+  `cezar_get_task_handoff` (markdown).
+- **Dispatch sur une tâche existante** — `cezar_dispatch_task`, `cezar_report_task`.
+- **Écriture de workflows** — `cezar_list_workflow_nodes`, `cezar_validate_workflow` (parse+valide un
+  YAML sans l'enregistrer), `cezar_validate_workflow_graph`.
+- **Dépôt** — `cezar_get_repo_tree`, `cezar_list_repo_files`, `cezar_get_repo_diff`,
+  `cezar_get_repo_changes`, `cezar_get_repo_commit`, `cezar_create_repo_branch`.
+
+Chacun est exercé de bout en bout (stdio JSON-RPC contre un cockpit réel) par un pilote de
+vérification, y compris ses refus attendus : message en attente sans `text`, démarrage d'une tâche
+qui n'est pas en file, `status` de rapport invalide, YAML invalide, chemin ignoré ou en traversée,
+`sha` qui n'est pas un hash, nom de branche invalide.
 
 ### Ajouté
 
@@ -24,6 +47,14 @@ quelles pour l'historique ; l'état courant est dans [COVERAGE.md](./COVERAGE.md
   `command` ; `onFail.retry`), partagée par `cezar_create_task`, `cezar_create_workflow` et
   `cezar_update_workflow`. Sans elle, un client MCP ne pouvait pas savoir que `id` est requis et
   recevait `steps.0.id: Invalid input: expected string, received undefined` au premier appel.
+- **`scripts/check-coverage.mjs` réécrit** — l'ancien tenait une liste de routes à la main,
+  la comparait par `includes()` et finissait sur un « COUVERTURE TOTALE: ~95-100% » écrit en dur :
+  il citait des routes et des outils disparus, et ne voyait pas que README annonçait 63 outils pour
+  81. Le nouveau démarre le serveur construit, demande `tools/list` et `resources/list`, et compare
+  ce que le serveur annonce à ce que COVERAGE.md et README.md écrivent : compteurs, liste des outils
+  dans les deux sens, nombre de ressources, et description de COVERAGE.md préfixée par celle de
+  l'outil. C'est le garde de dérive documentaire
+  (`npm -w @open-mercato/cezar-mcp-server run check:coverage`) ; il est vérifié rouge sans le fix.
 
 ### Corrigé
 

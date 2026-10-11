@@ -4,7 +4,7 @@
 > Les compteurs et les listes d'outils ci-dessous décrivent le serveur tel qu'il était à cette
 > date (73 outils, dont des outils de *skills* en écriture et d'association tracker ↔ tâche qui
 > n'existent plus : l'API cezar ne les expose pas). L'état courant fait foi :
-> [COVERAGE.md](./COVERAGE.md) (63 outils, un par un), [API_REFERENCE.md](./API_REFERENCE.md),
+> [COVERAGE.md](./COVERAGE.md) (81 outils, un par un), [API_REFERENCE.md](./API_REFERENCE.md),
 > [README.md](./README.md). Conservé pour l'historique, ne pas s'y fier pour l'inventaire.
 
 

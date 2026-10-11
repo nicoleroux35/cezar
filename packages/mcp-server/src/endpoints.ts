@@ -54,6 +54,20 @@ export const ENDPOINTS = {
   runGitPush: { method: 'POST', path: `/api/v1/p/${PROJECT}/runs/{runId}/git/push` },
   runPr: { method: 'POST', path: `/api/v1/p/${PROJECT}/runs/{runId}/pr` },
   removeWorktree: { method: 'POST', path: `/api/v1/p/${PROJECT}/runs/{runId}/remove-worktree` },
+  // The queue. `POST /runs` with `queueOnly` parks a run paused; `startQueuedRun` is the ONLY
+  // way it leaves that state, so a client that can create a queued run and not start it has a
+  // dead end, not a feature.
+  startQueuedRun: { method: 'POST', path: `/api/v1/p/${PROJECT}/runs/{runId}/start-queued` },
+  reorderQueue: { method: 'POST', path: `/api/v1/p/${PROJECT}/runs/reorder-queue` },
+  editQueuedMessage: { method: 'PATCH', path: `/api/v1/p/${PROJECT}/runs/{runId}/queued-messages/{msgId}` },
+  deleteQueuedMessage: { method: 'DELETE', path: `/api/v1/p/${PROJECT}/runs/{runId}/queued-messages/{msgId}` },
+  // Dispatch (spec 2026-09-10-dispatch). Both 409 when dispatch is off.
+  dispatchRun: { method: 'POST', path: `/api/v1/p/${PROJECT}/runs/{runId}/dispatch` },
+  reportRun: { method: 'POST', path: `/api/v1/p/${PROJECT}/runs/{runId}/report` },
+  // A run's own record: its event history (paged), its context events, and its handoff journal.
+  runHistory: { method: 'GET', path: `/api/v1/p/${PROJECT}/runs/{runId}/history` },
+  runHistoryContext: { method: 'GET', path: `/api/v1/p/${PROJECT}/runs/{runId}/history-context` },
+  runHandoff: { method: 'GET', path: `/api/v1/p/${PROJECT}/runs/{runId}/handoff` },
 
   // ---- variants (×2 / ×3) -------------------------------------------------
   group: { method: 'GET', path: `/api/v1/p/${PROJECT}/groups/{groupId}` },
@@ -66,6 +80,11 @@ export const ENDPOINTS = {
   workflows: { method: 'GET', path: `/api/v1/p/${PROJECT}/workflows` },
   saveWorkflow: { method: 'POST', path: `/api/v1/p/${PROJECT}/workflows` },
   deleteWorkflow: { method: 'DELETE', path: `/api/v1/p/${PROJECT}/workflows/{name}` },
+  // Authoring support: the node catalog for version-2 graphs, a structural check of an unsaved
+  // graph, and a parse+validate of a YAML document that saves nothing.
+  workflowNodes: { method: 'GET', path: `/api/v1/p/${PROJECT}/workflows/nodes` },
+  validateWorkflowGraph: { method: 'POST', path: `/api/v1/p/${PROJECT}/workflows/validate` },
+  parseWorkflow: { method: 'POST', path: `/api/v1/p/${PROJECT}/workflows/parse` },
 
   // ---- skills -------------------------------------------------------------
   // Read-only over HTTP: `GET /skills` serves the whole catalog INCLUDING each body. cezar
@@ -111,6 +130,14 @@ export const ENDPOINTS = {
   // ---- repo / git (project-scoped) ---------------------------------------
   // `GET /repo` is the one route: it answers `{ info, status, log, branches, baseBranch }`.
   repo: { method: 'GET', path: `/api/v1/p/${PROJECT}/repo` },
+  // The Files view's three reads, and the branch action. `/repo/files` serves the user's REAL
+  // checkout, not a worktree, and only a path `git ls-files` returned is readable.
+  repoTree: { method: 'GET', path: `/api/v1/p/${PROJECT}/repo/tree` },
+  repoFile: { method: 'GET', path: `/api/v1/p/${PROJECT}/repo/files` },
+  repoDiff: { method: 'GET', path: `/api/v1/p/${PROJECT}/repo/diff` },
+  repoChanges: { method: 'GET', path: `/api/v1/p/${PROJECT}/repo/changes` },
+  repoCommit: { method: 'GET', path: `/api/v1/p/${PROJECT}/repo/commit/{sha}` },
+  repoBranch: { method: 'POST', path: `/api/v1/p/${PROJECT}/repo/branch` },
 
   // ---- agents -------------------------------------------------------------
   agentConfig: { method: 'GET', path: '/api/v1/agent-config' },

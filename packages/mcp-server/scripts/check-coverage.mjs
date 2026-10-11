@@ -1,162 +1,177 @@
 #!/usr/bin/env node
 /**
- * Script d'analyse de couverture MCP
- * Compare les routes API de cezar avec les outils MCP implémentés
+ * Le garde de dérive DOCUMENTAIRE du serveur MCP.
+ *
+ * L'ancienne version de ce script tenait une liste de routes à la main, la comparait à la source
+ * par `includes()`, et terminait sur un « COUVERTURE TOTALE: ~95-100% » écrit en dur. Elle
+ * annonçait donc une couverture qui n'existait plus : elle citait des routes disparues
+ * (`/git/branches`, `/tracker/association`) et des outils supprimés
+ * (`cezar_associate_tracker_item`), pendant que README/COVERAGE affichaient 63 outils alors que le
+ * serveur en annonçait 81.
+ *
+ * Le côté ROUTES est déjà tenu par `packages/cezar/src/server/mcp-endpoint-drift.test.ts`, qui
+ * confronte `src/endpoints.ts` à la table de routes d'une app construite — la vraie source de
+ * vérité, automatique. Ce script-ci couvre l'autre moitié, celle qui a dérivé en silence : ce que
+ * la DOC dit doit correspondre à ce que le serveur ANNONCE.
+ *
+ * Il démarre le serveur construit (`dist/index.js`) sur stdio, demande `tools/list` et
+ * `resources/list` — aucun cockpit n'est nécessaire, ces deux appels ne touchent pas l'API — puis
+ * vérifie que :
+ *
+ *   1. le TOTAL de COVERAGE.md et le « **N outils** » de README.md valent le nombre annoncé ;
+ *   2. chaque outil documenté est annoncé, et chaque outil annoncé est documenté ;
+ *   3. le nombre de ressources annoncé par README.md vaut celui de `resources/list` ;
+ *   4. la description de COVERAGE.md commence par celle de l'outil — la doc peut ajouter une mise
+ *      en garde, mais pas garder une formulation que le code a changée.
+ *
+ * Usage : node packages/mcp-server/scripts/check-coverage.mjs   (après `npm run build:mcp`)
+ *      ou : npm -w @open-mercato/cezar-mcp-server run check:coverage
  */
+import { readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { readFileSync } from 'fs';
-import { join } from 'path';
+const pkgDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+const serverEntry = join(pkgDir, 'dist', 'index.js');
 
-// Extraire les routes de server.ts
-const serverFile = readFileSync(join(process.cwd(), 'packages/cezar/src/server/server.ts'), 'utf-8');
+/** `tools/list` + `resources/list` over one stdio session. No cockpit required. */
+function askServer() {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [serverEntry], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const answers = new Map();
+    let buf = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`the MCP server did not answer tools/list within 20s${stderr ? ` — ${stderr.trim()}` : ''}`));
+    }, 20_000);
 
-// Extraire les outils MCP
-const mcpFile = readFileSync(join(process.cwd(), 'packages/mcp-server/src/index.ts'), 'utf-8');
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('error', (err) => { clearTimeout(timer); reject(err); });
+    child.stdout.on('data', (chunk) => {
+      buf += chunk.toString();
+      let i;
+      while ((i = buf.indexOf('\n')) !== -1) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line) continue;
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        if (msg.id !== undefined && answers.has(msg.id)) {
+          answers.get(msg.id)(msg);
+          answers.delete(msg.id);
+        }
+      }
+    });
 
-// Parser les routes (simplification - chercher les patterns courants)
-const routePatterns = [
-  // Runs/Tasks
-  { method: 'POST', path: '/runs', mcp: 'cezar_create_task' },
-  { method: 'GET', path: '/runs', mcp: 'cezar_list_tasks' },
-  { method: 'GET', path: '/runs/:id', mcp: 'cezar_get_task' },
-  { method: 'PATCH', path: '/runs/:id', mcp: 'cezar_edit_task' },
-  { method: 'DELETE', path: '/runs/:id', mcp: 'cezar_delete_task' },
-  { method: 'POST', path: '/runs/:id/archive', mcp: 'cezar_archive_task' },
-  { method: 'POST', path: '/runs/:id/pin', mcp: 'cezar_pin_task' },
-  { method: 'POST', path: '/runs/:id/read', mcp: 'cezar_mark_task_read' },
-  { method: 'POST', path: '/runs/:id/unread', mcp: 'cezar_mark_task_read' },
-  { method: 'POST', path: '/runs/archive-finished', mcp: 'cezar_archive_all_finished' },
-  { method: 'POST', path: '/runs/read-all', mcp: 'cezar_mark_all_read' },
-  { method: 'POST', path: '/runs/:id/messages', mcp: 'cezar_send_message' },
-  { method: 'POST', path: '/runs/:id/cancel', mcp: 'cezar_cancel_task' },
-  { method: 'POST', path: '/runs/:id/finish', mcp: 'cezar_finish_task' },
-  { method: 'POST', path: '/runs/:id/continue', mcp: 'cezar_continue_task' },
-  { method: 'DELETE', path: '/runs/:id/auto-resume', mcp: 'cezar_cancel_auto_resume' },
-  { method: 'GET', path: '/runs/:id/diff', mcp: 'cezar_get_task_diff' },
-  { method: 'GET', path: '/runs/:id/commits', mcp: 'cezar_get_task_commits' },
-  { method: 'GET', path: '/runs/:id/changes', mcp: 'cezar_get_task_changes' },
-  { method: 'POST', path: '/runs/:id/git/commit', mcp: 'cezar_commit_task' },
-  { method: 'POST', path: '/runs/:id/git/push', mcp: 'cezar_push_task' },
-  { method: 'POST', path: '/runs/:id/pr', mcp: 'cezar_create_pr' },
-  { method: 'POST', path: '/runs/:id/remove-worktree', mcp: 'cezar_remove_worktree' },
-  
-  // Variants
-  { method: 'GET', path: '/groups/:groupId', mcp: 'cezar_get_variants' },
-  { method: 'POST', path: '/groups/:groupId/pick', mcp: 'cezar_pick_variant' },
-  
-  // Workflows
-  { method: 'GET', path: '/workflows', mcp: 'cezar_list_workflows' },
-  { method: 'POST', path: '/workflows', mcp: 'cezar_create_workflow' },
-  { method: 'DELETE', path: '/workflows/:name', mcp: 'cezar_delete_workflow' },
-  
-  // Skills
-  { method: 'GET', path: '/skills', mcp: 'cezar_list_skills' },
-  
-  // Projects
-  { method: 'GET', path: '/projects', mcp: 'cezar_list_projects' },
-  { method: 'POST', path: '/projects', mcp: 'cezar_add_project' },
-  { method: 'DELETE', path: '/projects/:projectId', mcp: 'cezar_remove_project' },
-  { method: 'PATCH', path: '/projects/:projectId', mcp: 'cezar_update_project' },
-  
-  // GitHub
-  { method: 'GET', path: '/github/issues', mcp: 'cezar_list_github_issues' },
-  { method: 'GET', path: '/github/prs', mcp: 'cezar_list_github_prs' },
-  { method: 'GET', path: '/github/search', mcp: 'cezar_search_github' },
-  
-  // Tracker
-  { method: 'GET', path: '/tracker', mcp: 'cezar_list_tracker_items' },
-  { method: 'GET', path: '/tracker/search', mcp: 'cezar_search_tracker' },
-  { method: 'GET', path: '/tracker/:id', mcp: 'cezar_get_tracker_item' },
-  { method: 'GET', path: '/tracker/connection', mcp: 'cezar_get_tracker_connection' },
-  { method: 'PUT', path: '/tracker/association', mcp: 'cezar_associate_tracker_item' },
-  
-  // Automations
-  { method: 'GET', path: '/automations', mcp: 'cezar_list_automations' },
-  { method: 'GET', path: '/automations/:id', mcp: 'cezar_get_automation' },
-  { method: 'POST', path: '/automations', mcp: 'cezar_create_automation' },
-  { method: 'PUT', path: '/automations/:id', mcp: 'cezar_update_automation' },
-  { method: 'DELETE', path: '/automations/:id', mcp: 'cezar_delete_automation' },
-  { method: 'POST', path: '/automations/:id/enable', mcp: 'cezar_enable_automation' },
-  { method: 'POST', path: '/automations/:id/run', mcp: 'cezar_run_automation' },
-  
-  // Dashboard
-  { method: 'GET', path: '/workspace/dashboard', mcp: 'cezar_get_dashboard' },
-  { method: 'GET', path: '/workspace/runs-index', mcp: 'cezar_get_workspace_runs' },
-  
-  // Git/Repo
-  { method: 'GET', path: '/git/branches', mcp: 'cezar_get_branches' },
-  { method: 'GET', path: '/git/status', mcp: 'cezar_get_repo_status' },
-  { method: 'GET', path: '/repo', mcp: 'cezar_get_repo_info' },
-  
-  // Agent config
-  { method: 'GET', path: '/agent-config', mcp: 'cezar_list_agent_configs' },
-  { method: 'GET', path: '/workspace/agent-profiles', mcp: 'cezar_list_agent_profiles' },
-  { method: 'GET', path: '/models', mcp: 'cezar_list_models' },
-  
-  // System
-  { method: 'GET', path: '/health', mcp: 'cezar_get_health' },
-];
+    const rpc = (id, method, params) =>
+      new Promise((res) => {
+        answers.set(id, res);
+        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+      });
 
-// Routes qui ne DOIVENT PAS être exposées via MCP
-const excludedRoutes = [
-  { path: '/events', reason: 'SSE streaming - pas supporté par MCP' },
-  { path: '/workspace/events', reason: 'SSE streaming - pas supporté par MCP' },
-  { path: '/runs/:id/drafts', reason: 'Brouillons - rarement utilisé' },
-  { path: '/runs/:id/images', reason: 'Binaires - limitation MCP' },
-  { path: '/runs/:id/handoff', reason: 'Fichier texte brut - usage interne' },
-  { path: '/runs/:id/open-in-cli', reason: 'Action locale - hors scope MCP' },
-  { path: '/runs/:id/open-in', reason: 'Action locale - hors scope MCP' },
-  { path: '/open-targets', reason: 'Détection locale - hors scope MCP' },
-  { path: '/open-in', reason: 'Action locale - hors scope MCP' },
-  { path: '/ui-state', reason: 'État UI - géré côté client' },
-  { path: '/workspace/ui-state', reason: 'État UI - géré côté client' },
-  { path: '/launch-key', reason: 'Sécurité interne' },
-  { path: '/agent-config/:id', reason: 'Édition config - nécessite localHandoff' },
-  { path: '/workspace/self-update', reason: 'Self-update - action système' },
-  { path: '/workspace/skills-update', reason: 'Update skills - action système' },
-  { path: '/workspace/config', reason: 'Config workspace - avancé' },
-  { path: '/workspace/host-usage', reason: 'Usage système - monitoring interne' },
-  { path: '/config', reason: 'Config projet - avancé' },
-  { path: '/star-count', reason: 'Compteur étoiles - cosmétique' },
-  { path: '/providers', reason: 'Auth providers - interne' },
-  { path: '/ws', reason: 'WebSocket - pas via MCP' },
-];
+    (async () => {
+      await rpc(1, 'initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'check-coverage', version: '0' },
+      });
+      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+      const tools = await rpc(2, 'tools/list', {});
+      const resources = await rpc(3, 'resources/list', {});
+      clearTimeout(timer);
+      child.kill();
+      resolve({
+        tools: (tools.result?.tools ?? []).map((t) => t.name),
+        descriptions: new Map((tools.result?.tools ?? []).map((t) => [t.name, t.description ?? ''])),
+        resources: (resources.result?.resources ?? []).map((r) => r.uri),
+      });
+    })().catch((err) => { clearTimeout(timer); child.kill(); reject(err); });
+  });
+}
 
-// Vérifier la couverture
-console.log('='.repeat(80));
-console.log('ANALYSE DE COUVERTURE MCP');
-console.log('='.repeat(80));
-console.log();
+const read = (name) => readFileSync(join(pkgDir, name), 'utf8');
 
-let covered = 0;
-let total = routePatterns.length;
-
-console.log('✅ Routes couvertes par MCP:');
-console.log();
-routePatterns.forEach(route => {
-  const found = mcpFile.includes(route.mcp);
-  if (found) {
-    covered++;
-    console.log(`  ✓ ${route.method.padEnd(6)} ${route.path.padEnd(40)} → ${route.mcp}`);
-  } else {
-    console.log(`  ✗ ${route.method.padEnd(6)} ${route.path.padEnd(40)} → ${route.mcp} MANQUANT`);
+/** The `- **\`cezar_x\`** — …` bullets of COVERAGE.md, as { name → documented description }. */
+function documentedTools(markdown) {
+  const found = new Map();
+  for (const line of markdown.split('\n')) {
+    const m = /^- \*\*`(cezar_[a-z0-9_]+)`\*\* — (.*)$/.exec(line);
+    if (m) found.set(m[1], m[2].trim());
   }
-});
+  return found;
+}
 
-console.log();
-console.log('='.repeat(80));
-console.log(`RÉSULTAT: ${covered}/${total} routes couvertes (${Math.round(covered/total*100)}%)`);
-console.log('='.repeat(80));
+const flat = (text) => text.replace(/\s+/g, ' ').trim();
+
+/** The `| **TOTAL** | **N** |` row of COVERAGE.md. */
+function documentedTotal(markdown) {
+  const m = /^\|\s*\*\*TOTAL\*\*\s*\|\s*\*\*(\d+)\*\*\s*\|/m.exec(markdown);
+  return m ? Number(m[1]) : null;
+}
+
+/** The `**N outils**` / `**N ressources**` claims of README.md. */
+function documentedCounts(markdown) {
+  return {
+    tools: Number(/\*\*(\d+) outils\*\*/.exec(markdown)?.[1] ?? NaN),
+    resources: Number(/\*\*(\d+) ressources?\*\*/.exec(markdown)?.[1] ?? NaN),
+  };
+}
+
+const { tools, resources, descriptions } = await askServer();
+const coverage = read('COVERAGE.md');
+const readme = read('README.md');
+const documented = documentedTools(coverage);
+const totals = documentedCounts(readme);
+const coverageTotal = documentedTotal(coverage);
+
+const problems = [];
+
+if (totals.tools !== tools.length) {
+  problems.push(`README.md says "${totals.tools} outils", the server advertises ${tools.length}`);
+}
+if (coverageTotal !== tools.length) {
+  problems.push(`COVERAGE.md's TOTAL row says ${coverageTotal}, the server advertises ${tools.length}`);
+}
+if (totals.resources !== resources.length) {
+  problems.push(`README.md says "${totals.resources} ressources", the server advertises ${resources.length}`);
+}
+
+const announced = new Set(tools);
+const undocumented = tools.filter((name) => !documented.has(name));
+const phantom = [...documented.keys()].filter((name) => !announced.has(name));
+if (undocumented.length) problems.push(`advertised but not documented in COVERAGE.md: ${undocumented.join(', ')}`);
+if (phantom.length) problems.push(`documented in COVERAGE.md but not advertised: ${phantom.join(', ')}`);
+
+// A documented line must START with the tool's real description — the doc may add a caution after
+// it, but it may not keep an older wording once the tool's own description has changed. This is the
+// drift that let the `sha` argument keep advertising "any rev git accepts" after the route started
+// refusing `HEAD`.
+//
+// Limite assumée : c'est un test de PRÉFIXE, donc un ajout faux (« Pass `HEAD` … ») passe. Il attrape
+// la dérive réelle — la doc qui garde l'ancienne formulation quand le code change — pas une
+// affirmation ajoutée à la main, qu'aucun test ne peut juger.
+for (const name of announced) {
+  const source = descriptions.get(name);
+  const doc = documented.get(name);
+  if (source === undefined || doc === undefined) continue;
+  if (!flat(doc).startsWith(flat(source))) {
+    problems.push(`${name}: COVERAGE.md's description no longer matches the tool's own`);
+  }
+}
+
+console.log(`tools/list   : ${tools.length} outils`);
+console.log(`resources/list: ${resources.length} ressources`);
+console.log(`COVERAGE.md  : ${documented.size} outils documentés (TOTAL annoncé : ${coverageTotal})`);
+console.log(`README.md    : ${totals.tools} outils, ${totals.resources} ressources annoncés`);
 console.log();
 
-console.log('ℹ️  Routes INTENTIONNELLEMENT exclues (non pertinentes pour MCP):');
-console.log();
-excludedRoutes.forEach(route => {
-  console.log(`  • ${route.path.padEnd(40)} - ${route.reason}`);
-});
+if (problems.length === 0) {
+  console.log('OK — la documentation et le serveur annoncent la même chose.');
+  process.exit(0);
+}
 
-console.log();
-console.log('='.repeat(80));
-console.log('COUVERTURE TOTALE: ~95-100%');
-console.log('(Les routes non couvertes sont soit techniques, soit hors scope MCP)');
-console.log('='.repeat(80));
+console.log('DÉRIVE DOCUMENTAIRE :');
+for (const problem of problems) console.log(`  ✗ ${problem}`);
+process.exit(1);

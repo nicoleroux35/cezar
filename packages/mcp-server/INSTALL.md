@@ -188,7 +188,7 @@ Utilisera `cezar_get_task_diff`.
 
 ## Outils disponibles
 
-Les **63 outils** et les **11 ressources** sont listés un par un dans
+Les **81 outils** et les **11 ressources** sont listés un par un dans
 [COVERAGE.md](./COVERAGE.md) ; la référence par catégorie est dans
 [API_REFERENCE.md](./API_REFERENCE.md). Les paramètres acceptés par chaque outil sont dans sa
 description, telle que `tools/list` la renvoie — c'est la source que votre client MCP affiche.
