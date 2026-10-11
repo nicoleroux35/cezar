@@ -5,6 +5,7 @@ import type { RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
 import {
   BUCKET_ORDER,
   bucketOf,
+  buildReorderPayload,
   capBuckets,
   groupRuns,
   groupTitle,
@@ -15,6 +16,7 @@ import {
   sortRuns,
   splitRefPrefix,
   type QuickListBucket,
+  type ReorderRow,
 } from '@/lib/task-groups'
 
 let seq = 0
@@ -621,5 +623,76 @@ describe('pinned tasks (#935)', () => {
   it('does not change the tab counts — those count by status, never by bucket', () => {
     const runs = [pinned({ status: 'waiting' }), run({ status: 'done' }), run({ archived: true })]
     expect(listCounts(runs)).toEqual({ active: 2, archived: 1, waiting: 1 })
+  })
+})
+
+describe('buildReorderPayload — the display order a drag produces', () => {
+  /** An ungrouped row. */
+  const topRow = (run: RunRecord): ReorderRow => ({ type: 'task', id: run.id, run })
+  /** A row rendered inside an expanded group — the group is what carries it home. */
+  const memberRow = (run: RunRecord, groupName: string): ReorderRow => ({
+    type: 'task',
+    id: run.id,
+    run,
+    groupName,
+  })
+  const groupRow = (name: string, runs: RunRecord[]): ReorderRow => ({
+    type: 'group',
+    id: `group-${name}`,
+    group: { name, runs },
+  })
+
+  it('keeps the top-level order of groups and ungrouped tasks', () => {
+    const payload = buildReorderPayload([
+      groupRow('A', [run({ id: 'a1', taskGroupName: 'A' })]),
+      topRow(run({ id: 'u1' })),
+      groupRow('B', [run({ id: 'b1', taskGroupName: 'B' })]),
+    ])
+    expect(payload.items).toEqual([
+      { groupName: 'A', taskIds: ['a1'] },
+      'u1',
+      { groupName: 'B', taskIds: ['b1'] },
+    ])
+  })
+
+  it('reorders a group members by where the drag left them in the row list', () => {
+    const a1 = run({ id: 'a1', taskGroupName: 'A' })
+    const a2 = run({ id: 'a2', taskGroupName: 'A' })
+    const payload = buildReorderPayload([groupRow('A', [a1, a2]), memberRow(a2, 'A'), memberRow(a1, 'A')])
+    expect(payload.items).toEqual([{ groupName: 'A', taskIds: ['a2', 'a1'] }])
+  })
+
+  it('keeps a member in its group when the drag carried it out — a reorder never regroups', () => {
+    // Dropping it among the ungrouped rows is the "last in the group" request; dropping it above
+    // the group is the "first in the group" one. Only its rank inside the group moves.
+    const a1 = run({ id: 'a1', taskGroupName: 'A' })
+    const a2 = run({ id: 'a2', taskGroupName: 'A' })
+    expect(
+      buildReorderPayload([groupRow('A', [a1, a2]), memberRow(a1, 'A'), topRow(run({ id: 'u1' })), memberRow(a2, 'A')])
+        .items
+    ).toEqual([{ groupName: 'A', taskIds: ['a1', 'a2'] }, 'u1'])
+    expect(
+      buildReorderPayload([memberRow(a2, 'A'), groupRow('A', [a1, a2]), memberRow(a1, 'A')]).items
+    ).toEqual([{ groupName: 'A', taskIds: ['a2', 'a1'] }])
+  })
+
+  it('leaves a collapsed group members in the order they already had', () => {
+    const a1 = run({ id: 'a1', taskGroupName: 'A' })
+    const a2 = run({ id: 'a2', taskGroupName: 'A' })
+    const payload = buildReorderPayload([groupRow('A', [a1, a2]), topRow(run({ id: 'u1' }))])
+    expect(payload.items).toEqual([{ groupName: 'A', taskIds: ['a1', 'a2'] }, 'u1'])
+  })
+
+  it('interleaves member rows and ungrouped rows in one flat display order', () => {
+    const a1 = run({ id: 'a1', taskGroupName: 'A' })
+    const a2 = run({ id: 'a2', taskGroupName: 'A' })
+    const payload = buildReorderPayload([
+      topRow(run({ id: 'u1' })),
+      groupRow('A', [a1, a2]),
+      memberRow(a2, 'A'),
+      memberRow(a1, 'A'),
+      topRow(run({ id: 'u2' })),
+    ])
+    expect(payload.items).toEqual(['u1', { groupName: 'A', taskIds: ['a2', 'a1'] }, 'u2'])
   })
 })

@@ -18,17 +18,14 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { GripVerticalIcon } from 'lucide-react'
 import type { RunRecord } from '@open-mercato/cezar-api-client'
-import type { TaskGroup } from '@/lib/task-groups'
+import type { ReorderRow, TaskGroup } from '@/lib/task-groups'
 import { cn } from '@/lib/utils'
 
 /**
  * Reorderable task list with drag & drop support.
- * Allows mixing ungrouped tasks and task groups in any order.
+ * Allows mixing ungrouped tasks and task groups in any order, and unfolding a group to
+ * reorder the tasks inside it.
  */
-
-type ReorderableItem =
-  | { type: 'task'; id: string; run: RunRecord }
-  | { type: 'group'; id: string; group: TaskGroup }
 
 interface SortableItemProps {
   id: string
@@ -76,18 +73,32 @@ function SortableItem({ id, children }: SortableItemProps) {
   )
 }
 
+/** The task rows of each expanded group, in list order — a group renders THESE inside its card. */
+function groupMembers(items: readonly ReorderRow[]): Map<string, Extract<ReorderRow, { type: 'task' }>[]> {
+  const byGroup = new Map<string, Extract<ReorderRow, { type: 'task' }>[]>()
+  for (const item of items) {
+    if (item.type !== 'task' || item.groupName === undefined) continue
+    const rows = byGroup.get(item.groupName)
+    if (rows) rows.push(item)
+    else byGroup.set(item.groupName, [item])
+  }
+  return byGroup
+}
+
 export function ReorderableTaskList({
   items,
   onReorder,
   renderTask,
   renderGroup,
 }: {
-  items: ReorderableItem[]
-  onReorder: (newOrder: ReorderableItem[]) => void
+  items: ReorderRow[]
+  onReorder: (newOrder: ReorderRow[]) => void
   renderTask: (run: RunRecord) => React.ReactNode
-  renderGroup: (group: TaskGroup) => React.ReactNode
+  /** A group renders its own card; `renderMembers` drops the group's (sortable) rows into it. */
+  renderGroup: (group: TaskGroup, renderMembers: () => React.ReactNode) => React.ReactNode
 }) {
   const [activeId, setActiveId] = React.useState<string | null>(null)
+  const membersByGroup = React.useMemo(() => groupMembers(items), [items])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -124,11 +135,31 @@ export function ReorderableTaskList({
     >
       <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-2">
-          {items.map((item) => (
-            <SortableItem key={item.id} id={item.id}>
-              {item.type === 'task' ? renderTask(item.run) : renderGroup(item.group)}
-            </SortableItem>
-          ))}
+          {/* Top level = the ungrouped tasks and the groups. A task inside an expanded group is
+              not a top-level row: its group renders it, so the order on screen and the order in
+              the payload never disagree about nesting. */}
+          {items
+            .filter((item) => item.type !== 'task' || item.groupName === undefined)
+            .map((item) => {
+              if (item.type === 'task') {
+                return (
+                  <SortableItem key={item.id} id={item.id}>
+                    {renderTask(item.run)}
+                  </SortableItem>
+                )
+              }
+              return (
+                <SortableItem key={item.id} id={item.id}>
+                  {renderGroup(item.group, () =>
+                    (membersByGroup.get(item.group.name) ?? []).map((member) => (
+                      <SortableItem key={member.id} id={member.id}>
+                        {renderTask(member.run)}
+                      </SortableItem>
+                    ))
+                  )}
+                </SortableItem>
+              )
+            })}
         </div>
       </SortableContext>
     </DndContext>
