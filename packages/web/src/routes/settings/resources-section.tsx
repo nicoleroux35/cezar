@@ -14,13 +14,14 @@ import { MachineCard } from './machine-card'
 import { SettingsField } from './settings-field'
 
 /**
- * Global settings → Resources: how hard the MACHINE works. `maxParallel` caps concurrent tasks
- * across every project (the workspace semaphore holds the rest); `memoryLimitMb` is the
- * per-task ceiling the engine enforces by pausing a task that crosses it and letting the queue
- * advance (#memory-guard).
+ * Global settings → Resources: how hard the MACHINE works. `maxParallel` is the DEFAULT
+ * cap on concurrent tasks, applied PER PROJECT — each project independently runs up to
+ * this many at once (a project's own limit in Settings → Projects replaces it for that
+ * project); `memoryLimitMb` is the per-task ceiling the engine enforces by pausing a
+ * task that crosses it and letting the queue advance (#memory-guard).
  *
- * Both are workspace-level since the multi-project split (spec §"Resource governance"): they
- * protect the host, not a repo, so they live in `~/.cezar/config.json` and persist through
+ * The workspace `resources` stay the single home for the default (spec §"Resource
+ * governance"): they live in `~/.cezar/config.json` and persist through
  * `PUT /api/workspace/config` — the merged answer lands straight in the workspace config query,
  * and the server refreshes the shared semaphore so a change takes effect without a restart.
  * Leftover per-repo `maxParallel`/`memoryLimitMb` keys were imported once by Migration 001 and
@@ -141,7 +142,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Max parallel tasks"
-        hint="How many tasks run at once across every project. The rest wait in the queue. A non-git directory always runs one at a time."
+        hint="How many tasks each project runs at once. The rest wait in the queue. A non-git directory always runs one at a time."
       >
         <IntegerStepper
           aria-label="Max parallel tasks"
@@ -194,7 +195,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           onCommit={(sessions) => save.mutateAsync({ resources: { maxMonitoringSessions: sessions ?? 0 } })}
         />
         <p className="text-[11px] text-soft-foreground">
-          Capacity: {config.resources.maxParallel} active + {config.resources.maxMonitoringSessions ?? 2} monitoring. Set 0 to make monitoring share active slots.
+          Capacity: {config.resources.maxParallel} active + {config.resources.maxMonitoringSessions ?? 2} monitoring per project. Set 0 to make monitoring share active slots.
         </p>
       </SettingsField>
 

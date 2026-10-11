@@ -148,7 +148,7 @@ describe('Global settings → Resources', () => {
     serve({ maxParallel: 4, maxMonitoringSessions: 2 })
     renderResources()
     await waitFor(() => expect(monitoringSelect()).not.toBeNull())
-    expect(screen.getByText(/Capacity: 4 active \+ 2 monitoring/)).not.toBeNull()
+    expect(screen.getByText(/Capacity: 4 active \+ 2 monitoring per project/)).not.toBeNull()
     fireEvent.change(monitoringSelect()!, { target: { value: '3' } })
     fireEvent.blur(monitoringSelect()!)
     await waitFor(() => expect(puts()).toHaveLength(1))

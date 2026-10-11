@@ -106,7 +106,7 @@ Guide de diagnostic et solutions aux problèmes courants.
 **Symptôme** : Les nouvelles tâches ne démarrent jamais.
 
 **Causes** :
-- Limite `maxParallel` atteinte
+- Limite `maxParallel` du projet atteinte (chaque projet a son propre plafond)
 - Tâches bloquées qui ne terminent pas
 - Ressources système insuffisantes
 
@@ -114,15 +114,12 @@ Guide de diagnostic et solutions aux problèmes courants.
 
 1. **Vérifier les tâches en cours** :
    - Regardez le dashboard
-   - Combien de tâches sont "running" ?
+   - Combien de tâches sont "running" **dans ce projet** ?
 
 2. **Augmenter maxParallel** :
-   ```json
-   // .ai/cezar/config.json
-   {
-     "maxParallel": 5
-   }
-   ```
+   - Par projet : **Settings → Projects** (ou le projet → réglages → Max parallel tasks)
+   - Valeur par défaut pour tous les projets : **Settings → Resources** → Max parallel tasks
+   - (Le `maxParallel` éventuel dans `.ai/cezar/config.json` du repo est ignoré — seule la config workspace `~/.cezar/config.json` compte.)
 
 3. **Arrêter les tâches bloquées** :
    - Dans l'UI, cliquez "Abandon" sur les tâches stuck

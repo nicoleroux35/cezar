@@ -3,22 +3,27 @@ import { resolve } from 'node:path';
 import { DEFAULT_IDLE_TIMEOUT_MINUTES, DEFAULT_MONITORING_WAKE_MINUTES, loadWorkspaceConfig } from './config.ts';
 
 /**
- * Workspace-wide resource governance (spec 2026-07-20-multi-project-workspace,
- * "Resource governance", step 2.5): `maxParallel` and `memoryLimitMb` protect
- * the *host*, not a repo, so they live in `~/.cezar/config.json` `resources`
- * and are enforced by ONE shared object across every `RunManager` — the boot
- * path constructs a single `WorkspaceSemaphore` and threads it through
- * `ProjectContexts` and the boot manager.
+ * Workspace resource governance (spec 2026-07-20-multi-project-workspace,
+ * "Resource governance", step 2.5, as amended per-project): `maxParallel`
+ * caps how many agent runs ONE project runs at once — every project gets its
+ * own full allowance (the project's registry override, else the workspace
+ * `resources.maxParallel` default) — while `memoryLimitMb` still protects the
+ * *host* and stays workspace-global. Enforcement is by ONE shared object
+ * across every `RunManager`: the boot path constructs a single
+ * `WorkspaceSemaphore` and threads it through `ProjectContexts` and the boot
+ * manager.
  *
  * Two jobs, deliberately fused because they cache the same file:
  *
- * 1. **Parallel cap** — `busy()` sums every registered manager's held slots;
- *    a manager's `pump()` starts queued runs only while `busy() <
- *    maxParallel()`. Slot accounting stays inside each manager (its
- *    `active + starting − waiting` count), which is what carries the #347
- *    exemption verbatim: a `waiting` run holds no slot, and a message into a
- *    waiting run resumes it immediately even when that momentarily exceeds
- *    the cap — a resume must never wait on other projects' runs.
+ * 1. **Parallel cap** — `projectBusy(root)` sums the held slots of the
+ *    managers scoped to that project root; a manager's `pump()` starts queued
+ *    runs only while its project is under its own cap. Slot accounting stays
+ *    inside each manager (its `active + starting − waiting` count), which is
+ *    what carries the #347 exemption verbatim: a `waiting` run holds no slot,
+ *    and a message into a waiting run resumes it immediately even when that
+ *    momentarily exceeds the cap — a resume must never wait on other
+ *    projects' runs. `busy()` (the sum over EVERY scope) remains as an
+ *    observability counter only — it gates nothing.
  * 2. **Cached resource config** — `maxParallel()`/`memoryLimitMb()` answer
  *    from an in-memory snapshot, NOT the file: the memory guard ticks ~every
  *    2 s per manager, and N projects re-reading `~/.cezar/config.json` every
@@ -34,7 +39,10 @@ import { DEFAULT_IDLE_TIMEOUT_MINUTES, DEFAULT_MONITORING_WAKE_MINUTES, loadWork
 
 /** The cached `resources` slice run enforcement consults. */
 export interface WorkspaceResourceLimits {
-  /** Workspace-wide cap on concurrently *running* agent runs. */
+  /** Default cap on concurrently *running* agent runs, applied PER PROJECT —
+   *  each project independently runs up to this many (or its own registry
+   *  override). This is a per-project default, not a workspace-wide ceiling:
+   *  N projects may each hold up to this many slots at once. */
   maxParallel: number;
   /** Durable monitoring sessions that do not consume active-task capacity. */
   maxMonitoringSessions?: number;
@@ -99,14 +107,16 @@ export interface SemaphoreParticipant {
    *  workspace's longest-waiting run instead of whichever manager happens to
    *  have registered first. */
   oldestQueuedAt(): number | null;
-  /**
-   * Agent accounts this participant is holding, by KIND (spec
-   * 2026-08-03-auto-resume-after-usage-limit, `RunManager.accountHolds`).
-   *
-   * Workspace-scoped for the same reason the parallel cap is: a limit closes an ACCOUNT, and one
-   * account can be driving tasks in several projects at once. Optional so a stub participant —
-   * and any caller that predates the hold — keeps working; absent simply holds nothing.
-   */
+   /**
+    * Agent accounts this participant is holding, by KIND (spec
+    * 2026-08-03-auto-resume-after-usage-limit, `RunManager.accountHolds`).
+    *
+    * Workspace-scoped on purpose even though the parallel cap is per-project:
+    * a limit closes an ACCOUNT, and one account can be driving tasks in
+    * several projects at once. Optional so a stub participant — and any
+    * caller that predates the hold — keeps working; absent simply holds
+    * nothing.
+    */
   accountHolds?(): AccountHolds;
 }
 
@@ -154,6 +164,12 @@ export interface WorkspaceSemaphoreOptions {
 
 export class WorkspaceSemaphore {
   private readonly participants = new Set<SemaphoreParticipant>();
+  /** Per-participant project scope, keyed the same way the registry
+   *  normalizes `root` — `projectBusy()` sums one scope at a time. A
+   *  participant registered WITHOUT a scope (test stubs, ad-hoc pre-scope
+   *  callers) lands in the unscoped bucket, which counts toward NOTHING but
+   *  `busy()`: per-project isolation must never leak through a missing key. */
+  private readonly scopes = new Map<SemaphoreParticipant, string>();
   private readonly load: () => Promise<WorkspaceResourceLimits>;
   private limits: WorkspaceResourceLimits;
   /** A `release()` sweep is in flight — see `pendingRelease`. */
@@ -167,22 +183,46 @@ export class WorkspaceSemaphore {
     this.limits = { ...DEFAULT_LIMITS, ...options.initial };
   }
 
-  /** Join the shared counter. Returns the unregister handle — the manager's
-   *  `dispose()` must call it so a torn-down project stops counting. */
-  register(participant: SemaphoreParticipant): () => void {
+  /** Join the shared counter under a project scope. Returns the unregister
+   *  handle — the manager's `dispose()` must call it so a torn-down project
+   *  stops counting. `scopeKey` is the manager's repo root: it is normalized
+   *  once here (the same `realpathSync`-with-`resolve()`-fallback the
+   *  registry uses), so two managers on symlinked spellings of one root
+   *  share that root's slots. */
+  register(participant: SemaphoreParticipant, scopeKey?: string): () => void {
     this.participants.add(participant);
-    return () => this.participants.delete(participant);
+    this.scopes.set(participant, scopeKey === undefined ? '' : normalizeRootSync(scopeKey));
+    return () => {
+      this.participants.delete(participant);
+      this.scopes.delete(participant);
+    };
   }
 
-  /** Slots held across EVERY registered manager (waiting runs excluded by
-   *  each participant — the #347 rule). */
+  /** Slots held across EVERY registered manager, every scope (waiting runs
+   *  excluded by each participant — the #347 rule). Observability only: since
+   *  the cap went per-project, nothing gates on this sum. */
   busy(): number {
     let total = 0;
     for (const participant of this.participants) total += participant.busySlots();
     return total;
   }
 
-  /** Cached workspace-wide parallel cap. */
+  /** Slots held by the managers scoped to ONE project root — the count a
+   *  manager's `pump()` compares against its own `projectMaxParallel(root)`.
+   *  Normalized the same way `register` normalizes, so the lookup and the
+   *  bucket always agree. */
+  projectBusy(repoRoot: string): number {
+    const scope = normalizeRootSync(repoRoot);
+    let total = 0;
+    for (const participant of this.participants) {
+      if (this.scopes.get(participant) === scope) total += participant.busySlots();
+    }
+    return total;
+  }
+
+  /** Cached per-project default parallel cap (the workspace `resources`
+   *  value). Each project runs up to this many concurrent tasks — or its own
+   *  registry override — independently of every other project. */
   maxParallel(): number {
     return this.limits.maxParallel;
   }
@@ -240,23 +280,23 @@ export class WorkspaceSemaphore {
   }
 
   /**
-   * A slot came free somewhere in the workspace: pump EVERY manager,
-   * longest-waiting-queue first.
+   * A slot came free somewhere: pump EVERY manager, longest-waiting-queue
+   * first.
    *
-   * This is the counterpart to `busy()` being workspace-wide. A `RunManager`
-   * only ever pumps itself, so before this existed a freed slot reached
-   * exactly one project's queue: a run queued in project B stayed `queued`
-   * while project A's runs came and went, until B happened to start or finish
-   * a run of its own (or someone saved the workspace config). Every
-   * slot-freeing transition — a run settling, a session parking at `waiting`
-   * — routes here instead.
+   * This stays a workspace-wide broadcast even though the cap is per-project:
+   * a `RunManager` only ever pumps itself, and the manager whose project has
+   * capacity may be one that saw no local event. Every slot-freeing
+   * transition — a run settling, a session parking at `waiting` — routes here
+   * instead; each manager's `pump()` then enforces its OWN project's ceiling,
+   * so a broadcast never starts work a project has no room for.
    *
-   * Pumps are awaited in turn so the manager that takes the slot has it
+   * Pumps are awaited in turn so the manager that takes a slot has it
    * counted (`starting`) before the next manager evaluates capacity — two
-   * managers pumping concurrently could both read the same free slot and
-   * overshoot `maxParallel`. Ordering is best-effort fairness, not a global
-   * FIFO gate: a manager whose head-of-queue can't start (non-git root,
-   * spec 006 degradation) must never block the rest of the workspace.
+   * managers of the SAME project pumping concurrently could both read the
+   * same free slot and overshoot that project's cap. Ordering is best-effort
+   * fairness, not a global FIFO gate: a manager whose head-of-queue can't
+   * start (non-git root, spec 006 degradation) must never block the rest of
+   * the workspace.
    */
   async release(): Promise<void> {
     if (this.broadcasting) {
@@ -283,13 +323,15 @@ export class WorkspaceSemaphore {
 
   /**
    * The effective per-project concurrency cap for a manager's repo root: the
-   * project's own `maxParallel` if set in the registry, else the workspace cap
-   * (`maxParallel()`). Answered from the cached snapshot — the class's
-   * no-per-tick-file-read invariant is preserved; the only syscall is a
-   * `realpathSync` to key the lookup the same way the registry normalizes
-   * `root` (once per `pump()`, alongside the existing `getRepoInfo` stat). A
-   * root with no registry entry (an ad-hoc run outside the registry) has no
-   * override and inherits the workspace cap.
+   * project's own `maxParallel` if set in the registry, else the workspace
+   * `resources.maxParallel` default (`maxParallel()`). This is now the ONLY
+   * parallel ceiling — each project is gated against its own value,
+   * independently of every other project. Answered from the cached snapshot
+   * — the class's no-per-tick-file-read invariant is preserved; the only
+   * syscall is a `realpathSync` to key the lookup the same way the registry
+   * normalizes `root` (once per `pump()`, alongside the existing `getRepoInfo`
+   * stat). A root with no registry entry (an ad-hoc run outside the registry)
+   * has no override and inherits the workspace default.
    */
   projectMaxParallel(repoRoot: string): number {
     const override = this.limits.projectLimits?.get(normalizeRootSync(repoRoot));

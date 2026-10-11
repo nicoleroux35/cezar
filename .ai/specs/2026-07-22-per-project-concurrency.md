@@ -150,3 +150,14 @@ Every default below is the most reversible, lowest-blast-radius choice; a human 
 | Q7 | How is a manager matched to its registry entry? | **By realpath-normalized root** (the manager holds `repoRoot`; the registry stores normalized `root`). | Reuses `registerProject`'s normalization; an unregistered root simply inherits the workspace cap. A normalization test guards the symlink case. |
 
 No assumption weakens security, data scoping, or a documented compatibility contract, so none is marked `⚠ NEEDS HUMAN CONFIRMATION`. Q1 carries the most architectural weight but is reversible and touches no protected surface.
+
+## Amendment (2026-10-11): the workspace ceiling is removed — caps are per-project only
+
+**Decision (owner request): the number of simultaneous tasks is enforced PER PROJECT, not workspace-wide.** The workspace `resources.maxParallel` (default 2, bounds 1..16 unchanged) is now each project's *default allowance*: a manager's `pump()` starts queued runs while `semaphore.projectBusy(repoRoot) < projectMaxParallel(repoRoot)` — its own project's slots against its own cap (registry override when set, else the workspace default) — and other projects' activity never blocks it. Dispatched subtasks queue on the same manager as their parent, so a tree's subtasks consume the parent's project slots: subtask concurrency is per-project through this same gate, with the per-parent in-flight cap (`MAX_CHILDREN_IN_FLIGHT` = 4) composing on top. No dispatch-engine change was needed.
+
+This reverses two positions taken above:
+
+- **Q2 ("Both must hold")** is replaced: there is no workspace-wide parallel ceiling left. N projects may each hold a full allowance at once.
+- **"Replace the workspace cap entirely with per-project caps — Rejected"** is replaced: the rejection's host-protection argument is now carried by the remaining global guards — the per-task `memoryLimitMb` ceiling, the waiting-session idle timeout — plus the operator's choice of values. Raising the workspace default raises EVERY project's allowance at once; that blast radius is called out in `BACKWARD_COMPATIBILITY.md` §2 and in the Resources settings copy.
+
+What did NOT change: the registry override (`PATCH /api/v1/projects/:projectId`, `null` clears back to the default), the `projectMaxParallel` lookup and its symlink normalization, the #347 waiting-run exemption, the usage-limit account holds (still workspace-wide — a limit closes an *account*, not a project), `release()` still broadcasting to every manager (each `pump()` enforces its own project's ceiling), and every wire shape (only enforcement composition changed: one gate instead of two).

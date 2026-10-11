@@ -50,8 +50,10 @@ export const projectListEntrySchema = z.object({
   repoUrl: z.string().optional(),
   /** Saved read-only issue tracker association, classified locally by the server. */
   tracker: trackerKindSchema.optional(),
-  /** Per-project cap on concurrently running tasks (spec 2026-07-22). Omitted = inherit the
-   *  workspace `resources.maxParallel`; a number pins this project. */
+  /** Per-project cap on concurrently running tasks (spec 2026-07-22, per-project
+   *  amendment). Omitted = use the workspace `resources.maxParallel` default as
+   *  this project's own allowance; a number replaces it for this project. Each
+   *  project is gated on its own value, independently of the others. */
   maxParallel: z.number().optional(),
   /** Set ONLY on the synthetic entry for the folder this server was started in when that folder
    *  is not in the registry — the ordinary state since boot registration became seed-once. The

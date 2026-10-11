@@ -90,7 +90,7 @@ describe('WorkspaceSemaphore', () => {
 
   it('accountHolds() unions every participant by kind, and is empty for stubs that hold none', () => {
     // A usage limit closes an ACCOUNT, and one account can drive tasks in several projects, so
-    // the hold spans managers the way the parallel cap does (spec
+    // the hold spans managers even though the parallel cap is per-project (spec
     // 2026-08-03-auto-resume-after-usage-limit). The two kinds bind different work, so they are
     // aggregated separately. `accountHolds` is optional on the participant, so a stub that
     // predates it — like the ones above — simply holds nothing.
@@ -127,6 +127,62 @@ describe('WorkspaceSemaphore', () => {
     expect(sem.busy()).toBe(3);
     offA();
     expect(sem.busy()).toBe(1);
+  });
+
+  describe('projectBusy: per-project slot accounting', () => {
+    it('sums only the participants scoped to the root; other scopes are invisible', () => {
+      const sem = new WorkspaceSemaphore();
+      const a1 = participant(2);
+      const a2 = participant(1);
+      const b = participant(4);
+      sem.register(a1, '/projects/a');
+      sem.register(a2, '/projects/a');
+      sem.register(b, '/projects/b');
+      expect(sem.projectBusy('/projects/a')).toBe(3);
+      expect(sem.projectBusy('/projects/b')).toBe(4);
+      // ...while the global counter still sees everything (observability only).
+      expect(sem.busy()).toBe(7);
+    });
+
+    it('unregister stops counting in the scope', () => {
+      const sem = new WorkspaceSemaphore();
+      const offA = sem.register(participant(2), '/projects/a');
+      sem.register(participant(1), '/projects/a');
+      expect(sem.projectBusy('/projects/a')).toBe(3);
+      offA();
+      expect(sem.projectBusy('/projects/a')).toBe(1);
+    });
+
+    it('participants without a scope count toward nothing but busy()', () => {
+      // Isolation must never leak through a missing key: an unscoped
+      // participant (a test stub, an ad-hoc pre-scope caller) must not inflate
+      // any project's count.
+      const sem = new WorkspaceSemaphore();
+      sem.register(participant(5));
+      sem.register(participant(1), '/projects/a');
+      expect(sem.projectBusy('/projects/a')).toBe(1);
+      expect(sem.busy()).toBe(6);
+    });
+
+    it('symlinked spellings of one root share its scope', () => {
+      // register() normalizes once, the same way the registry normalizes
+      // `root` — two managers on different spellings of one directory hold
+      // that directory's slots together.
+      const dirs = realpathSync(mkdtempSync(join(tmpdir(), 'cez-sema-scope-')));
+      const real = join(dirs, 'real-root');
+      const link = join(dirs, 'link-root');
+      mkdirSync(real, { recursive: true });
+      symlinkSync(real, link);
+      try {
+        const sem = new WorkspaceSemaphore();
+        sem.register(participant(1), link);
+        sem.register(participant(2), real);
+        expect(sem.projectBusy(real)).toBe(3);
+        expect(sem.projectBusy(link)).toBe(3);
+      } finally {
+        rmSync(dirs, { recursive: true, force: true });
+      }
+    });
   });
 
   it('refresh() swaps the cached limits and pumps every participant', async () => {

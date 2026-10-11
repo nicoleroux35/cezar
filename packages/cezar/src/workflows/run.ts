@@ -1077,8 +1077,9 @@ interface PreparedUserMessage {
  * relay live to the GUI). No GitHub choreography — agent steps and shell
  * checks with bounded retry loops, plus live sessions: the last agent step
  * stays open for follow-ups (`waiting`) until "finish", idle timeout, or
- * cancel. Runs queue behind the workspace-wide `maxParallel` slots (the shared
- * `WorkspaceSemaphore`, spec 2026-07-20 step 2.5) and each run executes in its
+   * cancel. Runs queue behind their project's own `maxParallel` slots (the shared
+   * `WorkspaceSemaphore`, spec 2026-07-20 step 2.5, per-project since the
+   * per-project amendment) and each run executes in its
  * own git worktree on a `cez/<id8>` branch (spec 006), autosave-committed at
  * turn end and before a draft PR — plus every 90 s when opted in via
  * CEZ_AUTOSAVE=1 (#471). Each autosave records its trigger in the commit
@@ -1112,8 +1113,7 @@ export class RunManager {
    * These are exempt from the slot count OUTRIGHT — `maxMonitoringSessions` does not bound them
    * (see `busySlots`), and it must not: a commander parks precisely so that its children can
    * have its slot. Counting the third such parent as busy is what makes a tree whose tasks
-   * each dispatch children queue itself forever (`busySlots === maxParallel`, no exit), and
-   * starve every other project on the shared semaphore with it. A parked commander's process is
+   * each dispatch children queue itself forever (`busySlots === projectMax`, no exit). A parked commander's process is
    * idle; the runs it waits for are the ones that need the capacity.
    *
    * Invariant `unitParents ⊆ monitoring`, held by routing every add/delete through
@@ -1221,7 +1221,7 @@ export class RunManager {
       pump: () => this.pump(),
       oldestQueuedAt: () => this.oldestQueuedAt(),
       accountHolds: () => this.accountHolds(),
-    });
+    }, this.repoRoot);
     // Memory guard (#memory-guard): the shared process-tree sampler already ticks ~every 2 s for
     // the runs table; piggyback on it to enforce the per-task memory ceiling.
     this.offUsage = onUsage((snapshot) => void this.enforceMemoryLimit(snapshot));
@@ -1557,22 +1557,22 @@ export class RunManager {
   }
 
   /**
-   * Slots this manager holds against the workspace-wide cap. `waiting` runs
+   * Slots this manager holds against its project's cap. `waiting` runs
    * don't hold a slot (#347): an idle claude process costs memory but no
    * tokens, queued work progressing matters more, and the idle timeout already
    * bounds how long a session can sit open. Because the exemption lives HERE —
    * in the count, not in any acquire path — a message into a `waiting` run
    * (sendMessage) resumes it immediately even when that momentarily exceeds
-   * `maxParallel`, including when other projects saturate the cap.
+   * the project's cap.
    */
   private busySlots(): number {
     const ordinaryWaiting = this.waiting.size - this.monitoring.size;
     // A task parked on its own dispatch is exempt WITHOUT a cap (spec
     // 2026-09-10-dispatch A5). `maxMonitoringSessions` bounds how many agents may sit
-    // watching their own downstream work while the host still runs `maxParallel` real tasks —
+    // watching their own downstream work while the host still runs real tasks —
     // but a spawned parent's children ARE those tasks, so bounding it makes the tree wait on
-    // itself: three parents parked on their children is `busySlots === maxParallel` with no
-    // exit, in this project and in every other one sharing the semaphore.
+    // itself: three parents parked on their children is `busySlots === projectMax` with no
+    // exit, in this project.
     let spawnParked = 0;
     for (const runId of this.unitParents) if (this.monitoring.has(runId)) spawnParked += 1;
     const watchers = this.monitoring.size - spawnParked;
@@ -1623,25 +1623,29 @@ export class RunManager {
 
   /**
    * A slot this manager held just came free. Pump the whole WORKSPACE, not
-   * just this manager: `maxParallel` is counted across every project, so the
-   * run that should take the slot is the workspace's oldest queued one — which
-   * usually sits in another project's queue. Pumping only `this` is what left
-   * a queued run in project B stuck at `queued` while project A's runs came
-   * and went. `release()` pumps this manager too, so it replaces the local
-   * `pump()` at every slot-freeing transition.
+   * just this manager: the freed capacity may belong to a project whose
+   * queued run sits in another manager scoped to the same root, and a manager
+   * only ever pumps itself. `release()` pumps this manager too, so it
+   * replaces the local `pump()` at every slot-freeing transition — each
+   * manager's `pump()` enforces its own project's ceiling, so the broadcast
+   * starts nothing its project has no room for.
    */
   private releaseSlot(): void {
     void this.semaphore.release();
   }
 
   /**
-   * Start queued runs while parallel slots are free. A run starts only under
-   * BOTH ceilings: the WORKSPACE `resources.maxParallel` (default 2, counted
-   * across every manager — spec 2026-07-20, step 2.5) AND this project's own
-   * per-project `maxParallel` when the registry sets one (spec 2026-07-22,
-   * inherits the workspace cap when unset). Legacy per-repo `maxParallel` keys
-   * are ignored. A non-git directory degrades to 1 sequential run in the repo
-   * root (spec 006 degradation rule), which is always the tighter bound.
+   * Start queued runs while parallel slots are free. The gate is PER PROJECT:
+   * this project runs up to its own `maxParallel` (the registry override when
+   * set — spec 2026-07-22 — else the workspace `resources.maxParallel`
+   * default), counted over the managers scoped to this project's root, and
+   * other projects' activity never blocks it. Dispatched children queue on
+   * the SAME manager as their parent, so a tree's subtasks consume the
+   * parent's project slots — subtask concurrency is per-project through this
+   * same gate, with the per-parent in-flight cap (`MAX_CHILDREN_IN_FLIGHT`)
+   * composing on top. Legacy per-repo `maxParallel` keys are ignored. A
+   * non-git directory degrades to 1 sequential run in the repo root (spec 006
+   * degradation rule), which is always the tighter bound.
    */
   private async pump(): Promise<void> {
     this.reconcileMonitoringWakeTimers();
@@ -1659,17 +1663,17 @@ export class RunManager {
       do {
         this.pumpAgain = false;
         const repo = await getRepoInfo(this.repoRoot);
-        const maxParallel = this.semaphore.maxParallel();
-        // Per-project ceiling (spec 2026-07-22-per-project-concurrency): this
-        // project never runs more than its own configured `maxParallel`; absent
-        // an override it equals the workspace cap, so behavior is unchanged.
+        // Per-project ceiling (spec 2026-07-22-per-project-concurrency, as
+        // amended: the project's own cap is now the ONLY parallel gate —
+        // there is no workspace-wide ceiling left). A project with no override
+        // inherits the workspace `resources.maxParallel` default as its own
+        // allowance, independently of every other project.
         const projectMax = this.semaphore.projectMaxParallel(this.repoRoot);
         // `waiting` runs don't hold a slot (#347) — see busySlots(). The check
         // below is the only slot gate: resumes never pass through it. A run
-        // starts only under BOTH the workspace cap and this project's ceiling.
+        // starts only while THIS project is under its own ceiling.
         const capacity = () =>
-          this.semaphore.busy() < maxParallel &&
-          this.busySlots() < projectMax &&
+          this.semaphore.projectBusy(this.repoRoot) < projectMax &&
           (repo !== null || this.busySlots() < 1);
         // The usage-limit hold (spec 2026-08-03-auto-resume-after-usage-limit).
         //
@@ -2866,9 +2870,9 @@ export class RunManager {
    * `queued`. That specific bug is fixed and tested, but "the queue stopped and nothing will ever
    * restart it" is too expensive a failure mode to leave resting on any single fix being right.
    *
-   * The test is deliberately about JUSTIFICATION rather than about any particular bug: idling is
-   * legitimate while work is running (here or in another project), or while a real appointment is
-   * still ahead — a scheduled resume that will fire and pump on its own. Anything else is a
+    * The test is deliberately about JUSTIFICATION rather than about any particular bug: idling is
+    * legitimate while work is running in THIS project, or while a real appointment is
+    * still ahead — a scheduled resume that will fire and pump on its own. Anything else is a
    * queue with work in it, nothing running anywhere, and no event coming to wake it. That gets one
    * forced sweep, which starts work under the ordinary caps and lets the account's real state
    * re-assert itself: if the window truly is shut, that task meets the limit and re-establishes an
@@ -2891,7 +2895,10 @@ export class RunManager {
     }
     if (this.queue.length === 0) return;
     if (this.busySlots() > 0 || this.starting.size > 0) return;
-    if (this.semaphore.busy() > 0) return;
+    // Per-project now: another project's activity can no longer wedge THIS
+    // project's queue (its pump gates on its own project's slots only), so
+    // the watchdog must not treat it as justification for idling either.
+    if (this.semaphore.projectBusy(this.repoRoot) > 0) return;
     // A future deadline is a real reason to sit still: that timer will fire and pump.
     for (const run of this.store.listRuns()) {
       if (run.status !== 'failed' || !run.autoResumeAt) continue;

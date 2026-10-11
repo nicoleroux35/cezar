@@ -59,11 +59,14 @@ export interface ProjectContextDeps {
    *  injects the workspace automation coordinator's cached store so API
    *  mutations and scheduler reads share the same in-memory state. */
   automationStore?: (projectId: string, root: string) => AutomationStore;
-  /** Workspace-wide parallel-cap semaphore (spec 2026-07-20, step 2.5). Boot
-   *  passes the ONE instance it already gave the boot manager, so every
-   *  project's RunManager counts against the same `resources.maxParallel`.
-   *  When omitted, the map still shares one private instance across the
-   *  managers it builds (workspace defaults, never refreshed). */
+  /** Workspace parallel-cap semaphore (spec 2026-07-20, step 2.5, per-project
+   *  amendment). Boot passes the ONE instance it already gave the boot
+   *  manager, so every project's RunManager shares the cached resource
+   *  snapshot and the cross-project wakeup broadcast — while each project is
+   *  gated on its OWN `maxParallel` (registry override, else the workspace
+   *  `resources` default). When omitted, the map still shares one private
+   *  instance across the managers it builds (workspace defaults, never
+   *  refreshed). */
   semaphore?: WorkspaceSemaphore;
 }
 

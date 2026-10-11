@@ -11,18 +11,24 @@ import type { WorkflowDef } from './types.ts';
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
 
 /**
- * The workspace-wide parallel cap (spec 2026-07-20-multi-project-workspace,
- * step 2.5): ONE `WorkspaceSemaphore` shared by every project's RunManager
- * caps concurrent runs at the global `resources.maxParallel`, replacing the
- * old per-repo count. Three contracts, each against real managers on real
- * fixture repos (run.test.ts conventions — check-step slot holders, and the
- * CEZ_DRY_RUN mock agent where a live session is needed):
+ * The per-project parallel cap (spec 2026-07-20-multi-project-workspace,
+ * step 2.5, per-project amendment): ONE `WorkspaceSemaphore` shared by every
+ * project's RunManager, but each project is gated on its OWN cap — the
+ * registry override when set, else the workspace `resources.maxParallel`
+ * default — counted over the managers scoped to that project's root. Other
+ * projects' activity never blocks a project, and a project's overflow never
+ * borrows another project's slots. Three contracts, each against real
+ * managers on real fixture repos (run.test.ts conventions — check-step slot
+ * holders, and the CEZ_DRY_RUN mock agent where a live session is needed):
  *
- *  1. two managers, cap 2 → a third run queues ACROSS projects;
- *  2. the #347 exemption survives the move: a `waiting` run holds no slot,
- *     and a message into it resumes it immediately even when OTHER projects
- *     saturate the cap — the resume must never hang on the workspace queue;
- *  3. `refresh()` (the cache hook boot and PUT /api/v1/workspace/config call)
+ *  1. two managers, cap 2 → EACH project runs 2 concurrently (4 total); a
+ *     third run in a project queues on THAT project's cap;
+ *  2. a slot freed in a project starts the run queued in THAT project — the
+ *     other project's saturation is irrelevant;
+ *  3. the #347 exemption survives: a `waiting` run holds no slot, and a
+ *     message into it resumes it immediately even at the project's own cap —
+ *     the resume must never hang on the queue;
+ *  4. `refresh()` (the cache hook boot and PUT /api/v1/workspace/config call)
  *     applies a config change without a restart: raising the cap starts a
  *     queued run right away.
  */
@@ -131,90 +137,107 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
     else process.env.CEZ_DRY_RUN = savedEnv.CEZ_DRY_RUN;
   });
 
-  it('caps concurrent runs across two projects: with cap 2, the third run queues', async () => {
+  it('caps runs per project: with cap 2, A runs 2 AND B runs 2 concurrently; a third run in A queues', async () => {
+    // The per-project amendment: the workspace `resources.maxParallel` is each
+    // project's OWN allowance, not a shared pool. Four holders across two
+    // projects must all run — under the old workspace-wide gate the third and
+    // fourth would have queued.
     const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 } });
     const a = project('cez-wsem-a-', semaphore);
     const b = project('cez-wsem-b-', semaphore);
 
-    const slowA = a.manager.startRun(SLOW, { task: 'hold a slot (A)' });
-    const slowB = b.manager.startRun(SLOW, { task: 'hold a slot (B)' });
+    const slowA1 = a.manager.startRun(SLOW, { task: 'hold a slot (A1)' });
+    const slowA2 = a.manager.startRun(SLOW, { task: 'hold a slot (A2)' });
+    const slowB1 = b.manager.startRun(SLOW, { task: 'hold a slot (B1)' });
+    const slowB2 = b.manager.startRun(SLOW, { task: 'hold a slot (B2)' });
     await waitFor(
       () =>
-        a.store.getRun(slowA.id)?.status === 'running' &&
-        b.store.getRun(slowB.id)?.status === 'running',
-      'both slot holders to run',
+        a.store.getRun(slowA1.id)?.status === 'running' &&
+        a.store.getRun(slowA2.id)?.status === 'running' &&
+        b.store.getRun(slowB1.id)?.status === 'running' &&
+        b.store.getRun(slowB2.id)?.status === 'running',
+      'both projects to hold two slots each',
     );
 
-    // Third run, third project slot — but the WORKSPACE cap is 2, so it must
-    // queue even though manager A alone only holds one slot.
-    const third = a.manager.startRun(INSTANT, { task: 'third — must queue' });
+    // Third run in A — A is at its own cap of 2, so it must queue even though
+    // no workspace-wide ceiling exists any more.
+    const third = a.manager.startRun(INSTANT, { task: 'third in A — must queue' });
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(a.store.getRun(third.id)?.status).toBe('queued');
 
-    // Capacity returns as the holders settle — the queued run then completes.
+    // Capacity returns as A's holders settle — the queued run then completes.
     await waitFor(
       () => settled.includes(a.store.getRun(third.id)?.status ?? ''),
-      'the queued run to complete once a slot frees',
+      'the queued run to complete once A frees a slot',
       30_000,
     );
     expect(a.store.getRun(third.id)?.status).toBe('done');
   }, 45_000);
 
-  it('a slot freed in one project starts the run queued in ANOTHER project', async () => {
-    // The starvation regression: `RunManager` only ever pumps ITSELF, so a
-    // freed slot used to reach exactly one queue. With both slots held by A,
-    // B's queued run sat at `queued` while A's runs finished one after
-    // another — it only ever started if B happened to start or finish a run of
-    // its own. The fix routes every slot-freeing transition through
-    // `WorkspaceSemaphore.release()`, which pumps every manager.
+  it("a slot freed in a project starts THAT project's queued run while the other project stays saturated", async () => {
+    // A saturates its own cap and B saturates its own cap plus queues a third.
+    // B's queued run must start once B frees a slot — A's saturation is
+    // irrelevant, and B's overflow never borrows A's slots.
     const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 } });
     const a = project('cez-wsem-cross-a-', semaphore);
     const b = project('cez-wsem-cross-b-', semaphore);
 
-    const slow1 = a.manager.startRun(SLOW, { task: 'saturate 1' });
-    const slow2 = a.manager.startRun(SLOW, { task: 'saturate 2' });
+    const slowA1 = a.manager.startRun(SLOW, { task: 'A saturate 1' });
+    const slowA2 = a.manager.startRun(SLOW, { task: 'A saturate 2' });
+    const slowB1 = b.manager.startRun(SLOW, { task: 'B saturate 1' });
+    const slowB2 = b.manager.startRun(SLOW, { task: 'B saturate 2' });
     await waitFor(
       () =>
-        a.store.getRun(slow1.id)?.status === 'running' &&
-        a.store.getRun(slow2.id)?.status === 'running',
-      'A to saturate the workspace cap',
+        a.store.getRun(slowA1.id)?.status === 'running' &&
+        a.store.getRun(slowA2.id)?.status === 'running' &&
+        b.store.getRun(slowB1.id)?.status === 'running' &&
+        b.store.getRun(slowB2.id)?.status === 'running',
+      'both projects to saturate their own caps',
     );
 
-    const queued = b.manager.startRun(INSTANT, { task: 'queued in the OTHER project' });
+    const queued = b.manager.startRun(INSTANT, { task: 'queued over B own cap' });
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(b.store.getRun(queued.id)?.status).toBe('queued');
 
-    // Nothing else happens in B — the only event is A's runs settling.
+    // The only event that matters is B's runs settling.
     await waitFor(
       () => settled.includes(b.store.getRun(queued.id)?.status ?? ''),
-      "B's queued run to start once A frees a slot",
+      "B's queued run to start once B frees a slot",
       30_000,
     );
     expect(b.store.getRun(queued.id)?.status).toBe('done');
   }, 45_000);
 
-  it('a freed slot goes to the longest-waiting run across projects', async () => {
+  it("queues are per project: B's run starts while A is saturated, and A's overflow waits for A's slot", async () => {
+    // Cap 1 per project. A's holder saturates A — B's own cap is free, so B's
+    // run must start at once (under the old workspace-wide gate it queued
+    // behind A's holder). A's own overflow queues behind A's holder and takes
+    // A's slot when it frees.
     const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 1 } });
     const a = project('cez-wsem-fair-a-', semaphore);
     const b = project('cez-wsem-fair-b-', semaphore);
 
     const holder = a.manager.startRun(SLOW, { task: 'hold the only slot' });
     await waitFor(() => a.store.getRun(holder.id)?.status === 'running', 'the holder to run');
-    // B queues first, then A — the freed slot must go to B despite the slot
-    // being freed by (and the pump originating in) A.
-    const older = b.manager.startRun(INSTANT, { task: 'queued first, other project' });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const newer = a.manager.startRun(SLOW, { task: 'queued second, same project' });
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(b.store.getRun(older.id)?.status).toBe('queued');
-    expect(a.store.getRun(newer.id)?.status).toBe('queued');
-
+    const other = b.manager.startRun(INSTANT, { task: 'other project, free cap' });
     await waitFor(
-      () => settled.includes(b.store.getRun(older.id)?.status ?? ''),
-      "B's older queued run to take the freed slot",
+      () => settled.includes(b.store.getRun(other.id)?.status ?? ''),
+      "B's run to finish despite A's saturation",
       30_000,
     );
-    expect(b.store.getRun(older.id)?.status).toBe('done');
+    expect(b.store.getRun(other.id)?.status).toBe('done');
+
+    // A's own overflow queues behind A's holder...
+    const newer = a.manager.startRun(SLOW, { task: 'queued second, same project' });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(a.store.getRun(newer.id)?.status).toBe('queued');
+
+    // ...and takes A's slot when the holder settles.
+    await waitFor(
+      () => a.store.getRun(newer.id)?.status === 'running',
+      "A's queued run to take the freed slot",
+      30_000,
+    );
   }, 45_000);
 
   it('#347 across projects: a waiting run resumes immediately even when other projects saturate the cap', async () => {
@@ -230,7 +253,7 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
       "B's run to park at waiting",
     );
 
-    // Project A saturates the workspace cap: 2 running holders, busy == cap.
+    // Project A saturates its own cap: 2 running holders.
     const slow1 = a.manager.startRun(SLOW, { task: 'saturate 1' });
     const slow2 = a.manager.startRun(SLOW, { task: 'saturate 2' });
     await waitFor(
@@ -261,7 +284,7 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
     );
   }, 45_000);
 
-  it('per-project cap: project A limited to 1 runs one at a time while B fills the workspace cap', async () => {
+  it('per-project cap: project A limited to 1 runs one at a time while B uses its own inherited cap', async () => {
     // Shared snapshot the load hook copies on each refresh — mutating the map
     // and calling refresh() mirrors a settings write to a project's maxParallel.
     const projectLimits = new Map<string, number>();
@@ -278,24 +301,24 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
     projectLimits.set(realpathSync(rootA), 1);
     await semaphore.refresh();
 
-    // A starts two runs. The workspace has room (cap 4), but A's own ceiling is
+    // A starts two runs. The workspace default is 4, but A's own ceiling is
     // 1 — so the second A run must queue on the per-project gate.
     const a1 = a.manager.startRun(SLOW, { task: 'A slot 1' });
     const a2 = a.manager.startRun(SLOW, { task: 'A slot 2 — must queue on A per-project cap' });
     await waitFor(() => a.store.getRun(a1.id)?.status === 'running', 'A first run to run');
     await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(a.store.getRun(a2.id)?.status).toBe('queued'); // blocked by A's own cap, not the workspace
+    expect(a.store.getRun(a2.id)?.status).toBe('queued'); // blocked by A's own cap
 
-    // B inherits the workspace cap (no override) — it runs two concurrently.
+    // B inherits the workspace default as its OWN cap (no override) — it runs two concurrently.
     const b1 = b.manager.startRun(SLOW, { task: 'B slot 1' });
     const b2 = b.manager.startRun(SLOW, { task: 'B slot 2' });
     await waitFor(
       () =>
         b.store.getRun(b1.id)?.status === 'running' && b.store.getRun(b2.id)?.status === 'running',
-      'B to run two concurrently under the workspace cap',
+      'B to run two concurrently under its own cap',
     );
 
-    // A still runs only one; the workspace total (1 A + 2 B) never exceeds 4.
+    // A still runs only one.
     expect(a.store.getRun(a1.id)?.status).toBe('running');
     expect(a.store.getRun(a2.id)?.status).toBe('queued');
     expect(semaphore.busy()).toBeLessThanOrEqual(4);

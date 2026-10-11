@@ -288,12 +288,13 @@ export interface ServerDeps {
    *  coordinator-owned instance so HTTP routes and the scheduler never cache
    *  separate views of the same project files. */
   automationStore?: AutomationStore;
-  /** Workspace-wide parallel-cap semaphore + cached resource config (spec
-   *  2026-07-20, step 2.5): the ONE instance boot created, refreshed, and gave
-   *  the boot manager — threaded into the default `ProjectContexts` so every
-   *  project's RunManager shares it. Step 2.7's `PUT /api/workspace/config`
-   *  calls `semaphore.refresh()` after a write. Optional so legacy
-   *  callers/tests change nothing. */
+  /** Per-project parallel-cap semaphore + cached resource config (spec
+   *  2026-07-20, step 2.5, per-project amendment): the ONE instance boot
+   *  created, refreshed, and gave the boot manager — threaded into the
+   *  default `ProjectContexts` so every project's RunManager shares the
+   *  snapshot and the wakeup broadcast, each gated on its OWN `maxParallel`.
+   *  Step 2.7's `PUT /api/workspace/config` calls `semaphore.refresh()` after
+   *  a write. Optional so legacy callers/tests change nothing. */
   semaphore?: WorkspaceSemaphore;
   /** Workspace-level SSE bus (spec, step 2.8): `project-added` /
    *  `project-removed` / `checkout-progress` plus the host-wide unstamped
@@ -2924,7 +2925,7 @@ export function createApp(deps: ServerDeps) {
 
       // The new ceiling takes effect WITHOUT a restart: refresh the shared
       // semaphore's snapshot and pump every manager — the same live-apply hook
-      // `PUT /api/workspace/config` fires for a workspace-cap change.
+      // `PUT /api/workspace/config` fires for a default-cap change.
       await deps.semaphore?.refresh();
       const body: UpdateProjectResponse = {
         project: { ...updated, ...(await probeProjectStatus(updated.root)) },

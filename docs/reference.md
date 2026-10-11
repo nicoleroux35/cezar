@@ -40,8 +40,9 @@ Three words, no jargon — **task**, **skill**, **chain**:
 Five moves that make the cockpit worth the browser tab:
 
 - 🗃️ **Queue + orchestration.** Start as many tasks as you like: cezar runs up to
-  `maxParallel` at once across every project (default **2**; a non-git directory
-  always runs one) and
+  `maxParallel` at once **per project** (default **2**; a non-git directory
+  always runs one, and a project's own limit in **Settings → Projects** replaces
+  the default for that project) and
   holds the rest in a FIFO queue with visible positions (`#1`, `#2`, …). Cancel a
   queued task before it starts; the queue even survives a cockpit restart —
   everything still `queued` is re-enqueued in order. It's the orchestration layer
@@ -734,8 +735,9 @@ itself remains selectable.
 Run data (`runs.json`, NDJSON event logs, worktrees, `todos.json`) is
 git-ignored automatically; your workflows and skills stay committable.
 
-Settings that belong to *you* rather than to a repo — the parallel cap
-(`maxParallel`, default **2**), the per-task memory ceiling and the checkout
+Settings that belong to *you* rather than to a repo — the per-project parallel
+cap (`maxParallel`, default **2** per project, overridable per project), the
+per-task memory ceiling and the checkout
 root — live once in `~/.cezar/config.json`, alongside the
 [project registry](#multiple-projects-one-cockpit), and are edited from
 **Settings → Resources** and **Settings → Projects**. A `maxParallel` left over

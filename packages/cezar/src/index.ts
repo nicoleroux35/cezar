@@ -246,10 +246,12 @@ async function serveCommand(
   bindHost?: string,
 ): Promise<void> {
   const bootProjectId = await initWorkspace(repoRoot);
-  // ONE workspace semaphore for the whole process (spec 2026-07-20, step 2.5):
-  // the boot manager and every lazily-built project context count their runs
-  // against the same `resources.maxParallel`. The boot refresh() below is the
-  // cache hook's first call; PUT /api/workspace/config (step 2.7) re-fires it.
+  // ONE workspace semaphore for the whole process (spec 2026-07-20, step 2.5,
+  // per-project amendment): the boot manager and every lazily-built project
+  // context share the cached resource snapshot and the wakeup broadcast, each
+  // gated on its OWN `maxParallel` (registry override, else the workspace
+  // `resources` default). The boot refresh() below is the cache hook's first
+  // call; PUT /api/workspace/config (step 2.7) re-fires it.
   const semaphore = new WorkspaceSemaphore();
   await semaphore.refresh();
   // keepLive + recover() (#367): runs that were queued/running/waiting when

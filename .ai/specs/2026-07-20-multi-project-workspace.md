@@ -143,7 +143,7 @@ is never served under another's scope. Everything else is closure plumbing.
 | De-singletonized todos | `src/todos.ts` (edit) | Watcher/emitter per `dataDir` (`Map`), scoped `onTodosChanged(dataDir, cb)`. |
 | Per-project cache keying | `src/server/forge/github.ts`, `src/skills-remote.ts` (edit) | Key the GitHub list cache, GitHub comments cache and team-skills cache by project (`repoRoot`), following the pattern `detectCache` already uses (`forge/github.ts:641`). |
 | Scoped usage fan-out | `src/core/process-usage.ts` + `run.ts` (edit) | Managers filter usage snapshots to their own runIds; SSE relays only the owning project's samples. |
-| Workspace scheduler cap | `src/workflows/run.ts` (edit) | A shared workspace-level semaphore so the **global** `maxParallel` caps concurrent agent runs across all projects. |
+| Workspace scheduler cap | `src/workflows/run.ts` (edit) | A shared semaphore so each project's OWN `maxParallel` (registry override, else the workspace default) caps that project's concurrent agent runs — per-project since the 2026-10-11 amendment, no workspace-wide ceiling. |
 | Cockpit project scope | `web/app/src/…` (edit) | `/p/:projectId` route prefix, project-scoped API client + queries, multi-project sidebar, new-task project selector, add-project dialog, settings split. |
 
 ### Project identity
@@ -235,31 +235,36 @@ bump — never a lost project.
 
 ### Resource governance (why resources go global)
 
-`maxParallel` and `memoryLimitMb` protect the *host*, not a repo. They move to
-`~/.cezar/config.json`. The semantics are deliberately plain: **the global
-value is the only effective one.** Leftover per-repo `maxParallel` /
-`memoryLimitMb` keys are imported once by Migration 001 and ignored
-afterwards; the settings UI stops writing them. `worktreeRetention` stays
+`memoryLimitMb` protects the *host*, not a repo, and stays workspace-global in
+`~/.cezar/config.json`. `maxParallel` started the same way — **the global value
+was the only effective one** — until the per-project amendment (2026-10-11,
+recorded in `.ai/specs/2026-07-22-per-project-concurrency.md`): it is now each
+project's *default allowance*, enforced per project (registry override, else
+the workspace default), with no workspace-wide parallel ceiling left. Leftover
+per-repo `maxParallel` / `memoryLimitMb` keys are imported once by Migration
+001 and ignored afterwards; the settings UI stops writing them. `worktreeRetention` stays
 **per-project** (it sizes a repo's own worktree pool), with the global
 `resources.worktreeRetentionDefault` applying only to projects that don't set
 it — per-project value wins. `baseBranch`, `defaultRunner`, models, system
 prompt, `reviewGate`, `skillsRepos` stay per-project — they describe the repo,
 not the machine.
 
-Enforcement follows the value: the parallel cap becomes a **workspace-level
-semaphore** shared by all managers, and the memory guard
-(`enforceMemoryLimit`, `run.ts:264` — today re-reading `loadConfig(repoRoot)`
-every 2s tick) switches to the workspace config, **cached in memory** and
-refreshed on `PUT /api/workspace/config` — not N per-tick file reads across N
+Enforcement follows the value: the parallel cap is a **per-project gate on a
+shared semaphore** — one `WorkspaceSemaphore` for all managers (shared cached
+snapshot + cross-project wakeup broadcast), each manager gated on its own
+project's slots — and the memory guard (`enforceMemoryLimit`, `run.ts:264` —
+today re-reading `loadConfig(repoRoot)` every 2s tick) switches to the
+workspace config, **cached in memory** and refreshed on
+`PUT /api/workspace/config` — not N per-tick file reads across N
 projects. The semaphore contract: a slot is acquired before a manager starts
 an agent process and released when the run settles (finish/fail/cancel, or
 memory-pause frees its slot); variants queue as today. **The #347 exception
 must be carried over exactly as it is today** (`run.ts:384-386`, inside
 `pump()`): a `waiting` run does *not* hold a slot, and a message into a
 waiting run resumes it immediately even when that momentarily exceeds
-`maxParallel`. This is queue-slot accounting, not crash recovery — making a
-resumed `waiting` run acquire a workspace slot would hang the resume whenever
-the workspace-wide cap is saturated by other projects, which is the exact
+the project's cap. This is queue-slot accounting, not crash recovery — making a
+resumed `waiting` run acquire a slot would hang the resume whenever
+the project's own cap is saturated, which is the exact
 failure #347 fixed. Crash recovery (`RunManager.recover`) is a separate path
 and acquires slots normally.
 
@@ -273,7 +278,7 @@ and acquires slots normally.
   "browseRoot": "~/",                    // folder-browser root; validated writable on change
   "projectsDir": "~/cezar/projects",     // checkout root; validated writable on change
   "resources": {                          // moved from per-repo config.json
-    "maxParallel": 2,                     // workspace-wide cap, 1-16
+    "maxParallel": 2,                     // default per-project allowance, 1-16
     "memoryLimitMb": null,
     "worktreeRetentionDefault": 10        // default for projects that don't override
   },
@@ -557,7 +562,8 @@ refusing them (four 5 MB images as base64 against a ~5 MB quota) is unchanged, a
   routes. The settings registry gains a `scope: 'project' | 'global'` field and
   renders accordingly.
 - **Global settings** (`/settings/global/…`) — Appearance, Notifications,
-  Resources (workspace-wide `maxParallel`/`memoryLimitMb`), and **Projects**:
+  Resources (workspace `memoryLimitMb`, and the `maxParallel` DEFAULT each
+  project inherits unless it sets its own), and **Projects**:
   the registry list (name, path, status, remove), the **browse root** (default
   `~/`) and the independent **checkout root** (default `~/cezar/projects`),
   whose save buttons validate writability
@@ -599,7 +605,7 @@ bookmarklets keep working via the redirect (boot project).
 | Slug collision (`~/work/api`, `~/personal/api`) | Second registration gets `api-2`; sidebar disambiguates with the parent-dir segment like the group header tooltip. |
 | Deep link to unknown `projectId` | Cockpit shows a "project not registered here" screen with the registry list; API returns 404 `{ error }`. |
 | Two `cezar serve` processes concurrently | Both serve the full registry on different ports; registry writes merge additively; per-project `.ai/cezar` files keep their existing single-writer-per-repo assumptions (unchanged from today — two processes in *one* repo were never supported). |
-| Run started in project B while A's tasks run | Independent stores/managers; workspace semaphore caps total agent processes at global `maxParallel`. |
+| Run started in project B while A's tasks run | Independent stores/managers; each project runs up to its OWN `maxParallel` (per-project amendment — no workspace-wide ceiling). |
 | `gh` missing / unauthenticated | Clone option disabled with reason (same degradation contract as the GitHub pane). |
 | Clone fails mid-way (network, auth) | Partial target dir removed if the clone created it; dialog shows the error; nothing registered. |
 | `browseRoot` or `projectsDir` set to an unwritable path | 400 with reason on save; setting unchanged (validated server-side, shown inline). A missing browse root is rejected; a missing checkout root is created recursively. |
@@ -741,14 +747,16 @@ Each phase ships independently and leaves the app fully working.
 2.4 Usage fan-out scoping in `run.ts` + per-project `usage` filtering in the
     SSE relay (split by owned runIds, never stamped). *Test:* A's stream
     excludes B's samples; memory enforcement unaffected.
-2.5 Workspace semaphore honoring global `resources.maxParallel` across
-    managers (acquire before agent start, release on settle, memory-pause
-    frees the slot, #347 resume exception preserved); memory guard + cap read
-    the **cached** workspace config (refreshed on PUT), not per-tick file
+2.5 Per-project semaphore gate (per-project amendment — no global ceiling):
+    each manager gated on its own project's `maxParallel` (registry override,
+    else the workspace `resources` default), counted over the managers scoped
+    to that root (acquire before agent start, release on settle, memory-pause
+    frees the slot, #347 resume exception preserved); memory guard + default
+    read the **cached** workspace config (refreshed on PUT), not per-tick file
     reads; per-repo legacy keys ignored post-migration. *Test:* two projects,
-    cap 2 → third run queues; a message into a `waiting` run resumes it even at
-    cap (#347 exemption, asserted across projects); config PUT takes effect
-    without restart.
+    cap 2 → EACH runs 2 concurrently; a third run in a project queues on that
+    project's cap; a message into a `waiting` run resumes it even at the
+    project's cap (#347 exemption); config PUT takes effect without restart.
 2.6 Per-project cache keying: GitHub list cache, GitHub comments cache
     (`forge/github.ts:194`, `:420`), team-skills cache
     (`skills-remote.ts:403`) keyed by project. *Test:* regression per cache —

@@ -250,13 +250,14 @@ npx cezar-run@nightly
 {
   "baseBranch": "main",
   "defaultWorkflow": "fix-and-verify",
-  "maxParallel": 3,
-  "memoryLimitMb": 4096,
   "defaultRunner": "claude"
 }
 ```
 
-**Tout est optionnel** - Cezar fonctionne sans configuration.
+**Tout est optionnel** - Cezar fonctionne sans configuration. La limite de tâches
+simultanées (`maxParallel`, 2 par projet par défaut) se règle dans le cockpit :
+**Settings → Resources** pour la valeur par défaut, **Settings → Projects** pour
+la limite propre à un projet.
 
 ## Héberger sur un serveur
 
@@ -302,7 +303,7 @@ PORT=8080 npx cezar-run
 
 ### Les tâches restent "queued"
 
-Vérifiez `maxParallel` dans la config ou arrêtez des tâches en cours.
+Vérifiez `maxParallel` du projet (Settings → Projects) ou arrêtez des tâches en cours.
 
 ## Ressources
 

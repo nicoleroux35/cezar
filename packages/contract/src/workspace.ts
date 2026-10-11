@@ -15,9 +15,11 @@ import { type Runner, runnerSchema } from './health.ts';
  * `GET/PUT /api/v1/workspace/config` — the settings slice of `~/.cezar/config.json` (step 2.7).
  *
  * Global knobs only: the registry itself is `GET /api/v1/projects`, and `schemaVersion` (a
- * migration cursor, not a setting) is deliberately absent. `resources` is the workspace's
- * host-protection budget — the ONLY effective `maxParallel`/`memoryLimitMb` since Phase 2;
- * `worktreeRetentionDefault` seeds projects that set none.
+ * migration cursor, not a setting) is deliberately absent. `resources` holds the workspace
+ * defaults: `maxParallel` is the DEFAULT per-project cap (each project runs up to its own
+ * value — registry override or this default — independently of the others, per the
+ * per-project amendment to spec 2026-07-22); `memoryLimitMb` stays the host-global
+ * per-task ceiling. `worktreeRetentionDefault` seeds projects that set none.
  *
  * `composerDefaults` and every `resources` key are REQUIRED: `workspaceConfigBody`
  * (src/server/server.ts:1888) materializes all of them from schema defaults on every answer,
