@@ -1,314 +1,145 @@
-# Référence rapide des outils MCP Cezar
+# Référence rapide
 
-## 📋 Tâches - Opérations basiques
+63 outils, groupés par catégorie. Le détail (paramètres acceptés) est dans la
+description de chaque outil, exposée par `tools/list` : un client MCP correctement écrit l'affiche
+sans avoir besoin de ce fichier.
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_create_task` | Créer une tâche | `task` |
-| `cezar_list_tasks` | Lister les tâches | - |
-| `cezar_get_task` | Détails d'une tâche | `taskId` |
-| `cezar_edit_task` | Éditer titre/prompt | `taskId` |
-| `cezar_delete_task` | Supprimer une tâche | `taskId` |
-| `cezar_archive_task` | Archiver/désarchiver | `taskId`, `archived` |
-| `cezar_pin_task` | Épingler/désépingler | `taskId`, `pinned` |
-| `cezar_mark_task_read` | Marquer lu/non-lu | `taskId` |
-| `cezar_archive_all_finished` | Archiver toutes les terminées | - |
-| `cezar_mark_all_read` | Tout marquer lu | - |
+## TASKS
 
-## 🔄 Tâches - Cycle de vie
+| Outil | Description |
+| --- | --- |
+| `cezar_create_task` | Create a new coding task. Supports variants (×2/×3), autonomous mode, a custom workflow or an inline step list, dispatch delegation and queue-only mode. |
+| `cezar_list_tasks` | List tasks with filtering. Returns ids, titles, statuses, branches, costs and metadata. |
+| `cezar_get_task` | Get detailed task information including steps, usage, tokens, cost and current state. |
+| `cezar_edit_task` | Edit a task title, or its prompt while the task is still queued. |
+| `cezar_delete_task` | Delete a finished task (done/failed/cancelled). Active tasks must be cancelled first. |
+| `cezar_archive_task` | Archive or unarchive a task. |
+| `cezar_pin_task` | Pin or unpin a task (pinned tasks sort to the top of the list). |
+| `cezar_mark_task_read` | Mark a task as read or unread. |
+| `cezar_archive_all_finished` | Archive every finished task (done/failed/cancelled) in the current project. |
+| `cezar_mark_all_read` | Mark all finished tasks as read. |
+| `cezar_send_message` | Send a message to a waiting or running task. |
+| `cezar_cancel_task` | Cancel a running or queued task. |
+| `cezar_finish_task` | Manually finish a running task (force completion). |
+| `cezar_continue_task` | Continue/resume a finished task, optionally with a new instruction. |
+| `cezar_cancel_auto_resume` | Cancel a pending automatic resume (scheduled after a usage limit). |
+| `cezar_get_task_diff` | Get the git diff a task produced (its worktree against its base branch), as raw diff text. |
+| `cezar_get_task_commits` | List the commits a task made. |
+| `cezar_get_task_changes` | Get detailed file changes (added/modified/deleted, with per-file diffs). |
+| `cezar_commit_task` | Create a git commit in the task worktree (git add -A && git commit). |
+| `cezar_push_task` | Push the task branch to its remote (sets upstream when needed). |
+| `cezar_create_pr` | Create a draft pull request for the task. |
+| `cezar_remove_worktree` | Remove a task worktree directory (keeps the branch). |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_send_message` | Envoyer un message | `taskId`, `text` |
-| `cezar_cancel_task` | Annuler | `taskId` |
-| `cezar_finish_task` | Finir manuellement | `taskId` |
-| `cezar_continue_task` | Continuer/reprendre | `taskId` |
-| `cezar_cancel_auto_resume` | Annuler reprise auto | `taskId` |
+## VARIANTS (×2, ×3)
 
-## 🌳 Tâches - Git
+| Outil | Description |
+| --- | --- |
+| `cezar_get_variants` | Get every variant of a task group (the ×2/×3 siblings). |
+| `cezar_pick_variant` | Pick the winning variant (cancels the others, archives them and removes their worktrees). |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_get_task_diff` | Obtenir le diff | `taskId` |
-| `cezar_get_task_commits` | Lister commits | `taskId` |
-| `cezar_get_task_changes` | Changements par fichier | `taskId` |
-| `cezar_commit_task` | Créer commit | `taskId`, `message` |
-| `cezar_push_task` | Pousser vers remote | `taskId` |
-| `cezar_create_pr` | Créer draft PR | `taskId` |
-| `cezar_remove_worktree` | Supprimer worktree | `taskId` |
+## WORKFLOWS
 
-## 🔀 Variantes
+| Outil | Description |
+| --- | --- |
+| `cezar_list_workflows` | List all available workflows (built-in and saved), plus any files that failed to load. |
+| `cezar_get_workflow` | Get one workflow definition (steps, checks, skills) by name. |
+| `cezar_create_workflow` | Save a workflow as `.ai/cezar/workflows/<slug>.yaml`. Provide either `steps` or the portable `skills` shorthand, not both. |
+| `cezar_update_workflow` | Overwrite an existing saved workflow. Same body as create, with overwrite forced on. |
+| `cezar_delete_workflow` | Delete a saved workflow (built-ins have no file and cannot be deleted). |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_get_variants` | Lister variantes groupe | `groupId` |
-| `cezar_pick_variant` | Choisir gagnant | `groupId`, `winnerId` |
+## SKILLS (read-only over HTTP)
 
-## 📝 Workflows
+| Outil | Description |
+| --- | --- |
+| `cezar_list_skills` | List all available skills (markdown playbooks for agents). |
+| `cezar_get_skill` | Get one skill (markdown body plus its source and path). |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_list_workflows` | Lister workflows | - |
-| `cezar_get_workflow` | Obtenir définition | `name` |
-| `cezar_create_workflow` | Créer workflow | `name`, `content` |
-| `cezar_update_workflow` | Modifier workflow | `name`, `content` |
-| `cezar_delete_workflow` | Supprimer workflow | `name` |
+## PROJECTS (multi-repo workspace)
 
-## 🎯 Skills
+| Outil | Description |
+| --- | --- |
+| `cezar_list_projects` | List every project in the workspace. |
+| `cezar_get_project` | Get one project’s registry entry and status. |
+| `cezar_add_project` | Register an existing folder as a project in the workspace. |
+| `cezar_remove_project` | Remove a project from the workspace. |
+| `cezar_update_project` | Update a project’s workspace metadata. Only tags and maxParallel are editable — the display name is derived from the folder. |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_list_skills` | Lister skills | - |
-| `cezar_get_skill` | Obtenir contenu | `name` |
-| `cezar_create_skill` | Créer skill | `name`, `content` |
-| `cezar_update_skill` | Modifier skill | `name`, `content` |
-| `cezar_delete_skill` | Supprimer skill | `name` |
+## FORGE (GitHub and other forges)
 
-## 📂 Projets
+| Outil | Description |
+| --- | --- |
+| `cezar_list_github_issues` | List the open issues of the project’s forge repository. |
+| `cezar_list_github_prs` | List the open pull requests of the project’s forge repository. |
+| `cezar_search_github` | Search issues and/or pull requests in ANY state (the list routes return the open set only). |
+| `cezar_get_github_ref_status` | Get the status of a pull request or issue reference. |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_list_projects` | Lister projets | - |
-| `cezar_get_project` | Détails projet | `projectId` |
-| `cezar_add_project` | Ajouter projet | `path` |
-| `cezar_remove_project` | Retirer projet | `projectId` |
-| `cezar_update_project` | Modifier projet | `projectId` |
+## TRACKERS (Jira, Linear)
 
-## 🐙 GitHub
+| Outil | Description |
+| --- | --- |
+| `cezar_list_tracker_items` | List items from the connected issue tracker (Jira, Linear). |
+| `cezar_search_tracker` | Search the connected issue tracker (tracker-specific query syntax). |
+| `cezar_get_tracker_item` | Get one item from the connected issue tracker. |
+| `cezar_get_tracker_connection` | Get the current tracker connection (provider, scope, association). |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_list_github_issues` | Lister issues | - |
-| `cezar_list_github_prs` | Lister PRs | - |
-| `cezar_search_github` | Rechercher | `query` |
-| `cezar_get_github_ref_status` | Statut référence | `type`, `number` |
+## AUTOMATIONS
 
-## 🎫 Trackers
+| Outil | Description |
+| --- | --- |
+| `cezar_list_automations` | List all automations (forge events, tracker events, schedules) with their runtime state. |
+| `cezar_get_automation` | Get one automation’s definition and runtime state. |
+| `cezar_create_automation` | Create an automation. `kind` defaults to github; a github automation needs `events` + `intervalSeconds` + `filters`, a schedule needs `schedule`, a tracker automation needs `trackerTrigger`. It is created paused unless `enable` is true. |
+| `cezar_update_automation` | Update an automation. The current revision is read first and echoed back, so a concurrent edit is refused rather than overwritten. |
+| `cezar_delete_automation` | Delete an automation. |
+| `cezar_enable_automation` | Enable or pause an automation. |
+| `cezar_run_automation` | Trigger an automation once, now, by hand. |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_list_tracker_items` | Lister items | - |
-| `cezar_search_tracker` | Rechercher | `query` |
-| `cezar_get_tracker_item` | Détails item | `itemId` |
-| `cezar_associate_tracker_item` | Associer à tâche | `taskId`, `itemId` |
-| `cezar_get_tracker_connection` | Info connexion | - |
+## DASHBOARD & INSIGHTS
 
-## ⏰ Automations
+| Outil | Description |
+| --- | --- |
+| `cezar_get_dashboard` | Get the workspace dashboard (tasks needing attention, running, recent). |
+| `cezar_get_usage_stats` | Get the workspace outcome overview: delivered/failed tasks and per-project metrics. |
+| `cezar_get_cost_stats` | Get token and cost statistics by project and backend. |
+| `cezar_get_insights` | Get workspace insights (delivery, failure categories, backend and automation stats). |
+| `cezar_get_workspace_runs` | Get recent tasks across every project in the workspace. |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_list_automations` | Lister automations | - |
-| `cezar_get_automation` | Détails automation | `automationId` |
-| `cezar_create_automation` | Créer automation | `name`, `type`, `config`, `task` |
-| `cezar_update_automation` | Modifier automation | `automationId`, `updates` |
-| `cezar_delete_automation` | Supprimer automation | `automationId` |
-| `cezar_enable_automation` | Activer/désactiver | `automationId`, `enabled` |
-| `cezar_run_automation` | Lancer manuellement | `automationId` |
+## GIT & REPO
 
-## 📊 Dashboard
+| Outil | Description |
+| --- | --- |
+| `cezar_get_repo_info` | Get repository information (root, remote, base branch, commit log). |
+| `cezar_get_repo_status` | Get git status for the project working tree (modified/untracked files, branch). |
+| `cezar_get_branches` | List the git branches of the project. |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_get_dashboard` | Vue d'ensemble | - |
-| `cezar_get_usage_stats` | Stats usage | - |
-| `cezar_get_cost_stats` | Stats coûts | - |
-| `cezar_get_insights` | Insights | - |
-| `cezar_get_workspace_runs` | Tâches cross-projets | - |
+## AGENT CONFIG & PROFILES
 
-## 🌳 Git & Repo
+| Outil | Description |
+| --- | --- |
+| `cezar_list_agent_configs` | List the coding agents’ own config files (Claude, Codex, OpenCode settings, MCP, memory). |
+| `cezar_list_agent_profiles` | List agent account profiles. |
+| `cezar_list_models` | List the models discovered for one backend. |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_get_branches` | Lister branches | - |
-| `cezar_get_repo_status` | Statut git | - |
-| `cezar_get_repo_info` | Info repo | - |
+## SYSTEM
 
-## 🔧 Config
+| Outil | Description |
+| --- | --- |
+| `cezar_get_health` | Get server health, capabilities and the available agents. |
 
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_list_agent_configs` | Lister configs agents | - |
-| `cezar_list_agent_profiles` | Lister profils | - |
-| `cezar_list_models` | Lister modèles | - |
+## Ressources
 
-## 💻 Système
-
-| Outil | Description | Paramètres requis |
-|-------|-------------|-------------------|
-| `cezar_get_health` | Santé serveur | - |
-
----
-
-## Paramètres optionnels communs
-
-### `cezar_create_task`
-```typescript
-{
-  task: string,           // REQUIS
-  workflow?: string,      // Défaut: "quick-task"
-  runner?: string,        // claude|codex|opencode|cursor|junie
-  model?: string,         // Modèle spécifique
-  autonomous?: boolean,   // Mode autonome
-  variants?: number,      // 1|2|3 (défaut: 1)
-  worktree?: boolean,     // Défaut: true
-  systemPrompt?: string,  // Prompt système custom
-  dispatch?: boolean      // Délégation activée
-}
-```
-
-### `cezar_list_tasks`
-```typescript
-{
-  status?: string,   // queued|running|waiting|review|done|failed|cancelled
-  limit?: number,    // Max résultats
-  archived?: boolean // Inclure archivées
-}
-```
-
-### `cezar_edit_task`
-```typescript
-{
-  taskId: string,    // REQUIS
-  title?: string,    // Nouveau titre
-  task?: string      // Nouveau prompt (seulement si queued)
-}
-```
-
-### `cezar_get_task_diff`
-```typescript
-{
-  taskId: string,    // REQUIS
-  maxLines?: number  // Max lignes de diff
-}
-```
-
-### `cezar_list_github_issues`
-```typescript
-{
-  state?: string,    // open|closed|all (défaut: open)
-  limit?: number     // Max résultats
-}
-```
-
-### `cezar_search_github`
-```typescript
-{
-  query: string,     // REQUIS
-  type?: string      // issues|prs|all (défaut: all)
-}
-```
-
-### `cezar_get_usage_stats`
-```typescript
-{
-  timeRange?: string // day|week|month|all (défaut: week)
-}
-```
-
----
-
-## Ressources MCP
-
-| URI | Description |
-|-----|-------------|
+| URI | Contenu |
+| --- | --- |
 | `cezar://tasks` | Toutes les tâches |
-| `cezar://tasks/active` | Tâches actives |
-| `cezar://tasks/needs-attention` | Besoin d'action |
-| `cezar://tasks/{taskId}` | Détails tâche |
-| `cezar://workflows` | Tous workflows |
-| `cezar://skills` | Tous skills |
-| `cezar://projects` | Tous projets |
-| `cezar://dashboard` | Dashboard |
+| `cezar://tasks/active` | Tâches en file ou en cours |
+| `cezar://tasks/needs-attention` | Tâches en attente ou en revue |
+| `cezar://tasks/<id>` | Une tâche (forme non déclarée dans `resources/list`, servie par le même lecteur) |
+| `cezar://workflows` | Workflows disponibles |
+| `cezar://skills` | Skills disponibles |
+| `cezar://projects` | Projets du workspace |
+| `cezar://dashboard` | Vue d'ensemble du workspace |
 | `cezar://github/issues` | Issues ouvertes |
-| `cezar://github/prs` | PRs ouvertes |
+| `cezar://github/prs` | PR ouvertes |
 | `cezar://automations` | Automations |
-| `cezar://health` | Santé serveur |
-
----
-
-## Exemples rapides
-
-### Tâche simple
-```javascript
-cezar_create_task({ task: "Fix login bug" })
-```
-
-### Tâche avancée
-```javascript
-cezar_create_task({
-  task: "Implement OAuth2",
-  workflow: "security-review",
-  runner: "claude",
-  autonomous: true,
-  variants: 2
-})
-```
-
-### Liste filtrée
-```javascript
-cezar_list_tasks({ status: "waiting", limit: 10 })
-```
-
-### Workflow personnalisé
-```javascript
-cezar_create_workflow({
-  name: "my-workflow",
-  content: "steps:\n  - agent:\n      prompt: '{{task}}'"
-})
-```
-
-### Automation schedule
-```javascript
-cezar_create_automation({
-  name: "Daily check",
-  type: "schedule",
-  config: { cron: "0 9 * * *" },
-  task: { task: "Run health checks" }
-})
-```
-
-### Dashboard complet
-```javascript
-const dashboard = await cezar_get_dashboard();
-const costs = await cezar_get_cost_stats({ timeRange: "week" });
-const insights = await cezar_get_insights();
-```
-
----
-
-## Codes de statut
-
-### Statuts de tâche
-- `queued` - En file d'attente
-- `running` - En cours d'exécution
-- `waiting` - En attente d'action utilisateur
-- `review` - Prêt pour review
-- `done` - Terminé avec succès
-- `failed` - Échoué
-- `cancelled` - Annulé
-
-### États GitHub
-- `open` - Ouvert
-- `closed` - Fermé
-- `merged` - Mergé (PRs seulement)
-- `all` - Tous
-
-### Types d'automation
-- `github` - Événements GitHub
-- `tracker` - Événements tracker (Jira/Linear)
-- `schedule` - Planification cron
-
----
-
-## Erreurs courantes
-
-| Erreur | Cause | Solution |
-|--------|-------|----------|
-| `404` | Tâche/ressource introuvable | Vérifier l'ID |
-| `409` | Conflit (ex: tâche active) | Attendre ou annuler |
-| `400` | Paramètres invalides | Vérifier le schéma |
-| Connection refused | Cezar n'est pas lancé | `cezar serve` |
-
----
-
-**73 outils pour un contrôle total de cezar via MCP ! 🚀**
+| `cezar://health` | Santé et capacités |

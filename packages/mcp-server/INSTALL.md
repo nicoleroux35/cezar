@@ -20,7 +20,7 @@ Le serveur MCP Cezar permet de piloter cezar depuis n'importe quel client MCP (C
            │
 ┌──────────▼──────────┐
 │  Cezar Server       │  (packages/cezar)
-│  :5192              │
+│  :4321              │
 └──────────┬──────────┘
            │
 ┌──────────▼──────────┐
@@ -82,17 +82,17 @@ ls -la packages/mcp-server/dist/
       "command": "node",
       "args": [
         "/chemin/absolu/vers/cezar/packages/mcp-server/dist/index.js"
-      ],
-      "env": {
-        "CEZAR_URL": "http://127.0.0.1:5192",
-        "CEZAR_PROJECT_ID": "default"
-      }
+      ]
     }
   }
 }
 ```
 
 **Important** : Remplacez `/chemin/absolu/vers/cezar` par le chemin réel vers votre installation cezar.
+
+Aucun bloc `env` n'est nécessaire : `http://127.0.0.1:4321` et le projet `default` sont les valeurs
+par défaut, c'est-à-dire celles d'un cezar lancé sans configuration. N'ajoutez `env` que pour viser
+un autre port ou un autre projet.
 
 3. **Redémarrer Claude Desktop**
 
@@ -116,8 +116,7 @@ ls -la packages/mcp-server/dist/
         "/chemin/absolu/vers/cezar/packages/mcp-server/dist/index.js"
       ],
       "env": {
-        "CEZAR_URL": "http://127.0.0.1:5192",
-        "CEZAR_PROJECT_ID": "default"
+        "CEZ_API_URL": "http://127.0.0.1:4321"
       }
     }
   ]
@@ -137,7 +136,7 @@ npm run dev
 cezar serve
 ```
 
-Le serveur devrait être accessible sur `http://127.0.0.1:5192`
+Le serveur devrait être accessible sur `http://127.0.0.1:4321`
 
 2. **Ouvrir votre client MCP** (Claude Desktop, Cline, etc.)
 
@@ -189,38 +188,22 @@ Utilisera `cezar_get_task_diff`.
 
 ## Outils disponibles
 
-Le serveur MCP expose les outils suivants :
-
-| Outil | Description | Paramètres |
-|-------|-------------|------------|
-| `cezar_create_task` | Créer une nouvelle tâche | `task` (requis), `workflow`, `runner`, `autonomous` |
-| `cezar_list_tasks` | Lister toutes les tâches | `status`, `limit` |
-| `cezar_get_task` | Détails d'une tâche | `taskId` (requis) |
-| `cezar_send_message` | Envoyer un message | `taskId` (requis), `text` (requis) |
-| `cezar_cancel_task` | Annuler une tâche | `taskId` (requis) |
-| `cezar_list_workflows` | Lister les workflows | - |
-| `cezar_list_skills` | Lister les compétences | - |
-| `cezar_get_task_diff` | Obtenir le diff git | `taskId` (requis), `maxLines` |
-| `cezar_get_health` | État du serveur | - |
-
-## Ressources disponibles
-
-Le serveur expose également des ressources MCP :
-
-| URI | Description |
-|-----|-------------|
-| `cezar://tasks` | Liste de toutes les tâches |
-| `cezar://tasks/{taskId}` | Détails d'une tâche spécifique |
-| `cezar://workflows` | Workflows disponibles |
-| `cezar://skills` | Compétences disponibles |
-| `cezar://health` | État du serveur cezar |
+Les **63 outils** et les **11 ressources** sont listés un par un dans
+[COVERAGE.md](./COVERAGE.md) ; la référence par catégorie est dans
+[API_REFERENCE.md](./API_REFERENCE.md). Les paramètres acceptés par chaque outil sont dans sa
+description, telle que `tools/list` la renvoie — c'est la source que votre client MCP affiche.
 
 ## Variables d'environnement
 
 | Variable | Défaut | Description |
 |----------|--------|-------------|
-| `CEZAR_URL` | `http://127.0.0.1:5192` | URL du serveur cezar |
-| `CEZAR_PROJECT_ID` | `default` | ID du projet cezar à utiliser |
+| `CEZ_API_URL` | `http://127.0.0.1:4321` | URL du cockpit |
+| `CEZAR_URL` | — | Alias historique de `CEZ_API_URL` |
+| `CEZ_PROJECT_ID` | `default` | Projet visé par les routes `/api/v1/p/:projectId/…` |
+| `CEZAR_PROJECT_ID` | — | Alias historique de `CEZ_PROJECT_ID` |
+
+`CEZ_API_URL` et `CEZ_PROJECT_ID` sont les variables que cezar exporte dans une tâche dispatchée :
+lancé depuis une tâche cezar, ce serveur MCP vise le cockpit qui l'a lancée, sans configuration.
 
 ## Dépannage
 
@@ -244,10 +227,10 @@ Le serveur expose également des ressources MCP :
 
 1. Vérifiez que cezar tourne :
    ```bash
-   curl http://127.0.0.1:5192/api/v1/health
+   curl http://127.0.0.1:4321/api/v1/health
    ```
 
-2. Si le port est différent, ajustez `CEZAR_URL` dans la configuration MCP
+2. Si le port est différent, ajustez `CEZ_API_URL` (ou son alias `CEZAR_URL`) dans la configuration MCP
 
 ### Les outils ne s'affichent pas dans Claude Desktop
 

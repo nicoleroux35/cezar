@@ -2,6 +2,53 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [1.1.0] - 2026-10-11
+
+### 🔧 Remise à niveau sur l'API cezar courante — 63 outils
+
+L'inventaire ci-dessous, daté du 2024-10-06, décrit un serveur dont **plus de vingt outils
+appelaient des routes qui n'existent plus** : ils répondaient 404, ou — pire — 200 avec une
+mauvaise réponse quand un `:id` générique capturait le segment (`/tracker/items` était avalé par
+`/tracker/:id` et renvoyait `not_configured`). Les entrées du 2024-10-06 sont conservées telles
+quelles pour l'historique ; l'état courant est dans [COVERAGE.md](./COVERAGE.md).
+
+### Ajouté
+
+- **`src/endpoints.ts`** — la table des routes appelées par le serveur, en données. Chaque outil
+  passe par `ENDPOINTS`, jamais par une chaîne d'URL en ligne.
+- **`packages/cezar/src/server/mcp-endpoint-drift.test.ts`** — confronte chaque entrée à la table
+  de routes d'une app construite (`app.routes`, comme `bc-route-inventory.test.ts`) : renommer une
+  route côté cezar fait échouer un test au lieu de transformer un outil en 404 silencieux. Le test
+  échoue aussi sur une entrée déclarée mais jamais appelée.
+- **`WORKFLOW_STEP_SCHEMA`** — la forme réelle d'une étape de workflow (`id` requis ; `prompt` XOR
+  `command` ; `onFail.retry`), partagée par `cezar_create_task`, `cezar_create_workflow` et
+  `cezar_update_workflow`. Sans elle, un client MCP ne pouvait pas savoir que `id` est requis et
+  recevait `steps.0.id: Invalid input: expected string, received undefined` au premier appel.
+
+### Corrigé
+
+- **Les 11 ressources répondaient « Unknown resource ».** `new URL('cezar://tasks')` lit `tasks`
+  comme le HOST et laisse `pathname` vide, donc le `switch (pathname)` du lecteur ne matchait
+  jamais. Le lecteur retire maintenant le schéma `cezar://` et découpe les segments.
+- **`GET /runs/:id/diff` répond en `text/plain`** : le client décodait tout en JSON et levait une
+  erreur de parse sur un diff parfaitement valide. Le décodage suit désormais le content-type.
+- **`cezar_create_task` sans `workflow` ni `steps`** envoyait un corps que la route refuse (400).
+  L'outil retombe sur le workflow intégré `quick-task`.
+- **`dispatch`** : l'ancien corps `{"enabled": true}` était refusé (`Unrecognized key: "enabled"`,
+  le schéma de la route est strict) ; l'outil n'envoie plus que les clés connues.
+- **`cezar_update_automation`** relit la révision courante et PUT avec `expectedRevision`.
+- Noms de variables d'environnement : `CEZ_API_URL` / `CEZ_PROJECT_ID` (les anciens noms restent
+  acceptés comme alias), port par défaut `4321` — c'étaient `CEZAR_URL` / port `5192` partout dans
+  la doc et dans `test-mcp.js`.
+
+### Supprimé
+
+- Les outils d'écriture de *skills* (`cezar_create_skill`, `cezar_update_skill`,
+  `cezar_delete_skill`) et `cezar_associate_tracker_item` : l'API cezar n'expose aucune route
+  correspondante (un skill est un fichier que l'utilisateur écrit ; l'association tracker vit au
+  niveau du projet). Les tools *skills* restants sont en lecture seule.
+- `@ts-nocheck` sur `src/index.ts` : le fichier est typé et `npm run typecheck:mcp` le vérifie.
+
 ## [1.0.0] - 2024-10-06
 
 ### 🎉 Version complète - Couverture 100% de l'API Cezar

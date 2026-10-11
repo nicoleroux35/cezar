@@ -9,6 +9,7 @@ Le serveur MCP (`packages/mcp-server`) expose les fonctionnalités de cezar via 
 ```
 packages/mcp-server/
 ├── src/
+│   ├── endpoints.ts          # La table des routes appelées (voir ci-dessous)
 │   └── index.ts              # Point d'entrée du serveur MCP
 ├── dist/                     # Code compilé (généré par tsc)
 ├── package.json
@@ -16,13 +17,46 @@ packages/mcp-server/
 ├── README.md                 # Documentation utilisateur
 ├── INSTALL.md                # Guide d'installation détaillé
 ├── EXAMPLES.md               # Exemples d'utilisation
+├── COVERAGE.md               # Les outils, un par un
 ├── test-mcp.js              # Script de test manuel
 └── claude_desktop_config.example.json
 ```
 
+## Les URL sont des données, pas des chaînes en ligne
+
+C'est la règle qui gouverne tout le reste. Chaque route que ce serveur appelle vit dans
+[`src/endpoints.ts`](./src/endpoints.ts) :
+
+```typescript
+runs: { method: 'GET', path: `/api/v1/p/${PROJECT}/runs` },
+```
+
+`{projectId}` est rempli par `PROJECT` (l'id du projet visé), les autres accolades par les
+paramètres de chemin de l'outil — c'est `fillPath` qui substitue et encode. Un outil n'écrit jamais
+l'URL lui-même : il désigne l'entrée (`ENDPOINTS.runs`) et passe ses paramètres.
+
+Pourquoi cette indirection : sans elle, renommer une route côté cezar transforme l'outil en 404
+silencieux — ce qui est arrivé à plus de vingt outils avant 2026-10-11. Avec elle,
+`packages/cezar/src/server/mcp-endpoint-drift.test.ts` confronte chaque entrée à la table de
+routes d'une app **construite** (`app.routes`, la même source que `bc-route-inventory.test.ts`) et
+le renommage fait échouer un test.
+
 ## Comment ajouter un nouvel outil
 
-1. **Définir l'outil dans `TOOLS`** :
+1. **Ajouter sa route dans `src/endpoints.ts`** :
+
+```typescript
+nouvelOutil: { method: 'POST', path: `/api/v1/p/${PROJECT}/endpoint` },
+```
+
+Une route projet passe par `PROJECT` (`/api/v1/p/{projectId}/…`) — c'est ce qui permet au serveur de
+nommer le projet qu'il vise plutôt que de subir celui dans lequel le cockpit a démarré. Les
+familles d'espace de travail (santé, `/models`, registre de projets, `/workspace/*`) n'ont qu'un
+seul montage et s'écrivent en clair (`/api/v1/projects`). Le garde de dérive tient la liste exacte
+des routes non scopées : y ajouter une route qui devrait être scopée fait échouer le test.
+
+2. **Déclarer l'outil dans `TOOLS`** (le schéma est du JSON Schema, c'est ce que `tools/list`
+   renvoie et ce que votre client MCP affiche) :
 
 ```typescript
 {
@@ -31,35 +65,39 @@ packages/mcp-server/
   inputSchema: {
     type: 'object',
     properties: {
-      parametre: {
-        type: 'string',
-        description: 'Description du paramètre',
-      },
+      parametre: { type: 'string', description: 'Description du paramètre' },
     },
     required: ['parametre'],
   },
 }
 ```
 
-2. **Implémenter le handler dans `handleToolCall`** :
+**Décrivez la forme réelle, pas `{ type: 'object' }`.** Un schéma vide ne dit pas au client que
+`id` est requis : il envoie un corps que la route refuse, et l'utilisateur reçoit
+`steps.0.id: Invalid input: expected string, received undefined` au premier appel. Quand une
+forme revient (une étape de workflow, un filtre d'automation, une planification), elle vit dans une
+constante partagée — voir `WORKFLOW_STEP_SCHEMA`, `SCHEDULE_SCHEMA`, `AUTOMATION_FILTERS_SCHEMA`.
+
+3. **Implémenter le handler dans `handleToolCall`** :
 
 ```typescript
 case 'cezar_nouveau_outil': {
   const parametre = args.parametre as string;
-  const result = await cezarApi(`/api/v1/p/${PROJECT_ID}/endpoint`, {
-    method: 'POST',
-    body: JSON.stringify({ parametre }),
-  });
-  return result;
+  return cezarApi(ENDPOINTS.nouvelOutil, { body: { parametre } });
 }
 ```
 
-3. **Documenter dans README.md et EXAMPLES.md**
+`cezarApi` remplit le chemin, pose le projet, sérialise le corps et décode la réponse selon son
+content-type (JSON, ou texte brut pour `GET /runs/:id/diff`). Un statut non-2xx lève une `Error`
+portant le message du serveur, que le handler d'erreurs rend en `isError`.
 
-4. **Tester** :
+4. **Documenter dans README.md et COVERAGE.md**
+
+5. **Tester** :
 
 ```bash
 npm run build:mcp
+npm test -- packages/cezar/src/server/mcp-endpoint-drift.test.ts   # le garde de dérive
 node packages/mcp-server/test-mcp.js call-tool cezar_nouveau_outil '{"parametre":"test"}'
 ```
 
@@ -76,12 +114,15 @@ node packages/mcp-server/test-mcp.js call-tool cezar_nouveau_outil '{"parametre"
 }
 ```
 
-2. **Implémenter dans `readResource()`** :
+2. **Implémenter dans `readResource()`** — attention, `new URL('cezar://tasks')` lit `tasks` comme
+le HOST et laisse `pathname` vide : ne testez pas `pathname`, découpez après le schéma.
 
 ```typescript
-case '/nouvelle-ressource': {
-  const data = await cezarApi(`/api/v1/p/${PROJECT_ID}/endpoint`);
-  return JSON.stringify(data, null, 2);
+const path = uri.startsWith(RESOURCE_SCHEME) ? uri.slice(RESOURCE_SCHEME.length) : uri;
+const [head, second] = path.split('/').filter((part) => part.length > 0);
+switch (head) {
+  case 'nouvelle-ressource': { /* … */ }
+  default: throw new Error(`Unknown resource: ${uri}`);
 }
 ```
 
@@ -108,8 +149,7 @@ if (task.status === 'waiting') {
 ✅ Bon :
 ```typescript
 // Déléguer à l'API cezar
-const task = await cezarApi(`/api/v1/p/${PROJECT_ID}/runs/${taskId}`);
-return task;
+return cezarApi(ENDPOINTS.runs, { params: { id: taskId } });
 ```
 
 ### 2. Gestion d'erreurs
@@ -133,19 +173,20 @@ try {
 
 ### 3. Typage
 
-Utiliser les types du contrat quand c'est possible :
-
-```typescript
-import type { RunRecord, RunStatus } from '@open-mercato/cezar-contract';
-```
+Pas de `@ts-nocheck` : `src/index.ts` est vérifié par `npm run typecheck:mcp`. Les identifiants de
+backend (`RUNNER_IDS`, `MODEL_DISCOVERY_RUNNERS`) et les statuts de run (`RUN_STATUSES`) sont des
+`as const` qui doivent rester alignés sur leurs sources côté cezar — un `as const` désynchronisé ne
+casse rien au compilateur, seulement l'utilisateur, donc vérifiez-les à la main quand vous y
+touchez.
 
 ### 4. Configuration
 
-Utiliser les variables d'environnement pour la configuration :
+Utiliser les variables d'environnement pour la configuration (les alias historiques restent
+acceptés, le nom moderne gagne) :
 
 ```typescript
-const CEZAR_URL = process.env.CEZAR_URL || DEFAULT_CEZAR_URL;
-const PROJECT_ID = process.env.CEZAR_PROJECT_ID || 'default';
+const CEZAR_URL = process.env.CEZ_API_URL || process.env.CEZAR_URL || DEFAULT_CEZAR_URL;
+const PROJECT_ID = process.env.CEZ_PROJECT_ID || process.env.CEZAR_PROJECT_ID || 'default';
 ```
 
 ## Tests
@@ -163,29 +204,41 @@ node test-mcp.js call-tool cezar_get_health
 node test-mcp.js call-tool cezar_create_task '{"task":"Test"}'
 ```
 
-### Tests avec un vrai client MCP
+### Tests automatisés
+
+Il n'y a pas de suite vitest *dans* `packages/mcp-server` (le serveur n'a pas de logique métier à
+tester — il traduit un appel MCP en un appel HTTP). Ce qu'il faut tester, c'est que cette
+traduction vise des routes qui existent, et ce test vit à côté de la table de routes qu'il lit :
+
+```bash
+npm test -- packages/cezar/src/server/mcp-endpoint-drift.test.ts
+```
+
+Il vérifie, contre une app **construite** :
+
+- chaque entrée de `ENDPOINTS` a une route enregistrée (`{x}` et `:x` normalisés avant comparaison) ;
+- chaque entrée est référencée dans `src/index.ts` — une entrée morte est aussi une dérive ;
+- l'ensemble des routes non scopées est exactement la liste attendue (santé, `/models`,
+  `/agent-config`, registre de projets, `/workspace/*`) : une route projet qui perd son préfixe
+  `/p/:projectId` se ferait prendre ici ;
+- `fillPath` substitue, encode (`a/b` → `a%2Fb`) et lève sur un paramètre manquant.
+
+Deux limites, à connaître : le garde compare **chemins et méthodes, pas les corps de requête** —
+un outil qui poste `{ message }` là où la route attend `{ text }` lui échappe (cette classe se
+voit en lisant le schéma zod de la route) ; et il ne vérifie pas que la réponse correspond au
+schéma du contrat.
+
+Le garde est non-vacuous : il refuse de passer si la table de routes lue est trop petite
+(`registeredRoutes.size > 100`) ou si aucune route MCP n'a été trouvée.
+
+### Tests manuels avec un vrai client MCP
 
 1. Compiler : `npm run build:mcp`
 2. Configurer Claude Desktop (voir INSTALL.md)
 3. Tester dans Claude Desktop
 
-### Tests d'intégration
-
-Pour ajouter des tests d'intégration automatisés :
-
-1. Créer `packages/mcp-server/src/index.test.ts`
-2. Utiliser vitest
-3. Mocker les appels à l'API cezar
-
-```typescript
-import { describe, it, expect, vi } from 'vitest';
-
-describe('MCP Server', () => {
-  it('should list tools', async () => {
-    // Test...
-  });
-});
-```
+`CEZ_DRY_RUN=1 npm run dev` (à la racine) donne un cockpit complet sans agent réel, sur lequel
+`test-mcp.js` et un client MCP peuvent travailler de bout en bout.
 
 ## Débogage
 
@@ -242,9 +295,13 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
 ## Checklist pour une PR
 
-- [ ] Code compilé sans erreurs : `npm run build:mcp`
-- [ ] Tests manuels passés avec test-mcp.js
-- [ ] Documentation mise à jour (README.md, EXAMPLES.md si pertinent)
+- [ ] Route ajoutée dans `src/endpoints.ts` (jamais une URL en ligne)
+- [ ] `npm run typecheck:mcp` sans erreur (pas de `@ts-nocheck`)
+- [ ] `npm run build:mcp` sans erreur
+- [ ] `npm test -- packages/cezar/src/server/mcp-endpoint-drift.test.ts` vert
+- [ ] Schéma d'entrée décrivant la forme réelle (pas `{ type: 'object' }`)
+- [ ] Tests manuels passés avec test-mcp.js (au moins un appel réel par outil ajouté)
+- [ ] Documentation mise à jour (README.md, COVERAGE.md)
 - [ ] Code formaté et commenté
 - [ ] Pas de secrets ou credentials en dur
 - [ ] Variables d'environnement documentées dans INSTALL.md
