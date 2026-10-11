@@ -60,6 +60,15 @@ export const graphNodeSchema = z.discriminatedUnion('type', [
     runner: z.enum(RUNNER_IDS).optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
+    // ---- v1 compatibility: the advanced-step fields a `workflowStepSchema` step may carry ----
+    // (spec 2026-10-07-workflow-enhancements). An agent/check node IS a v1 step — see the file
+    // header — so a compiled v1 workflow keeps them, and `nodeToStep` hands them to the executor.
+    /** Step parameters for `{{params.*}}` templating. */
+    params: z.record(z.string(), z.unknown()).optional(),
+    /** Capture this step's last turn as `{{outputs.<name>}}`. */
+    output: z.string().min(1).optional(),
+    /** Run only when this condition holds (`always`, `previous.done|failed`, `step.<id>.done|failed`). */
+    if: z.string().min(1).optional(),
     /** Author-declared outcomes (D10/D17). The agent picks one by ending its turn with
      *  `CEZ:VERDICT <name>`; each becomes an output port in place of `done`. */
     verdicts: z.array(verdictName).min(1).optional(),
@@ -79,6 +88,13 @@ export const graphNodeSchema = z.discriminatedUnion('type', [
     retryOn: z.array(z.number().int().positive()).optional(),
     /** The secrets this command may read (see `workflowStepSchema.secrets`). */
     secrets: stepSecretsSchema.optional(),
+    // ---- v1 compatibility: see the agent node's copy of these three ----
+    /** Step parameters for `{{params.*}}` templating. */
+    params: z.record(z.string(), z.unknown()).optional(),
+    /** Capture this check's output as `{{outputs.<name>}}`. */
+    output: z.string().min(1).optional(),
+    /** Run only when this condition holds (`always`, `previous.done|failed`, `step.<id>.done|failed`). */
+    if: z.string().min(1).optional(),
   }),
   // ---- phase 1c: nodes cezar executes itself (no agent session) ----
   /** Pause for the user's approve / reject (an ask card with two options). */

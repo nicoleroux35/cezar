@@ -32,6 +32,15 @@ export const workflowStepDefSchema = z
     runner: runnerSchema.optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
+    // ---- advanced-step fields (spec 2026-10-07-workflow-enhancements) ----
+    // `params` is deliberately absent: it is `Record<string, unknown>` on the server, and hono's
+    // `JSONParsed` narrows `unknown` to `JSONValue` on the wire, so a schema carrying it is wider
+    // than the route it describes and `contract-parity.runs.test.ts` says so. The two fields below
+    // are plain strings and mirror the server exactly.
+    /** Capture this step's result as `{{outputs.<name>}}`. */
+    output: z.string().min(1).optional(),
+    /** Run only when this condition holds (`always`, `previous.done|failed`, `step.<id>.done|failed`). */
+    if: z.string().min(1).optional(),
     // check step
     command: z.string().optional(),
     onFail: z
@@ -103,6 +112,12 @@ export const workflowGraphNodeSchema = z.discriminatedUnion('type', [
     runner: runnerSchema.optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
+    // Advanced-step fields a v1 step may carry — see `workflowStepDefSchema` above. `params` is
+    // deliberately absent here: `z.record(z.string(), z.unknown())` inside the node union widens
+    // this type past what the run routes answer and trips `contract-parity.runs.test.ts`. The
+    // authoring surface for `{{params.*}}` is the v1 step schema above, which mirrors it.
+    output: z.string().min(1).optional(),
+    if: z.string().min(1).optional(),
     verdicts: z.array(verdictName).min(1).optional(),
     session: z.object({ continue: nodeId }).optional(),
     review: z.boolean().optional(),
@@ -114,6 +129,9 @@ export const workflowGraphNodeSchema = z.discriminatedUnion('type', [
     command: z.string().min(1),
     retryOn: z.array(z.number().int().positive()).optional(),
     secrets: stepSecretsSchema.optional(),
+    // See the agent node above: `output` / `if` mirror the v1 step schema, `params` does not.
+    output: z.string().min(1).optional(),
+    if: z.string().min(1).optional(),
   }),
   z.object({ ...graphNodeBase, type: z.literal('gate.human'), message: z.string().min(1), timeoutMs: waitMs.optional() }),
   z.object({

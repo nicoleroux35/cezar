@@ -213,7 +213,16 @@ const GRAPH_TAKEN_CAP = 500;
 /** Tail of an agent node's last turn kept as `{{nodes.<id>.summary}}`. */
 const NODE_SUMMARY_CAP = 4_000;
 import { freshContinuationContext } from './continuation-context.ts';
-import { composeSkillWithIncludes } from './execution-context.ts';
+import {
+  applyTemplating,
+  captureOutput,
+  composeSkillWithIncludes,
+  createExecutionContext,
+  evaluateCondition,
+  extractStepOutput,
+  recordStepResult,
+  type ExecutionContext,
+} from './execution-context.ts';
 
 const CHECK_OUTPUT_CAP = 20_000;
 
@@ -4725,6 +4734,11 @@ export class RunManager {
     const resume = resumeNode ? ctx.resume : undefined;
     const loopCounts = new Map<string, number>(Object.entries(resume?.loops ?? {}));
     const outputs = new Map<string, Record<string, string | number>>(Object.entries(resume?.outputs ?? {}));
+    /** The v1 advanced-step context (spec 2026-10-07-workflow-enhancements): step results for a
+     *  step's `if`, and the named outputs `output:` captures for `{{outputs.*}}`. Kept beside the
+     *  graph's own `outputs` map — the graph map is keyed by node id for `{{nodes.*}}`, this one
+     *  by the author-chosen output NAME, and the two namespaces never collide by construction. */
+    const executionContext = createExecutionContext();
     let checkFailure: string | null = null;
     /** The last agent failure, for the run error when its `failed` port is unwired (v1 wording). */
     let agentFailure: string | undefined;
@@ -4784,6 +4798,34 @@ export class RunManager {
       persistWalk();
       const kind: 'agent' | 'check' = node.type === 'agent' ? 'agent' : 'check';
       const iteration = (this.store.getRun(runId)?.steps.find((s) => s.id === node.id)?.iterations ?? 0) + 1;
+
+      // A step-level `if` (v1 advanced steps, spec 2026-10-07-workflow-enhancements): the node
+      // runs only when the condition holds, and a false one leaves by the node's SUCCESS port —
+      // a skipped optional step is not a failure. Only agent/check nodes carry the field; a v2
+      // graph expresses the same thing with an `if` node, and this never sees one.
+      if ((node.type === 'agent' || node.type === 'check') && node.if) {
+        const stepIdx = workflow.steps.findIndex((s) => s.id === node.id);
+        if (!evaluateCondition(node.if, executionContext, stepIdx, workflow.steps)) {
+          const now = new Date().toISOString();
+          recordStepResult(executionContext, node.id, 'skipped');
+          this.store.updateRun(runId, { currentStepId: node.id });
+          this.store.updateStep(runId, node.id, {
+            status: 'skipped',
+            iterations: iteration,
+            startedAt: now,
+            finishedAt: now,
+            error: undefined,
+          });
+          emit({ type: 'step-start', stepId: node.id, name: node.name ?? node.id, kind, iteration });
+          emit({ type: 'note', stepId: node.id, message: `step skipped — condition not met: ${node.if}` });
+          emit({ type: 'step-end', stepId: node.id, status: 'skipped' });
+          step = advance(graph, node.id, node.type === 'check' ? 'pass' : 'done', loopCounts);
+          record(step.transitions);
+          if (step.kind === 'node') this.store.updateStep(runId, step.node.id, { status: 'pending' });
+          continue;
+        }
+      }
+
       this.store.updateRun(runId, { currentStepId: node.id });
       this.store.updateStep(runId, node.id, {
         status: 'running',
@@ -4836,6 +4878,10 @@ export class RunManager {
         const stepIdx = workflow.steps.findIndex((s) => s.id === node.id);
         const rendered = nodeToStep(node);
         if (rendered.prompt) rendered.prompt = renderNodeRefs(rendered.prompt, outputs);
+        // `{{params.*}}` / `{{outputs.*}}` after the graph's own `{{nodes.*}}` (which blank an
+        // unknown ref): the advanced-step tokens are left untouched when unresolved, so a typo
+        // reaches the model as written instead of silently rendering empty.
+        if (rendered.prompt) rendered.prompt = applyTemplating(rendered.prompt, executionContext, rendered.params);
         const verdicts = node.verdicts ?? [];
         if (verdicts.length) rendered.prompt = `${rendered.prompt ?? '{{task}}'}\n\n${verdictInstruction(verdicts)}`;
         const backend = node.runner ?? taskBackend;
@@ -4861,7 +4907,11 @@ export class RunManager {
         checkFailure = null;
         if (state.cancelled) return null;
         if (state.askPark) {
-          if (state.askPark === 'abandoned') this.finishStep(runId, node.id, 'done', undefined, emit);
+          if (state.askPark === 'abandoned') {
+            recordStepResult(executionContext, node.id, 'done', undefined, lastTurn.text);
+            this.captureNamedOutput(executionContext, node.id, rendered.output, lastTurn.text, emit);
+            this.finishStep(runId, node.id, 'done', undefined, emit);
+          }
           return null;
         }
         // Preserve the v1 safety bound on an ordinary terminal wait: session closure caused by
@@ -4906,15 +4956,19 @@ export class RunManager {
           costUsd: stepRec?.costUsd ?? 0,
         });
         if (failure) {
+          recordStepResult(executionContext, node.id, 'failed', undefined, lastTurn.text);
           this.finishStep(runId, node.id, 'failed', failure, emit);
           agentFailure = failure;
           port = 'failed';
         } else if (verdicts.length && !verdict) {
           const error = `no verdict — expected one of ${verdicts.map((v) => `CEZ:VERDICT ${v}`).join(', ')}`;
+          recordStepResult(executionContext, node.id, 'failed', undefined, lastTurn.text);
           this.finishStep(runId, node.id, 'failed', error, emit);
           agentFailure = error;
           port = 'failed';
         } else {
+          recordStepResult(executionContext, node.id, 'done', undefined, lastTurn.text);
+          this.captureNamedOutput(executionContext, node.id, rendered.output, lastTurn.text, emit);
           this.finishStep(runId, node.id, 'done', undefined, emit);
           port = verdict ?? 'done';
           if (verdict) emit({ type: 'note', stepId: node.id, message: `verdict: ${verdict}` });
@@ -4922,6 +4976,9 @@ export class RunManager {
       } else {
         const rendered = nodeToStep(node);
         if (rendered.command) rendered.command = renderNodeRefs(rendered.command, outputs);
+        // Same advanced-step tokens as an agent node — a check may interpolate a captured output
+        // or a step parameter into its command line.
+        if (rendered.command) rendered.command = applyTemplating(rendered.command, executionContext, rendered.params);
         // Check commands are allowed to generate tracked output, but that output
         // is verification residue rather than agent work. Save the agent's state
         // before the command, then keep the command's changed paths excluded from
@@ -4954,9 +5011,12 @@ export class RunManager {
         if (state.cancelled) return null;
         outputs.set(node.id, { exitCode, output });
         if (ok) {
+          recordStepResult(executionContext, node.id, 'done', exitCode, output);
+          this.captureNamedOutput(executionContext, node.id, rendered.output, output, emit);
           this.finishStep(runId, node.id, 'done', undefined, emit);
           port = 'pass';
         } else {
+          recordStepResult(executionContext, node.id, 'failed', exitCode, output);
           // The output goes into the next agent prompt — to the agent's model provider — so it is
           // scrubbed like an event is: host secrets, this run's registered secrets (project
           // secrets included) and token patterns. Strictly narrowing, for every workflow.
@@ -7109,6 +7169,28 @@ export class RunManager {
         resolve({ ok: code === 0, output: trimmed, exitCode });
       });
     });
+  }
+
+  /**
+   * A step's `output: <name>` capture (spec 2026-10-07-workflow-enhancements): the step's text
+   * becomes `{{outputs.<name>}}` for every later step. The protocol markers a turn ends with
+   * (`CEZ:DONE`, `CEZ:PR=…`) are stripped — a captured output is the step's RESULT, and a later
+   * prompt carrying `CEZ:DONE` would read as this run's own completion marker. Nothing is
+   * captured when the step produced no text, so an `{{outputs.*}}` for it stays unresolved and
+   * visibly wrong rather than silently empty.
+   */
+  private captureNamedOutput(
+    context: ExecutionContext,
+    stepId: string,
+    outputName: string | undefined,
+    text: string | undefined,
+    emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
+  ): void {
+    if (!outputName) return;
+    const extracted = extractStepOutput(text);
+    if (!extracted) return;
+    captureOutput(context, outputName, extracted);
+    emit({ type: 'note', stepId, message: `captured output as "${outputName}"` });
   }
 
   private finishStep(
