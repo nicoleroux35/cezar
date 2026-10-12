@@ -10,6 +10,7 @@ import {
   EllipsisVerticalIcon,
   FileTextIcon,
   MailIcon,
+  PauseIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
@@ -20,7 +21,7 @@ import {
 import { Fragment, memo, useEffect, useId, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from '@/lib/project-router'
 
-import { ApiError, archiveRun, cancelRun, continueRun, deleteRun, openRunIn, openRunInCli } from '@/api/client'
+import { ApiError, archiveRun, cancelRun, continueRun, deleteRun, openRunIn, openRunInCli, pauseRun } from '@/api/client'
 import {
   queryKeys,
   useAgentProfiles,
@@ -345,6 +346,18 @@ function RunHeaderView({
                 {run.archived ? 'Unarchive' : 'Archive'}
               </Button>
             ) : null}
+            {flags.pause ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                title="Park this task — resume it with Start"
+                disabled={actions.pause.isPending}
+                onClick={() => actions.pause.mutate()}
+              >
+                <PauseIcon aria-hidden="true" />
+                Pause
+              </Button>
+            ) : null}
             {flags.cancel ? (
               <Button variant="danger-ghost" size="sm" onClick={() => actions.setConfirming('cancel')}>
                 <CircleStopIcon aria-hidden="true" />
@@ -523,6 +536,16 @@ function useRunActions(run: ApiRun, onMarkedUnread?: () => void) {
     },
   }
   const cancel = useMutation({ mutationFn: () => cancelRun(run.id), onSuccess: invalidate, onError })
+  const pause = useMutation({
+    mutationFn: () => pauseRun(run.id),
+    onSuccess: (result) => {
+      // A refusal (`paused: false` — the run settled between the bar and the click) still
+      // redraws: the flags above were drawn from a stale record.
+      if (!result.paused) toast('The task already settled — nothing to pause.', { tone: 'danger' })
+      invalidate()
+    },
+    onError,
+  })
   const deleteMutation = useMutation({
     mutationFn: () => deleteRun(run.id),
     onSuccess: () => {
@@ -553,6 +576,7 @@ function useRunActions(run: ApiRun, onMarkedUnread?: () => void) {
     pin,
     markUnread,
     cancel,
+    pause,
     delete: deleteMutation,
     terminal,
     confirming,
@@ -1248,7 +1272,12 @@ function ActionsKebab({
             {run.archived ? 'Unarchive' : 'Archive'}
           </DropdownMenuItem>
         ) : null}
-        {flags.cancel || flags.deleteRun ? <DropdownMenuSeparator /> : null}
+        {flags.cancel || flags.deleteRun || flags.pause ? <DropdownMenuSeparator /> : null}
+        {flags.pause ? (
+          <DropdownMenuItem disabled={actions.pause.isPending} onSelect={() => actions.pause.mutate()}>
+            <PauseIcon aria-hidden="true" /> Pause
+          </DropdownMenuItem>
+        ) : null}
         {flags.cancel ? (
           <DropdownMenuItem variant="destructive" onSelect={() => actions.setConfirming('cancel')}>
             <CircleStopIcon aria-hidden="true" /> Cancel

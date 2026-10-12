@@ -15,7 +15,9 @@ import {
   ListChecksIcon,
   LinkIcon,
   MemoryStickIcon,
+  PauseIcon,
   PencilIcon,
+  CircleStopIcon,
   PlayIcon,
   PlusIcon,
   ScaleIcon,
@@ -28,7 +30,8 @@ import {
 import * as React from 'react'
 import { Link, useNavigate } from '@/lib/project-router'
 
-import { archiveFinished, deleteRun, markAllRunsSeen, patchRun, reorderDisplay } from '@/api/client'
+import { archiveFinished, cancelRun, deleteRun, markAllRunsSeen, patchRun, pauseRun, reorderDisplay } from '@/api/client'
+import { isRunActive } from '@/routes/task-thread/run-actions'
 import { useRunUsage } from '@/api/global-events'
 import { queryKeys, useHealth, usePinRun, useReferenceProjectId, useRuns, writePatchedRunToCaches } from '@/api/queries'
 import { useTranslations } from '@/i18n/use-translations'
@@ -1524,18 +1527,30 @@ function TaskTableCell({
   now: number
 }) {
   if (!expanded) return <FoldedTd column={column.id} />
+  // The row's live answer: an active, unpaused run offers Pause + Stop, a paused one Start + Stop.
+  const isRowActive = isRunActive(run.status) && !run.paused
 
   switch (column.id) {
     case 'status':
       return (
         <td data-column-id={column.id} className={TD_BASE}>
-          {/* A paused task shows a Start button instead of just the status pill */}
+          {/* A paused task shows Start (+ Stop) instead of just the status pill */}
           {run.status === 'queued' && run.paused ? (
             <div className="flex items-center gap-2">
               <Pill dot="neutral" pulse={false} title="Paused in queue">
                 Paused
               </Pill>
               <StartPausedButton runId={run.id} />
+              <StopButton runId={run.id} />
+            </div>
+          ) : isRowActive ? (
+            <div className="flex items-center gap-2">
+              <Pill dot={attention.tone} pulse={attention.pulse} title={scheduled?.title}>
+                {attention.label}
+                {scheduled ? <span className="tabular-nums">{scheduled.label}</span> : null}
+              </Pill>
+              <PauseButton runId={run.id} />
+              <StopButton runId={run.id} />
             </div>
           ) : (
             <>
@@ -1953,6 +1968,19 @@ function TaskCard({
           <TaskReferenceChip run={run} reference={reference} className="h-5" />
         ) : null}
       </div>
+      {/* Row-level controls, like the desktop status column: Start (+ Stop) for a paused task,
+          Pause + Stop for an active one. The card click already steps around buttons. */}
+      {run.status === 'queued' && run.paused ? (
+        <div className="mt-2 flex items-center gap-2">
+          <StartPausedButton runId={run.id} />
+          <StopButton runId={run.id} />
+        </div>
+      ) : isRunActive(run.status) && !run.paused ? (
+        <div className="mt-2 flex items-center gap-2">
+          <PauseButton runId={run.id} />
+          <StopButton runId={run.id} />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -2122,6 +2150,82 @@ export function TasksOverviewRoute() {
 }
 
 /**
+ * Pause button for active tasks — parks the run, resumable via Start.
+ */
+function PauseButton({ runId }: { runId: string }) {
+  const queryClient = useQueryClient()
+  const pause = useMutation({
+    mutationFn: async () => {
+      const { pauseRun } = await import('@/api/client')
+      return pauseRun(runId)
+    },
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
+      toast(result.paused ? 'Task paused' : 'The task already settled — nothing to pause.')
+    },
+    onError: (error: Error) => {
+      toast(error.message, { tone: 'danger' })
+    },
+  })
+
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      data-action="task-pause"
+      title="Park this task — resume it with Start"
+      onClick={(e) => {
+        e.stopPropagation()
+        pause.mutate()
+      }}
+      disabled={pause.isPending}
+      className="h-6 gap-1 px-2 text-xs"
+    >
+      <PauseIcon className="size-3" aria-hidden="true" />
+      {pause.isPending ? 'Pausing…' : 'Pause'}
+    </Button>
+  )
+}
+
+/**
+ * Stop button for active or paused tasks — ends the run as cancelled.
+ */
+function StopButton({ runId }: { runId: string }) {
+  const queryClient = useQueryClient()
+  const stop = useMutation({
+    mutationFn: async () => {
+      const { cancelRun } = await import('@/api/client')
+      return cancelRun(runId)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
+      toast('Task stopped')
+    },
+    onError: (error: Error) => {
+      toast(error.message, { tone: 'danger' })
+    },
+  })
+
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      data-action="task-stop"
+      title="Stop this task now"
+      onClick={(e) => {
+        e.stopPropagation()
+        stop.mutate()
+      }}
+      disabled={stop.isPending}
+      className="h-6 gap-1 px-2 text-xs"
+    >
+      <CircleStopIcon className="size-3" aria-hidden="true" />
+      {stop.isPending ? 'Stopping…' : 'Stop'}
+    </Button>
+  )
+}
+
+/**
  * Start button for paused tasks — shown inline in the status column.
  */
 function StartPausedButton({ runId }: { runId: string }) {
@@ -2144,6 +2248,7 @@ function StartPausedButton({ runId }: { runId: string }) {
     <Button
       size="sm"
       variant="primary"
+      data-action="task-start"
       onClick={(e) => {
         e.stopPropagation()
         start.mutate()

@@ -1541,19 +1541,154 @@ export class RunManager {
   /**
    * Manually start a paused/queued task. Returns true on success, false if the run
    * is not paused or not found. The run must be in `queued` status with `paused: true`.
+   * Either pending shape resumes: a regular job re-enters the walk, a deferred
+   * continuation re-enters its session (`pump` serves both).
    */
   startQueuedRun(runId: string): boolean {
     const run = this.store.getRun(runId);
     if (!run || run.status !== 'queued' || !run.paused) return false;
-    
+
     // Check if we have the pending job for this run
-    if (!this.pendingJobs.has(runId)) return false;
-    
+    if (!this.pendingJobs.has(runId) && !this.pendingContinuations.has(runId)) return false;
+
     // Unpause the run and add it to the queue
     this.store.updateRun(runId, { paused: false });
     this.queue.push(runId);
     void this.pump();
     return true;
+  }
+
+  /**
+   * Pause a run — queued or active — leaving it resumable via `startQueuedRun`.
+   *
+   * A queued run is lifted out of the queue with its pending job kept; an
+   * active one is interrupted exactly like a cancel (same `state.cancelled`
+   * propagation, same slot release), but the record goes to `queued` +
+   * `paused` instead of `cancelled`, in-flight steps back to `pending`, and
+   * the queue job is rebuilt from the record. `graphState` survives, so the
+   * resumed walk restarts at its cursor and an interrupted agent node resumes
+   * its own session (`executeGraph`'s normal resume path — no special case).
+   *
+   * The cancel-settlement tails stand down for such runs (`settledAsPaused`):
+   * the record already says paused before the unwind observes it.
+   */
+  async pause(runId: string): Promise<boolean> {
+    const run = this.store.getRun(runId);
+    if (!run || isTerminalStatus(run.status)) return false;
+    if (run.status !== 'queued' && run.status !== 'running' && run.status !== 'waiting') return false;
+    if (run.paused) return false;
+
+    // No live job: just lift it out of the queue and mark it. The pending job
+    // stays (or is re-adopted below), so `startQueuedRun` can resume it — and
+    // the queue watchdog skips runs that hold a job, so a paused run is never
+    // swept back into the queue behind our back.
+    const state = this.active.get(runId);
+    if (!state) {
+      const queuedAt = this.queue.indexOf(runId);
+      if (queuedAt >= 0) this.queue.splice(queuedAt, 1);
+      if (!this.pendingJobs.has(runId) && !this.pendingContinuations.has(runId)) {
+        const workflow = await this.reviveWorkflow(run);
+        if (!workflow) return false;
+        this.pendingJobs.set(runId, {
+          workflow,
+          input: this.hydrateQueuedInput(runId, this.recordInputFor(run, run.generateFollowups)),
+        });
+      }
+      this.store.updateRun(runId, { paused: true });
+      this.store.appendEvent(runId, { type: 'lifecycle', message: 'run paused' });
+      return true;
+    }
+
+    // Active: resolve the workflow BEFORE interrupting, so an unrecoverable
+    // definition refuses without having touched the live run.
+    const workflow = await this.reviveWorkflow(run);
+    if (!workflow) return false;
+    // Re-validate: the run may have settled while the catalog loaded.
+    const current = this.store.getRun(runId);
+    if (!current || isTerminalStatus(current.status) || this.active.get(runId) !== state) return false;
+    state.cancelled = true;
+    this.clearIdleTimer(state);
+    try {
+      state.interrupt();
+    } catch {
+      // Pausing is terminal for the live session even if a provider's interrupt hook is already tearing down.
+    }
+    for (const step of this.store.getRun(runId)?.steps ?? []) {
+      if (step.status === 'running' || step.status === 'waiting') {
+        this.store.updateStep(runId, step.id, { status: 'pending' });
+      }
+    }
+    this.store.updateRun(runId, {
+      status: 'queued',
+      paused: true,
+      startedAt: undefined,
+      currentStepId: undefined,
+      finishedAt: undefined,
+      error: undefined,
+    });
+    this.pendingJobs.set(runId, {
+      workflow,
+      input: this.hydrateQueuedInput(runId, this.recordInputFor(current, current.generateFollowups)),
+    });
+    this.pendingContinuations.delete(runId);
+    this.store.appendEvent(runId, { type: 'lifecycle', message: 'run paused' });
+    // Same slot release as a cancel: no session yet → now; a session is still
+    // unwinding → reap it on teardown. `dropActive` never reports a
+    // non-terminal child to its parent, so pausing a dispatched child
+    // correctly sends nothing.
+    if (!state.sessionEverOpened || !state.session) {
+      this.dropActive(runId, state);
+    } else {
+      state.cancellationTimer = setTimeout(() => {
+        if (this.active.get(runId) !== state || !state.cancelled) return;
+        const session = state.session;
+        if (!session) return;
+        session.hardStop?.();
+        const reapSettled = () => {
+          if (this.active.get(runId) === state && state.cancelled) this.dropActive(runId, state);
+        };
+        void session.result.then(reapSettled, reapSettled);
+      }, CANCEL_GRACE_MS);
+      state.cancellationTimer.unref?.();
+    }
+    return true;
+  }
+
+  /**
+   * The in-flight unwind of a `pause()` already wrote `queued` + `paused` to
+   * the record before the cancel-settlement tails observe it — those tails
+   * must stand down rather than stamping `cancelled` over the pause.
+   */
+  private settledAsPaused(runId: string): boolean {
+    const run = this.store.getRun(runId);
+    return run?.status === 'queued' && run.paused === true;
+  }
+
+  /**
+   * Rebuild a queue job's input from the record — the one engine path that
+   * rebuilds a StartRunInput without going through `startRun` (shared by
+   * `reviveQueuedRun` and `pause`, so a paused-then-resumed run carries the
+   * same autonomy, dispatch and worktree decisions as a restarted one).
+   */
+  private recordInputFor(run: RunRecord, generateFollowups: boolean | undefined): StartRunInput {
+    return {
+      task: run.task,
+      model: run.model,
+      runner: run.runner,
+      generateFollowups,
+      // Re-thread autonomy (#489): the rebuilt input feeds `execute`, whose mid-run auto-nudge
+      // reads `input.autonomous`. Without this a recovered autonomous run would run
+      // non-autonomously and later wrongly park at `review`.
+      autonomous: run.autonomous,
+      // Re-thread the dispatch the same way and for the same reason (spec
+      // 2026-09-10-dispatch A11): this is the one engine path that rebuilds a StartRunInput
+      // from the record instead of going through `startRun`, so a dispatched run recovered after
+      // a restart would otherwise resume as an ordinary flat task — no tree, no
+      // parent to report to.
+      dispatch: run.dispatch,
+      // Preserve an explicit worktree opt-out across a queued restart.
+      worktree: run.worktree,
+    };
   }
 
   /**
@@ -1810,7 +1945,9 @@ export class RunManager {
         prompt: RESTART_CONTINUATION_PROMPT,
         images: [],
       });
-      this.queue.push(run.id);
+      // Paused runs hold their continuation but never the queue — same rule as the job
+      // branch below.
+      if (!run.paused) this.queue.push(run.id);
       this.store.appendEvent(run.id, {
         type: 'lifecycle',
         message: `${reason} — interrupted continuation re-queued`,
@@ -1846,26 +1983,12 @@ export class RunManager {
       // Folded through the same helper `pump()` uses (#472) so a restart carries the stack.
       // Idempotent: hydration always composes from `run.task` + the stack, never from an
       // already-folded `input.task`, so re-hydrating at dequeue yields the same string.
-      input: this.hydrateQueuedInput(run.id, {
-        task: run.task,
-        model: run.model,
-        runner: run.runner,
-        generateFollowups,
-        // Re-thread autonomy (#489): the rebuilt input feeds `execute`, whose mid-run auto-nudge
-        // reads `input.autonomous`. Without this a recovered autonomous run would run
-        // non-autonomously and later wrongly park at `review`.
-        autonomous: run.autonomous,
-        // Re-thread the dispatch the same way and for the same reason (spec
-        // 2026-09-10-dispatch A11): this is the one engine path that rebuilds a StartRunInput
-        // from the record instead of going through `startRun`, so a dispatched run recovered after
-        // a restart would otherwise resume as an ordinary flat task — no tree, no
-        // parent to report to.
-        dispatch: run.dispatch,
-        // Preserve an explicit worktree opt-out across a queued restart.
-        worktree: run.worktree,
-      }),
+      input: this.hydrateQueuedInput(run.id, this.recordInputFor(run, generateFollowups)),
     });
-    this.queue.push(run.id);
+    // A paused run holds its job but never the queue: pausing is exactly "out of the pump's
+    // sight until the user resumes", and that must survive a restart too — otherwise every
+    // queue-only task would auto-start on boot.
+    if (!run.paused) this.queue.push(run.id);
     this.store.appendEvent(run.id, { type: 'lifecycle', message: `${reason} — task re-queued` });
   }
 
@@ -4371,6 +4494,9 @@ export class RunManager {
       await session.result;
       if (sessionError) throw new Error(sessionError);
       sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
+      // A pause already parked this record as queued+paused — the unwind ends
+      // here with just the slot release below (finally), never a settlement.
+      if (state.cancelled && this.settledAsPaused(runId)) return;
       if (state.cancelled && this.active.get(runId) === state) {
         this.store.updateStep(runId, stepId, { status: 'cancelled', finishedAt: finishedAt() });
         this.store.updateRun(runId, { status: 'cancelled', finishedAt: finishedAt(), currentStepId: undefined });
@@ -4713,6 +4839,15 @@ export class RunManager {
     // workflow was unwinding, and a same-id continuation may now own the record.
     // No settlement branch below may touch that newer owner.
     if (this.active.get(runId) !== state) return;
+
+    // A pause already parked this record as queued+paused — the unwind ends here with
+    // just the slot release below, never a settlement branch (which would stamp done/failed
+    // over the pause).
+    if (state.cancelled && this.settledAsPaused(runId)) {
+      this.clearIdleTimer(state);
+      this.dropActive(runId, state);
+      return;
+    }
 
     const finishedAt = new Date().toISOString();
     if (state.cancelled && this.active.get(runId) === state) {

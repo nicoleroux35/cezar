@@ -599,6 +599,10 @@ export type ContinueResponse = z.infer<typeof continueResponseSchema>;
 export const startQueuedResponseSchema = z.object({ started: z.literal(true) });
 export type StartQueuedResponse = z.infer<typeof startQueuedResponseSchema>;
 
+/** `POST /runs/:id/pause` — park a queued or active run as paused; resume with `start-queued`. */
+export const pauseResponseSchema = z.object({ paused: z.boolean() });
+export type PauseResponse = z.infer<typeof pauseResponseSchema>;
+
 /**
  * `POST /runs/:id/pr` (201, spec 009) — the draft PR's URL; `dryRun` marks the CEZ_DRY_RUN fake
  * (no push, no gh). Failure is a 409 whose `ApiError` carries the `manual` merge command instead.

@@ -52,13 +52,13 @@ describe('runActionFlags — the visibility matrix, all 7 statuses × archived',
   // `finishedAt` — a record with no finish instant can never wear the unread marker, whatever
   // its status says. The flag's real matrix is the FINISHED one in its own describe below.
   const matrix: Array<{ status: RunStatus; expected: Omit<ReturnType<typeof runActionFlags>, 'notes'> }> = [
-    { status: 'queued', expected: { finish: false, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, deleteRun: false } },
-    { status: 'running', expected: { finish: false, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, deleteRun: false } },
-    { status: 'waiting', expected: { finish: true, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, deleteRun: false } },
-    { status: 'review', expected: { finish: true, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, deleteRun: true } },
-    { status: 'done', expected: { finish: false, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, deleteRun: true } },
-    { status: 'failed', expected: { finish: false, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, deleteRun: true } },
-    { status: 'cancelled', expected: { finish: false, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, deleteRun: true } },
+    { status: 'queued', expected: { finish: false, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, pause: true, deleteRun: false } },
+    { status: 'running', expected: { finish: false, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, pause: true, deleteRun: false } },
+    { status: 'waiting', expected: { finish: true, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, pause: true, deleteRun: false } },
+    { status: 'review', expected: { finish: true, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, pause: false, deleteRun: true } },
+    { status: 'done', expected: { finish: false, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, pause: false, deleteRun: true } },
+    { status: 'failed', expected: { finish: false, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, pause: false, deleteRun: true } },
+    { status: 'cancelled', expected: { finish: false, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, pause: false, deleteRun: true } },
   ]
 
   it.each(matrix)('$status (live)', ({ status, expected }) => {
@@ -83,6 +83,16 @@ describe('runActionFlags — the visibility matrix, all 7 statuses × archived',
     expect(flags.continueRun).toBe(false)
     expect(flags.terminal).toBe(false)
     expect(flags.deleteRun).toBe(true)
+  })
+
+  it('pause is offered for active runs, never for paused or settled ones', () => {
+    for (const status of ['queued', 'running', 'waiting'] as RunStatus[]) {
+      expect(runActionFlags(run(status)).pause).toBe(true)
+    }
+    expect(runActionFlags(run('queued', { paused: true })).pause).toBe(false)
+    for (const status of ['review', 'done', 'failed', 'cancelled'] as RunStatus[]) {
+      expect(runActionFlags(run(status)).pause).toBe(false)
+    }
   })
 })
 

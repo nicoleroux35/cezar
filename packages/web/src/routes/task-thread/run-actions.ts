@@ -130,6 +130,9 @@ export interface RunActionFlags {
   markUnread: boolean
   /** Stop an active run. Mutually exclusive with delete, by construction below. */
   cancel: boolean
+  /** Park an active run as paused — resumable via Start. Never offered for an
+   *  already-paused run (that one offers Start instead). */
+  pause: boolean
   /** Remove the run, its transcript, worktree and branch. Terminal runs only. */
   deleteRun: boolean
 }
@@ -146,6 +149,7 @@ export function runActionFlags(run: RunRecord): RunActionFlags {
     pin: !run.archived,
     markUnread: canBeUnread(run) && !isUnread(run),
     cancel: active,
+    pause: active && !run.paused,
     deleteRun: !active,
   }
 }

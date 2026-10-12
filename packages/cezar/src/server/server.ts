@@ -4562,6 +4562,14 @@ export function createApp(deps: ServerDeps) {
       return c.json({ started: true });
     })
 
+    .post('/runs/:id/pause', async (c) => {
+      const { store, manager } = c.get('project');
+      const id = c.req.param('id');
+      if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
+      const paused = await manager.pause(id);
+      return c.json({ paused });
+    })
+
     .post('/runs/reorder-queue', jsonZodValidator(reorderQueueSchema), (c) => {
       const { store } = c.get('project');
       const { runIds } = c.req.valid('json');

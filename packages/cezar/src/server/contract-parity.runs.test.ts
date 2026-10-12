@@ -16,6 +16,7 @@ import type {
   gitPushResponseSchema,
   messageResponseSchema,
   openInCliResponseSchema,
+  pauseResponseSchema,
   removeWorktreeResponseSchema,
   runCommitsResponseSchema,
   runRecordSchema,
@@ -57,6 +58,7 @@ describe('src/contract/runs.ts matches the runs routes exactly', () => {
   type RunPatch200 = InferResponseType<Run['$patch'], 200>;
   type ArchiveFinished200 = InferResponseType<Runs['archive-finished']['$post'], 200>;
   type Cancel200 = InferResponseType<Run['cancel']['$post'], 200>;
+  type Pause200 = InferResponseType<Run['pause']['$post'], 200>;
   type Message200 = InferResponseType<Run['messages']['$post'], 200>;
   type QueuedPatch200 = InferResponseType<Run['queued-messages'][':msgId']['$patch'], 200>;
   type QueuedDelete200 = InferResponseType<Run['queued-messages'][':msgId']['$delete'], 200>;
@@ -94,6 +96,7 @@ describe('src/contract/runs.ts matches the runs routes exactly', () => {
     // lifecycle
     Assert<Exact<z.infer<typeof archiveFinishedResponseSchema>, ArchiveFinished200>>,
     Assert<Exact<z.infer<typeof cancelResponseSchema>, Cancel200>>,
+    Assert<Exact<z.infer<typeof pauseResponseSchema>, Pause200>>,
     Assert<Exact<z.infer<typeof finishResponseSchema>, Finish200>>,
     Assert<Exact<z.infer<typeof continueResponseSchema>, Continue200>>,
     Assert<Exact<z.infer<typeof deleteRunResponseSchema>, DeleteRun200>>,

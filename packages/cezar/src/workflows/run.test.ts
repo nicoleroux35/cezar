@@ -3677,3 +3677,138 @@ describe('cancel settles runs the engine holds no live job for', () => {
     expect(manager.cancel('does-not-exist')).toBe(false);
   });
 });
+
+/**
+ * Pause parks a run — queued or live — as `queued` + `paused`, resumable with
+ * `startQueuedRun`. Unlike cancel nothing is terminal: the queue job survives
+ * (or is rebuilt from the record), `graphState` survives, and the resumed
+ * walk restarts at its cursor.
+ */
+describe('pause parks runs for a later resume', () => {
+  let repoRoot: string;
+  let store: RunStore;
+  let manager: RunManager;
+  let runId: string | undefined;
+  const savedEnv: Record<string, string | undefined> = {};
+  const SINGLE_STEP: WorkflowDef = {
+    name: 'quick-task',
+    source: 'built-in',
+    steps: [{ id: 'task', name: 'Task', prompt: '{{task}}' }],
+  };
+
+  beforeEach(async () => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'cez-pause-'));
+    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
+    process.env.CEZ_DRY_RUN = '1';
+    await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
+    await run('git', ['add', '-A'], { cwd: repoRoot });
+    await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
+    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    manager = new RunManager(store, repoRoot);
+    runId = undefined;
+  });
+
+  afterEach(() => {
+    if (runId) manager.cancel(runId);
+    manager.dispose(); // see DISPOSE at the top of this file
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env.CEZ_DRY_RUN;
+      else process.env.CEZ_DRY_RUN = value;
+    }
+    store.flush();
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  const waitFor = async (predicate: () => boolean, ms = 20_000) => {
+    const deadline = Date.now() + ms;
+    while (!predicate()) {
+      if (Date.now() > deadline) throw new Error('condition not met in time');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  };
+
+  it('pausing an already-paused run answers false, and start-queued still resumes it', async () => {
+    const record = manager.startRun(SINGLE_STEP, { task: 'queued work', queueOnly: true, worktree: false });
+    runId = record.id;
+    expect(store.getRun(record.id)?.paused).toBe(true);
+
+    expect(await manager.pause(record.id)).toBe(false);
+    expect(store.getRun(record.id)?.paused).toBe(true);
+
+    // Resuming re-enters the pump and the dry-run mock parks at waiting again.
+    expect(manager.startQueuedRun(record.id)).toBe(true);
+    await waitFor(() => store.getRun(record.id)?.status === 'waiting');
+    expect(store.getRun(record.id)?.paused).toBe(false);
+  }, 30_000);
+
+  it('pausing a queued run lifts it out of the queue with its job kept', async () => {
+    const held = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 0 } }),
+    });
+    try {
+      const record = held.startRun(SINGLE_STEP, { task: 'queued work', worktree: false });
+      runId = record.id;
+      const internals = held as unknown as { queue: string[]; pendingJobs: Map<string, unknown> };
+      expect(store.getRun(record.id)?.status).toBe('queued');
+      expect(internals.queue.includes(record.id)).toBe(true);
+
+      expect(await held.pause(record.id)).toBe(true);
+      expect(store.getRun(record.id)?.paused).toBe(true);
+      expect(internals.queue.includes(record.id)).toBe(false);
+      // The job survives the pause, so a resume has something to start.
+      expect(internals.pendingJobs.has(record.id)).toBe(true);
+    } finally {
+      held.dispose();
+    }
+  });
+
+  it('pausing a live run interrupts it without settling, and resume re-runs the walk', async () => {
+    const record = manager.startRun(SINGLE_STEP, { task: 'live work', worktree: false });
+    runId = record.id;
+    await waitFor(() => store.getRun(record.id)?.status === 'waiting');
+
+    expect(await manager.pause(record.id)).toBe(true);
+    const paused = store.getRun(record.id);
+    expect(paused?.status).toBe('queued');
+    expect(paused?.paused).toBe(true);
+    // In-flight steps go back to pending (the walk restarts at its cursor);
+    // nothing is marked cancelled, failed or done by the unwind.
+    expect(paused?.steps.map((s) => s.status)).not.toContain('cancelled');
+    expect(paused?.steps.map((s) => s.status)).not.toContain('failed');
+    await vi.waitFor(() => expect(manager.isActive(record.id)).toBe(false), { timeout: 15_000 });
+
+    expect(manager.startQueuedRun(record.id)).toBe(true);
+    await waitFor(() => store.getRun(record.id)?.status === 'waiting');
+    expect(store.getRun(record.id)?.paused).toBe(false);
+  }, 60_000);
+
+  it('pausing a settled or unknown run answers false', async () => {
+    const record = store.createRun({
+      title: 'done',
+      workflow: 'quick-task',
+      task: 'done',
+      steps: [{ id: 'task', name: 'Task', kind: 'agent' }],
+    });
+    store.updateRun(record.id, { status: 'done', finishedAt: new Date().toISOString() });
+    expect(await manager.pause(record.id)).toBe(false);
+    expect(await manager.pause('does-not-exist')).toBe(false);
+  });
+
+  it('a paused run keeps its queue job across revive: no silent restart, resumable start', async () => {
+    const record = manager.startRun(SINGLE_STEP, { task: 'paused work', queueOnly: true, worktree: false });
+    runId = record.id;
+    const internals = manager as unknown as {
+      queue: string[];
+      pendingJobs: Map<string, unknown>;
+      reviveQueuedRun(run: RunRecord, reason: string): Promise<void>;
+    };
+    // A restart re-adopts the queued run: the job is rebuilt but the run must
+    // NOT re-enter the queue behind the user's back.
+    await internals.reviveQueuedRun(store.getRun(record.id)!, 'cezar restarted');
+    expect(internals.pendingJobs.has(record.id)).toBe(true);
+    expect(internals.queue.includes(record.id)).toBe(false);
+    expect(manager.startQueuedRun(record.id)).toBe(true);
+    await waitFor(() => store.getRun(record.id)?.status === 'waiting');
+  }, 30_000);
+});

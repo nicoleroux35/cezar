@@ -244,7 +244,7 @@ describe('TasksOverview — the table', () => {
     // No branch, no PR, no diff recorded, no cost yet — dashes, not zeros (a pre-R2 record has
     // no diffStat, and `+0 −0` would claim a measurement that never happened). Started falls
     // back to createdAt.
-    expect(cellsOf('bare')).toEqual(['needs you', 'Bare minimum', 'default', '—', '—', '—', '— / —', '—', '—', '—', '26m'])
+    expect(cellsOf('bare')).toEqual(['needs youPauseStop', 'Bare minimum', 'default', '—', '—', '—', '— / —', '—', '—', '—', '26m'])
     // The pair is two colored halves, not one string — green adds, red dels (design tokens).
     const diff = tableRow('full')?.querySelector('[data-slot="diff-stat"]')
     expect(diff?.querySelector('.text-success')?.textContent).toBe('+128')
@@ -1710,3 +1710,41 @@ describe('TasksOverview — reorder mode', () => {
   })
 })
 
+
+describe('TasksOverview — row-level Start/Pause/Stop', () => {
+  it('an active row and card offer Pause and Stop', () => {
+    renderOverview({ runs: [run({ id: 'live', status: 'running' })] })
+
+    for (const scope of [tableRow('live') as HTMLElement, card('live') as HTMLElement]) {
+      expect(within(scope).getByRole('button', { name: 'Pause' })).toBeTruthy()
+      expect(within(scope).getByRole('button', { name: 'Stop' })).toBeTruthy()
+      expect(within(scope).queryByRole('button', { name: 'Start' })).toBeNull()
+    }
+  })
+
+  it('a paused row and card offer Start and Stop, never Pause', () => {
+    renderOverview({ runs: [run({ id: 'parked', status: 'queued', paused: true })] })
+
+    for (const scope of [tableRow('parked') as HTMLElement, card('parked') as HTMLElement]) {
+      expect(within(scope).getByRole('button', { name: 'Start' })).toBeTruthy()
+      expect(within(scope).getByRole('button', { name: 'Stop' })).toBeTruthy()
+      expect(within(scope).queryByRole('button', { name: 'Pause' })).toBeNull()
+    }
+  })
+
+  it('a finished row and card offer no lifecycle buttons', () => {
+    renderOverview({ runs: [run({ id: 'over', status: 'done' })] })
+
+    for (const scope of [tableRow('over') as HTMLElement, card('over') as HTMLElement]) {
+      expect(within(scope).queryByRole('button', { name: 'Pause' })).toBeNull()
+      expect(within(scope).queryByRole('button', { name: 'Stop' })).toBeNull()
+      expect(within(scope).queryByRole('button', { name: 'Start' })).toBeNull()
+    }
+  })
+
+  it('a Pause click does not also open the task — the control owns its click', () => {
+    renderOverview({ runs: [run({ id: 'live', status: 'running' })] })
+    fireEvent.click(within(card('live') as HTMLElement).getByRole('button', { name: 'Pause' }))
+    expect(location()).toBe('/')
+  })
+})

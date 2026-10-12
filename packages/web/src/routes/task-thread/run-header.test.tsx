@@ -298,9 +298,9 @@ describe('action bar visibility per status (the legacy rules, rendered)', () => 
   // Pin (#935) is in every row: unlike every other action here it asks nothing of the engine,
   // so it is offered whatever the run is doing — only archiving takes it away.
   const matrix: Array<{ status: RunStatus; visible: string[] }> = [
-    { status: 'queued', visible: ['Notes', 'Pin', 'Cancel'] },
-    { status: 'running', visible: ['Notes', 'Pin', 'Cancel'] },
-    { status: 'waiting', visible: ['Finish', 'Notes', 'Pin', 'Cancel'] },
+    { status: 'queued', visible: ['Notes', 'Pin', 'Pause', 'Cancel'] },
+    { status: 'running', visible: ['Notes', 'Pin', 'Pause', 'Cancel'] },
+    { status: 'waiting', visible: ['Finish', 'Notes', 'Pin', 'Pause', 'Cancel'] },
     // Terminal folded into the Open in… menu — it shows whenever the session can be resumed.
     { status: 'review', visible: ['Finish', 'Continue', 'Open in…', 'Notes', 'Pin', 'Archive', 'Delete'] },
     { status: 'done', visible: ['Continue', 'Open in…', 'Notes', 'Pin', 'Archive', 'Delete'] },

@@ -31,6 +31,7 @@ import type {
   CancelAutoResumeResponse,
   CancelResponse,
   StartQueuedResponse,
+  PauseResponse,
   ChangesPayload,
   CheckoutProjectInput,
   ConfigResponse,
@@ -1364,6 +1365,16 @@ export async function startQueuedRun(id: string): Promise<StartQueuedResponse> {
       param: { projectId: queryScope(), id: encodeURIComponent(id) },
     }),
     runPath(id, '/start-queued'),
+  )
+}
+
+/** Pause a queued or active task. Resume with {@link startQueuedRun}. */
+export async function pauseRun(id: string): Promise<PauseResponse> {
+  return unwrap(
+    await cez.api.v1.p[':projectId'].runs[':id'].pause.$post({
+      param: { projectId: queryScope(), id: encodeURIComponent(id) },
+    }),
+    runPath(id, '/pause'),
   )
 }
 
