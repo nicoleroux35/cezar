@@ -3166,7 +3166,15 @@ export class RunManager {
       return true;
     }
     const state = this.active.get(runId);
-    if (!state) return false;
+    if (!state) {
+      // The engine holds no live job for this run — a paused queue-only task
+      // (its job sits in `pendingJobs`, never queued), a continuation caught
+      // in `starting`, or a record a previous process left behind. Cancelling
+      // must still settle the RECORD: the UI offers Cancel off the record's
+      // status, and a bare `false` answers the button with a 200 that changes
+      // nothing, leaving the run stuck active forever.
+      return this.cancelOrphan(runId);
+    }
     state.cancelled = true;
     this.clearIdleTimer(state);
     try {
@@ -3203,6 +3211,46 @@ export class RunManager {
       }, CANCEL_GRACE_MS);
       state.cancellationTimer.unref?.();
     }
+    return true;
+  }
+
+  /**
+   * Settle a run the engine holds no live job for: a paused queue-only task,
+   * a continuation lost in `starting`, or a record orphaned by a previous
+   * process. There is nothing to interrupt — mark the steps and the record
+   * cancelled so Cancel stays terminal even here — and still report a
+   * dispatched child to its parent, which would otherwise wait for a report
+   * nobody sends (same reason as the queued branch above). A spawn that left
+   * the queue ahead of this observes the settled record through the guards at
+   * the top of `execute()`/`runContinuation()` and stands down instead of
+   * reviving the run.
+   */
+  private cancelOrphan(runId: string): boolean {
+    const run = this.store.getRun(runId);
+    // Unknown or already settled: nothing to cancel.
+    if (!run || isTerminalStatus(run.status)) return false;
+    const queuedAt = this.queue.indexOf(runId);
+    if (queuedAt >= 0) this.queue.splice(queuedAt, 1);
+    this.starting.delete(runId);
+    this.pendingJobs.delete(runId);
+    this.pendingContinuations.delete(runId);
+    const finishedAt = new Date().toISOString();
+    for (const step of run.steps) {
+      if (step.status === 'running' || step.status === 'waiting') {
+        this.store.updateStep(runId, step.id, { status: 'cancelled', finishedAt });
+      }
+    }
+    this.store.updateRun(runId, {
+      status: 'cancelled',
+      finishedAt,
+      currentStepId: undefined,
+      paused: false,
+    });
+    this.store.appendEvent(runId, {
+      type: 'lifecycle',
+      message: run.paused ? 'cancelled while paused' : 'run cancelled',
+    });
+    this.reportSettledChildToParent(runId);
     return true;
   }
 
@@ -3813,6 +3861,9 @@ export class RunManager {
       undefined,
       undefined,
       ownerToken,
+      // Explicit Continue reopens a settled record on purpose — exempt from
+      // the settled-record stand-down that guards queue-spawned continuations.
+      true,
     ).catch(
       (err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
@@ -3838,7 +3889,24 @@ export class RunManager {
     persistedImages: ContentBlock[] = [],
     persistedAttachments: PersistedAttachment[] = [],
     ownerToken?: symbol,
+    /**
+     * Explicit user Continue (`continueRun` immediate path) intentionally
+     * reopens a SETTLED run — the record is terminal by construction there —
+     * so the settled-record stand-down below does not apply. Every other
+     * caller spawns from the queue, where a terminal record can only mean a
+     * cancel landed mid-start.
+     */
+    allowSettledRecord = false,
   ): Promise<void> {
+    // Same stand-down as `execute()`: a cancel that landed while this
+    // continuation was leaving the queue settles the record first, and the
+    // first await below (worktree re-materialization) is an observable window
+    // — unlike `execute()`'s synchronous prefix — so this guard is load-bearing.
+    const settled = this.store.getRun(runId);
+    if (!allowSettledRecord && settled && isTerminalStatus(settled.status)) {
+      this.starting.delete(runId);
+      return;
+    }
     const effectiveOwnerToken = ownerToken ?? Symbol('run-owner');
     // Continuation runs in the task's worktree when it still exists (spec
     // 006) — the resumed session sees exactly what the original run left.
@@ -4377,6 +4445,14 @@ export class RunManager {
   // ---- execution -----------------------------------------------------------
 
   private async execute(runId: string, workflow: WorkflowDef, input: StartRunInput, ownerToken?: symbol): Promise<void> {
+    // A cancel that landed while this spawn was leaving the queue settles the
+    // record first (`cancelOrphan`) — observe it and stand down instead of
+    // reviving a cancelled run with a fresh session.
+    const settled = this.store.getRun(runId);
+    if (settled && isTerminalStatus(settled.status)) {
+      this.starting.delete(runId);
+      return;
+    }
     const state: ActiveRun = {
       ownerToken: ownerToken ?? Symbol('run-owner'),
       cancelled: false,

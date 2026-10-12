@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { tmpdir } from 'node:os';
 import { AGENT_MODELS_LOCKED_ENV } from './agent-model-policy.ts';
 import { profileEnv } from './agent-profiles.ts';
 import { resolveClaudeBin } from './claude-bin.ts';
@@ -81,24 +80,11 @@ interface ProviderDescriptor {
   statusArgs: readonly string[];
   loginArgs: readonly string[];
   installHint: string;
-  parse: (result: ProviderCommandResult) => ProviderConnectionState | null;
-  /** See {@link RunProviderCommand}'s `stdin`. */
-  stdin?: () => string;
   /**
    * An answer available WITHOUT spawning the CLI at all, checked before `runCommand` — `undefined`
-   * defers to the normal probe. Every other backend's own CLI self-reports API-key vs. subscription
-   * auth in its status command (codex literally prints "logged in using an API key"), so nothing
-   * needs this. Cursor's `agent status` does not, which used to mean `CURSOR_API_KEY` support lived
-   * ONLY inside `parseCursorStatus` — reachable when the command's own answer was inconclusive, but
-   * never when the command hung: `probe()`'s `timedOut` branch returns before `parse()` runs, so a
-   * status call that blocks on a network check (plausible with a key but no cached browser session)
-   * silently ate the fallback and reported 'unknown' no matter how valid the key was. Skipping the
-   * spawn entirely removes that race instead of racing to out-guess it.
-   *
-   * It also covers the endpoint a provider switcher writes into the agent's OWN config file rather
-   * than the environment (`provider-file-config.ts`) — for such a Codex provider the CLI's own
-   * answer is a confident, wrong "Not logged in". That file is read for the caller's `configDir`,
-   * so a per-account row reads THAT account's config, never the discovered default's.
+   * defers to the installation probe. Covers API keys and custom endpoints in the environment and
+   * the endpoint a provider switcher (cc-switch) writes into the agent's OWN config file
+   * (`provider-file-config.ts`).
    */
   precheck?: (context: { configDir?: string | null }) => ProviderConnectionState | undefined;
 }
@@ -112,9 +98,9 @@ const COMMAND_TIMEOUT_MS = 10_000;
  * shell-out per provider and per account on every page load, for an answer that had almost
  * certainly not changed. So a CONNECTED answer is kept for minutes.
  *
- * A NOT-CONNECTED answer is re-checked sooner, for ONE reason: display self-healing. If you log in
- * from a terminal, cezar cannot see it happen, so a card that says "disconnected" must eventually
- * find out on its own. The window is a minute rather than seconds because reading is now
+ * A NOT-CONNECTED answer is re-checked sooner, for ONE reason: display self-healing. If you
+ * install a CLI from a terminal, cezar cannot see it happen, so a card that says
+ * "not-installed" must eventually find out on its own. The window is a minute rather than seconds because reading is now
  * stale-while-revalidate (see `status`): every expiry costs a background probe, and a cockpit
  * polling this endpoint would turn a five-second window into a spawn every five seconds, forever,
  * on any machine where one provider is logged out — which is most of them.
@@ -166,10 +152,8 @@ function cacheTtlFor(rows: readonly ProviderStatus[]): number {
     : UNSETTLED_TTL_MS;
 }
 const UNKNOWN_HINT = 'Authentication could not be verified. Try again.';
-const TIMEOUT_HINT = 'Authentication check timed out. Try again.';
 const RUNTIME_AUTH_HINT =
   'Authentication was rejected during a run. Reconnect, then try again.';
-const ANSI_SEQUENCE = /\u001B\[[0-?]*[ -/]*[@-~]/g;
 const RUNTIME_AUTH_FAILURE_PATTERNS = [
   /\b(?:failed to authenticate|authentication failed|unauthenticated|unauthorized)\b/i,
   /\bproviderautherror\b/i,
@@ -194,229 +178,6 @@ export function isRuntimeProviderAuthFailure(message: string): boolean {
     .some((pattern) => pattern.test(message));
 }
 
-function normalizedOutput(stdout: string): string {
-  return stdout.replace(ANSI_SEQUENCE, '').trim().toLowerCase();
-}
-
-function normalizedLines(...outputs: string[]): string[] {
-  return outputs.flatMap((output) => normalizedOutput(output).split(/\r?\n/))
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function parseClaudeStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  try {
-    const value = JSON.parse(result.stdout) as { loggedIn?: unknown };
-    if (value.loggedIn === true && result.exitCode === 0) return 'connected';
-    if (value.loggedIn === false && result.exitCode === 1) return 'disconnected';
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function parseCodexStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  const answers = normalizedLines(result.stdout, result.stderr)
-    .map((line): ProviderConnectionState | null => {
-      if (
-        line === 'logged in using chatgpt'
-        || line === 'logged in using an api key'
-        || line === 'logged in using agent identity'
-        || line === 'logged in using access token'
-        || line === 'logged in using personal access token'
-        || line === 'logged in using amazon bedrock api key'
-        || /^logged in using an api key - (?:\*{3}|\S{8}\*{3}\S{5})$/.test(line)
-      ) {
-        return 'connected';
-      }
-      if (line === 'not logged in' || line === 'run codex login to authenticate') {
-        return 'disconnected';
-      }
-      return null;
-    })
-    .filter((answer): answer is ProviderConnectionState => answer !== null);
-  if (answers.length !== 1) return null;
-  if (answers[0] === 'connected' && result.exitCode === 0) return 'connected';
-  if (answers[0] === 'disconnected' && result.exitCode === 1) return 'disconnected';
-  return null;
-}
-
-function parseOpenCodeStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  if (result.exitCode !== 0) return null;
-  const lines = normalizedLines(result.stdout);
-  const storedSummaries = lines
-    .map((line) => line.match(/^[^a-z0-9]*(\d+)\s+credentials?$/)?.[1])
-    .filter((count): count is string => count !== undefined);
-
-  // OpenCode 2.x replaced the summary with one row per stored credential, with the literal
-  // `stored` state in the final column. Keep this shape deliberately narrow: a successful empty
-  // response is the valid no-credentials answer, while any other output without either the 1.x
-  // summary or 2.x rows remains inconclusive rather than being guessed as disconnected.
-  if (storedSummaries.length === 0) {
-    if (lines.length === 0) return 'disconnected';
-    const storedRows = lines.filter((line) => /^.+\s{2,}.+\s+stored$/.test(line));
-    return storedRows.length === lines.length && storedRows.length > 0 ? 'connected' : null;
-  }
-  if (storedSummaries.length !== 1) return null;
-  const storedCount = Number(storedSummaries[0]);
-  if (!Number.isSafeInteger(storedCount)) return null;
-
-  const environmentSummaries = lines
-    .map((line) => line.match(/^[^a-z0-9]*(\d+)\s+environment\s+variables?$/)?.[1])
-    .filter((count): count is string => count !== undefined);
-  const hasEnvironmentBlock = lines.some((line) => /^[^a-z0-9]*environment$/.test(line));
-  if (environmentSummaries.length > 1) return null;
-  if (hasEnvironmentBlock !== (environmentSummaries.length === 1)) return null;
-  const environmentCount = environmentSummaries.length === 1
-    ? Number(environmentSummaries[0])
-    : 0;
-  if (!Number.isSafeInteger(environmentCount)) return null;
-
-  return storedCount > 0 || environmentCount > 0 ? 'connected' : 'disconnected';
-}
-
-/**
- * Dead code, on purpose: `probe()` special-cases `descriptor.id === 'junie'` and returns before
- * `descriptor.parse` is ever reached, because a real Auth CHECK requires driving the ACP
- * handshake itself (`initialize` → `authenticate` → `session/prompt`, confirmed live to be the
- * only path that actually surfaces "no usable entitlement") — this synchronous
- * execFile-and-regex probe has no seam for that. `junie --help`'s `Authentication:` section is
- * write-only (`--auth=<token>`, `--<provider>-api-key=<key>`) so there is no `auth status`-shaped
- * subcommand to parse in the first place. Kept only because `ProviderDescriptor.parse` is
- * required on every entry — this is the junie descriptor's metadata-only placeholder, not a
- * live code path.
- */
-function parseJunieStatus(_result: ProviderCommandResult): ProviderConnectionState | null {
-  return null;
-}
-
-function parsePiStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  if (result.exitCode !== 0) return null;
-  const lines = normalizedLines(result.stdout);
-  if (lines.some((line) => /^provider\s+model\s+context\s+max-out\s+thinking\s+images$/.test(line))) {
-    return 'connected';
-  }
-  if (
-    lines.some((line) => line.includes('no models available'))
-    && lines.some((line) => line.includes('/login'))
-  ) {
-    return 'disconnected';
-  }
-  return null;
-}
-
-/**
- * Copilot CLI has **no** non-interactive auth-status command — `login` is its only auth
- * subcommand and it is interactive (verified against 1.0.88;
- * `.ai/runs/2026-09-27-copilot-cli-runner/copilot-acp-notes.md`). What it does have is an ACP
- * server that answers the question definitively and cheaply: `session/new` returns a `sessionId`
- * for an entitled credential and the JSON-RPC error `-32000 "Authentication required"` without
- * one. Nothing is prompted, so no AI credits are spent, and the server exits when stdin closes.
- */
-function copilotAcpProbeStdin(): string {
-  const initialize = {
-    jsonrpc: '2.0',
-    id: 0,
-    method: 'initialize',
-    params: { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } },
-  };
-  // A throwaway cwd: the probe must not touch the user's repo, and `session/new` requires one.
-  const newSession = { jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: tmpdir(), mcpServers: [] } };
-  return `${JSON.stringify(initialize)}\n${JSON.stringify(newSession)}\n`;
-}
-
-function parseCopilotStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  const output = `${result.stdout}\n${result.stderr}`;
-  // Order matters: an authenticated answer also contains the `initialize` result, and an
-  // unauthenticated one contains BOTH that result and the error, so the error is checked first.
-  if (/"Authentication required"/i.test(output)) return 'disconnected';
-  if (/"sessionId"\s*:\s*"/.test(output)) return 'connected';
-  return null;
-}
-
-function parseKiloStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  // Kilo uses the same auth structure as OpenCode: `kilo auth list`
-  if (result.exitCode !== 0) return null;
-  const lines = normalizedLines(result.stdout);
-  const storedSummaries = lines
-    .map((line) => line.match(/^[^a-z0-9]*(\d+)\s+credentials?$/)?.[1])
-    .filter((count): count is string => count !== undefined);
-  if (storedSummaries.length !== 1) return null;
-  const storedCount = Number(storedSummaries[0]);
-  if (!Number.isSafeInteger(storedCount)) return null;
-
-  const environmentSummaries = lines
-    .map((line) => line.match(/^[^a-z0-9]*(\d+)\s+environment\s+variables?$/)?.[1])
-    .filter((count): count is string => count !== undefined);
-  const hasEnvironmentBlock = lines.some((line) => /^[^a-z0-9]*environment$/.test(line));
-  if (environmentSummaries.length > 1) return null;
-  if (hasEnvironmentBlock !== (environmentSummaries.length === 1)) return null;
-  const environmentCount = environmentSummaries.length === 1
-    ? Number(environmentSummaries[0])
-    : 0;
-  if (!Number.isSafeInteger(environmentCount)) return null;
-
-  return storedCount > 0 || environmentCount > 0 ? 'connected' : 'disconnected';
-}
-
-function parseGeminiStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  // Gemini auth status check - looking for authentication state
-  // Note: gemini may return non-zero exit code with error messages that still indicate auth state
-  const lines = normalizedLines(result.stdout, result.stderr);
-
-  // Check for positive authentication signals
-  if (lines.some((line) =>
-    line.includes('authenticated') ||
-    line.includes('logged in') ||
-    /^status\s*:\s*authenticated$/.test(line)
-  )) {
-    return 'connected';
-  }
-
-  // Check for negative authentication signals or errors indicating no auth
-  if (lines.some((line) =>
-    line.includes('not authenticated') ||
-    line.includes('not logged in') ||
-    line.includes('error authenticating') ||
-    line.includes('ineligibletier') ||
-    line.includes('run') && line.includes('login') ||
-    /^status\s*:\s*unauthenticated$/.test(line)
-  )) {
-    return 'disconnected';
-  }
-
-  return null;
-}
-
-function parseAntigravityStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  // Antigravity auth status check
-  if (result.exitCode !== 0) return null;
-  const lines = normalizedLines(result.stdout, result.stderr);
-
-  // Check for positive authentication signals
-  if (lines.some((line) =>
-    line.includes('authenticated') ||
-    line.includes('logged in') ||
-    line.includes('signed in') ||
-    /^status\s*:\s*authenticated$/.test(line)
-  )) {
-    return 'connected';
-  }
-
-  // Check for negative authentication signals
-  if (lines.some((line) =>
-    line.includes('not authenticated') ||
-    line.includes('not logged in') ||
-    line.includes('not signed in') ||
-    line.includes('run') && line.includes('auth') ||
-    /^status\s*:\s*unauthenticated$/.test(line)
-  )) {
-    return 'disconnected';
-  }
-
-  return null;
-}
-
 const DESCRIPTORS: readonly ProviderDescriptor[] = [
   {
     id: 'claude',
@@ -424,7 +185,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: ['auth', 'status', '--json'],
     loginArgs: ['auth', 'login'],
     installHint: 'Install Claude Code, then run `claude auth login` (or set ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL).',
-    parse: parseClaudeStatus,
     // Claude Code can use ANTHROPIC_API_KEY directly, or custom endpoint via ANTHROPIC_BASE_URL
     // The same endpoint can also live in `~/.claude/settings.json`'s `env` block, which is where a
     // provider switcher such as cc-switch writes it instead of exporting anything.
@@ -442,7 +202,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: ['login', 'status'],
     loginArgs: ['login'],
     installHint: 'Install the Codex CLI, then run `codex login` (or set OPENAI_API_KEY / OPENAI_BASE_URL).',
-    parse: parseCodexStatus,
     // Codex can use OPENAI_API_KEY or AZURE_OPENAI_API_KEY, or a custom endpoint — in the
     // environment, or as a `[model_providers.<id>]` block in `~/.codex/config.toml`, which is where
     // cc-switch writes it. Such a provider has NO login: `codex login status` answers "Not logged
@@ -462,7 +221,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: ['auth', 'list'],
     loginArgs: ['auth', 'login'],
     installHint: 'Install OpenCode, then run `opencode auth login` (or set provider API keys / base URLs).',
-    parse: parseOpenCodeStatus,
     // OpenCode supports multiple provider API keys and custom endpoints
     precheck: () => {
       const keys = [
@@ -500,7 +258,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     loginArgs: ['login'],
     installHint:
       'Install the Cursor CLI (`curl https://cursor.com/install -fsS | bash`), then run `agent login` (or set CURSOR_API_KEY / CURSOR_BASE_URL).',
-    parse: parseCursorStatus,
     // `agent status` doesn't itself know about CURSOR_API_KEY — see the `precheck` field's doc.
     precheck: () => {
       if (process.env.CURSOR_API_KEY?.trim()) return 'connected';
@@ -514,7 +271,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: ['--list-models'],
     loginArgs: ['/login'],
     installHint: 'Install pi, then run `pi /login` (or set provider API keys / base URLs).',
-    parse: parsePiStatus,
     // Pi supports multiple provider API keys (same as OpenCode) and custom endpoints
     precheck: () => {
       const keys = [
@@ -551,7 +307,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: [],
     loginArgs: [],
     installHint: 'Install Junie (https://junie.jetbrains.com/cli), then run `junie` once and log in.',
-    parse: parseJunieStatus,
   },
   {
     id: 'copilot',
@@ -559,8 +314,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: ['--acp'],
     loginArgs: ['login'],
     installHint: 'Install GitHub Copilot CLI (`npm i -g @github/copilot`), then run `copilot login`.',
-    parse: parseCopilotStatus,
-    stdin: copilotAcpProbeStdin,
   },
   {
     id: 'kilo',
@@ -568,7 +321,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: ['auth', 'list'],
     loginArgs: ['auth', 'login'],
     installHint: 'Install Kilo Code (npm i -g @kilocode/cli or https://kilo.ai), then run `kilo auth login` (or set provider API keys / base URLs).',
-    parse: parseKiloStatus,
     // Kilo supports multiple provider API keys (same as OpenCode) and custom endpoints
     precheck: () => {
       const keys = [
@@ -605,7 +357,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: ['--version'],
     loginArgs: [],
     installHint: 'Install Gemini CLI (npm i -g @google/gemini-cli), then authenticate with your Google account or set GEMINI_API_KEY / GOOGLE_API_BASE_URL.',
-    parse: parseGeminiStatus,
     // Gemini's own CLI answers nothing about auth (`--version` prints a version; 0.61.0 has no
     // `auth status`), so without this the row stayed 'unknown' forever and the run gate blocked
     // Gemini entirely. Its stored OAuth login is the only signal that exists.
@@ -623,7 +374,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: ['--version'],
     loginArgs: [],
     installHint: 'Install Antigravity CLI, then run `agy` to sign in with your Google account (or set GOOGLE_GENERATIVE_AI_API_KEY / GOOGLE_API_BASE_URL).',
-    parse: parseAntigravityStatus,
     // Same blind spot as Gemini: `agy --help` (1.3.0) has no auth-status subcommand either.
     precheck: () => {
       if (process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()) return 'connected';
@@ -644,7 +394,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     statusArgs: [],
     loginArgs: [],
     installHint: 'HTTP agent requires no installation. Configure it as an agent account (Settings → Agent accounts → HTTP Agent) or set CEZ_HTTP_AGENT_CONFIG with endpoint URL and optional API key.',
-    parse: () => null,
     // This backend's whole configuration is presence — and, for a stored account, the JSON itself.
     //
     // `CEZ_HTTP_AGENT_CONFIG` is the name `PROFILE_ENV_VAR.http` exports and the name
@@ -670,27 +419,6 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
     },
   },
 ];
-
-function parseCursorStatus(result: ProviderCommandResult): ProviderConnectionState | null {
-  // probe() already handles ENOENT / any other errorCode before calling parse() — result here
-  // always ran successfully at the process level. It also never reaches this function at all when
-  // CURSOR_API_KEY is set (the cursor descriptor's `precheck` answers first), so this is purely
-  // the `agent login` (browser OAuth) read.
-  try {
-    const parsed: unknown = JSON.parse(result.stdout);
-    if (parsed && typeof parsed === 'object') {
-      const row = parsed as Record<string, unknown>;
-      if (row.isAuthenticated === true || row.status === 'authenticated') return 'connected';
-      if (row.isAuthenticated === false || row.status === 'unauthenticated') return 'disconnected';
-    }
-  } catch {
-    /* fall through */
-  }
-  // Malformed or unrecognized JSON is inconclusive, not a confirmed unauthenticated state —
-  // return null so probe() reports 'unknown' instead of telling the user to reconnect an
-  // account that was never actually checked.
-  return null;
-}
 
 function defaultRunProviderCommand(
   executable: string,
@@ -1103,27 +831,24 @@ export class ProviderAuthService {
     return this.withRuntimeFailures(this.completed.response);
   }
 
+  /**
+   * Installation check, not an authentication check: a CLI that spawns at all counts as
+   * `connected`. External credential managers (cc-switch and the like) configure endpoints the
+   * vendor's own `login status` cannot see, so trusting its answer blocked working setups.
+   * Only a missing binary (`ENOENT`) is `not-installed`; a real credential failure still
+   * surfaces at runtime through the auth-failure latch, which outranks this probe.
+   */
   private async probe(descriptor: ProviderDescriptor, configDir?: string | null): Promise<ProviderStatus> {
-    // Junie exposes no read-only auth status command. Its prompt-free model probe establishes
-    // both authentication and model access; invoking `junie --version` cannot establish either.
     if (descriptor.id === 'junie') {
       try {
         const result = await this.probeJunie();
         if (result.notInstalled) return { provider: 'junie', status: 'not-installed', hint: descriptor.installHint };
-        return result.connected
-          ? { provider: 'junie', status: 'connected' }
-          : { provider: 'junie', status: 'unknown', hint: result.hint };
+        return { provider: 'junie', status: 'connected' };
       } catch (error) {
-        // Same distinction as the try path above: a missing binary is "not-installed" (so the
-        // GUI never offers a runner that cannot run), everything else stays "unknown" (#M1).
         if ((error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
           return { provider: 'junie', status: 'not-installed', hint: descriptor.installHint };
         }
-        return {
-          provider: 'junie',
-          status: 'unknown',
-          hint: `Junie authentication check failed: ${error instanceof Error ? error.message : String(error)}`,
-        };
+        return { provider: 'junie', status: 'connected' };
       }
     }
     const precheck = descriptor.precheck?.({ configDir });
@@ -1135,30 +860,18 @@ export class ProviderAuthService {
     // path for no gain.
     const env = configDir ? profileEnv(descriptor.id, configDir) : undefined;
     try {
-      // Never pass a trailing `undefined`: the existing three- and four-argument calls are the
-      // zero-config path and the injected test kit asserts them literally, so only a descriptor
-      // that actually has a stdin payload reaches the five-argument form.
-      const stdin = descriptor.stdin?.();
       const executable = descriptor.executable();
-      result = await (stdin !== undefined
-        ? this.runCommand(executable, descriptor.statusArgs, COMMAND_TIMEOUT_MS, env, stdin)
-        : env === undefined
-          ? this.runCommand(executable, descriptor.statusArgs, COMMAND_TIMEOUT_MS)
-          : this.runCommand(executable, descriptor.statusArgs, COMMAND_TIMEOUT_MS, env));
+      result = await (env === undefined
+        ? this.runCommand(executable, descriptor.statusArgs, COMMAND_TIMEOUT_MS)
+        : this.runCommand(executable, descriptor.statusArgs, COMMAND_TIMEOUT_MS, env));
     } catch {
       return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
     }
     if (result.errorCode === 'ENOENT') {
       return { provider: descriptor.id, status: 'not-installed', hint: descriptor.installHint };
     }
-    if (result.timedOut) {
-      return { provider: descriptor.id, status: 'unknown', hint: TIMEOUT_HINT };
-    }
-    if (result.errorCode) {
-      return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
-    }
-    const status = descriptor.parse(result);
-    if (status !== null) return { provider: descriptor.id, status };
-    return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
+    // Anything else means the binary exists and ran: installed counts as connected. Its exit
+    // code and output describe the vendor login, which an external credential manager bypasses.
+    return { provider: descriptor.id, status: 'connected' };
   }
 }

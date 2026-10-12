@@ -1,7 +1,7 @@
 /**
  * The "no skills yet" copy shared by every empty state that tells a user where to drop skill
- * files — the Skills tab (`routes/skills.tsx`) and the workflow builder's skill palette
- * (`routes/workflows/workflows.tsx`). #374 (follow-up to #342): both used to mention only
+ * files — the Skills tab (`routes/skills.tsx`) and the workflow node editor's skill palette
+ * (`routes/workflow-graph/workflow-graph.tsx`). #374 (follow-up to #342): both used to mention only
  * `.ai/skills/`, while discovery also scans `.ai/cezar/skills/`, `.agents/skills/` (+ its
  * per-agent mirrors, e.g. `.claude/skills/`), the global `~/.agents/skills` /
  * `~/.claude/skills`, and the team skills repo (`src/skills.ts`). One shared list, so the two

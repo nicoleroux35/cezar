@@ -123,12 +123,24 @@ describe('ProviderSettings', () => {
     serve()
     renderSettings()
 
-    await within(card('claude')).findByText('Credentials found')
+    await within(card('claude')).findByText('Installed')
     expect(
       [...document.querySelectorAll('[data-slot="provider-card"]')].map((item) =>
         item.querySelector('h3')?.textContent,
       ),
     ).toEqual(['Claude Code', 'Codex', 'Junie', 'OpenCode', 'Cursor', 'pi', 'GitHub Copilot CLI', 'Kilo', 'Gemini', 'Antigravity', 'HTTP Agent'])
+  })
+
+  it('offers a Check button on every provider card to verify installation', async () => {
+    serve()
+    renderSettings()
+
+    await within(card('claude')).findByText('Installed')
+    for (const { id, label } of PROVIDERS) {
+      expect(within(card(id)).getByRole('button', { name: `Check ${label}` })).toBeTruthy()
+    }
+    // Even a not-installed provider can be re-checked after installing its CLI.
+    expect(within(card('opencode')).getByRole('button', { name: 'Check OpenCode' })).toBeTruthy()
   })
 
   it('presents discovery truth, enablement, and runtime recovery without hiding diagnostics', async () => {
@@ -164,21 +176,23 @@ describe('ProviderSettings', () => {
     })
     renderSettings()
 
-    await within(card('claude')).findByText('Credentials found')
-    expect(within(card('claude')).getByText('Credentials found').previousElementSibling?.getAttribute('data-tone')).toBe(
+    await within(card('claude')).findByText('Installed')
+    expect(within(card('claude')).getByText('Installed').previousElementSibling?.getAttribute('data-tone')).toBe(
       'success',
     )
     expect(within(card('claude')).queryByRole('button', { name: 'Connect' })).toBeNull()
     expect(screen.getByRole('switch', { name: 'Use Claude Code' })).toBeTruthy()
 
-    expect(within(card('codex')).getByText('Credentials found').previousElementSibling?.getAttribute('data-tone')).toBe('success')
+    expect(within(card('codex')).getByText('Installed').previousElementSibling?.getAttribute('data-tone')).toBe('success')
     expect(within(card('codex')).getByText('Disabled')).toBeTruthy()
     expect(screen.getByRole('switch', { name: 'Use Codex' })).toBeTruthy()
 
     expect(within(card('opencode')).getByRole('button', { name: 'Connect' })).toBeTruthy()
     expect(within(card('opencode')).getByRole('button', { name: 'Try again' })).toBeTruthy()
     expect(within(card('opencode')).getByText(/cezar cannot validate.*task/i)).toBeTruthy()
-    fireEvent.click(within(card('opencode')).getByRole('button', { name: 'Check again' }))
+    // Every provider card offers a Check button — including connected ones.
+    expect(within(card('claude')).getByRole('button', { name: 'Check Claude Code' })).toBeTruthy()
+    fireEvent.click(within(card('opencode')).getByRole('button', { name: 'Check OpenCode' }))
     await within(card('opencode')).findByText('Not connected')
     expect(within(card('opencode')).getByRole('button', { name: 'Try again' })).toBeTruthy()
   })
@@ -199,7 +213,7 @@ describe('ProviderSettings', () => {
 
     await within(card('codex')).findByText('Could not verify')
     expect(within(card('codex')).getByText(/verification failed/i)).toBeTruthy()
-    expect(within(card('codex')).getByRole('button', { name: 'Check again' })).toBeTruthy()
+    expect(within(card('codex')).getByRole('button', { name: 'Check Codex' })).toBeTruthy()
     expect(within(card('codex')).queryByText('Not connected')).toBeNull()
     expect(within(card('codex')).queryByRole('button', { name: 'Connect' })).toBeNull()
     expect(within(card('junie')).getByText('Junie authentication check failed: invalid credentials.')).toBeTruthy()
@@ -245,7 +259,7 @@ describe('ProviderSettings', () => {
     expect(writeText).toHaveBeenCalledWith('codex login --device-auth')
   })
 
-  it('removes a manual command once Check again verifies the provider is connected', async () => {
+  it('removes a manual command once Check verifies the provider is connected', async () => {
     serve({
       connectCode: 409,
       connect: { error: 'Run this command manually.', command: 'codex login --device-auth' },
@@ -263,9 +277,9 @@ describe('ProviderSettings', () => {
 
     const fallback = await screen.findByRole('region', { name: 'Codex manual sign-in' })
     expect(within(fallback).getByText('codex login --device-auth')).toBeTruthy()
-    fireEvent.click(within(card('codex')).getByRole('button', { name: 'Check again' }))
+    fireEvent.click(within(card('codex')).getByRole('button', { name: 'Check Codex' }))
 
-    await within(card('codex')).findByText('Credentials found')
+    await within(card('codex')).findByText('Installed')
     expect(screen.queryByRole('region', { name: 'Codex manual sign-in' })).toBeNull()
     expect(screen.queryByText('codex login --device-auth')).toBeNull()
   })
@@ -290,17 +304,18 @@ describe('ProviderSettings', () => {
     expect(screen.queryByText(secret)).toBeNull()
   })
 
-  it('Check again performs an explicit refreshed status request', async () => {
+  it('Check performs an explicit refreshed status request', async () => {
     serve()
     renderSettings()
 
-    fireEvent.click(await within(card('codex')).findByRole('button', { name: 'Check again' }))
+    await within(card('codex')).findByText('Not connected')
+    fireEvent.click(within(card('codex')).getByRole('button', { name: 'Check Codex' }))
     await waitFor(() =>
       expect(requests.some((request) => request.url === '/api/v1/providers/status?refresh=1')).toBe(true),
     )
   })
 
-  it('surfaces a failed Check again without replacing the cached provider state', async () => {
+  it('surfaces a failed Check without replacing the cached provider state', async () => {
     serve({
       refreshStatus: { error: 'Provider refresh failed.' },
       refreshStatusCode: 500,
@@ -308,7 +323,8 @@ describe('ProviderSettings', () => {
     renderSettings()
 
     const codexCard = card('codex')
-    fireEvent.click(await within(codexCard).findByRole('button', { name: 'Check again' }))
+    await within(codexCard).findByText('Not connected')
+    fireEvent.click(within(codexCard).getByRole('button', { name: 'Check Codex' }))
     await waitFor(() =>
       expect(requests.some((request) => request.url === '/api/v1/providers/status?refresh=1')).toBe(true),
     )
@@ -326,7 +342,7 @@ describe('ProviderSettings', () => {
     renderSettings()
 
     const toggle = await screen.findByRole('switch', { name: 'Use Claude Code' })
-    await within(card('claude')).findByText('Credentials found')
+    await within(card('claude')).findByText('Installed')
     fireEvent.click(toggle)
     expect(await within(card('claude')).findByText('Disabled')).toBeTruthy()
     expect(requests).toContainEqual({
@@ -347,7 +363,7 @@ describe('ProviderSettings', () => {
     renderSettings()
 
     const toggle = await screen.findByRole('switch', { name: 'Use Claude Code' })
-    await within(card('claude')).findByText('Credentials found')
+    await within(card('claude')).findByText('Installed')
     fireEvent.click(toggle)
     await within(card('claude')).findByText('Disabled')
     fireEvent.click(toggle)
@@ -376,7 +392,7 @@ describe('ProviderSettings', () => {
     renderSettings()
 
     const toggle = await screen.findByRole('switch', { name: 'Use Claude Code' })
-    await within(card('claude')).findByText('Credentials found')
+    await within(card('claude')).findByText('Installed')
     fireEvent.click(toggle)
     await within(card('claude')).findByText('Disabled')
     fireEvent.click(toggle)
@@ -399,7 +415,7 @@ describe('ProviderSettings', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Use Codex' }))
 
     await act(() => claudeFailure.resolve(json({ error: 'Claude preference failed.' }, 500)))
-    await within(card('claude')).findByText('Credentials found')
+    await within(card('claude')).findByText('Installed')
     expect(await screen.findByText('Claude preference failed.')).toBeTruthy()
 
     await act(() => codexSuccess.resolve(json({
@@ -483,10 +499,10 @@ describe('ProviderSettings', () => {
     fireEvent.click(toggle)
     await within(card('claude')).findByText('Disabled')
     fireEvent.click(within(card('claude')).getByRole('button', { name: 'Try again' }))
-    await within(card('claude')).findByText('Credentials found')
+    await within(card('claude')).findByText('Installed')
 
     await act(() => failure.resolve(json({ error: 'Provider preference could not be saved.' }, 500)))
-    await within(card('claude')).findByText('Credentials found')
+    await within(card('claude')).findByText('Installed')
     expect(within(card('claude')).queryByText('Disabled')).toBeNull()
     expect(within(card('claude')).queryByRole('button', { name: 'Try again' })).toBeNull()
   })
@@ -497,7 +513,7 @@ describe('ProviderSettings', () => {
     const client = renderSettings()
 
     const toggle = await screen.findByRole('switch', { name: 'Use Claude Code' })
-    await within(card('claude')).findByText('Credentials found')
+    await within(card('claude')).findByText('Installed')
     fireEvent.click(toggle)
     await within(card('claude')).findByText('Disabled')
     act(() => {
@@ -552,7 +568,7 @@ describe('ProviderSettings', () => {
         body: { authFailureId: 'open-1' },
       }),
     )
-    expect(await within(card('opencode')).findByText('Credentials found')).toBeTruthy()
+    expect(await within(card('opencode')).findByText('Installed')).toBeTruthy()
     expect(within(card('opencode')).getByText('Disabled')).toBeTruthy()
   })
 

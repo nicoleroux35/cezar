@@ -511,7 +511,7 @@ export function useProviderStatus() {
       )
     },
     // One bootstrap per session cache. Runtime incidents arrive over the workspace stream and
-    // user-driven Connect/Check again/Try again actions update this same key immediately; a
+    // user-driven Connect/Check/Try again actions update this same key immediately; a
     // background interval only re-probes unchanged credentials and can repeatedly challenge a
     // reverse-proxy-authenticated mobile browser. A focus refresh is allowed once the answer is
     // five minutes old, covering credentials changed outside cezar without permanent polling.

@@ -3529,3 +3529,151 @@ describe("registry /skill expansion on a fresh run's opening prompt (#278)", () 
     expect(echoed?.text).toContain('/compact please');
   }, 40_000);
 });
+
+/**
+ * Cancel must stay terminal even when the engine holds no live job for the
+ * run. The UI offers Cancel off the RECORD's status (`runActionFlags`: active
+ * `running`/`queued`/`waiting`), so every shape below shows the button — and
+ * before this fix each of them answered `{cancelled: false}` with a 200 that
+ * changed nothing: the button died silently with the run stuck active
+ * forever. The live report was a paused queue-only task, whose job sits in
+ * `pendingJobs` only, never queued, never active.
+ */
+describe('cancel settles runs the engine holds no live job for', () => {
+  let repoRoot: string;
+  let store: RunStore;
+  let manager: RunManager;
+  const savedEnv: Record<string, string | undefined> = {};
+  const PAUSED_CHECK: WorkflowDef = {
+    name: 'paused-check',
+    source: 'built-in',
+    steps: [{ id: 'noop', command: 'node -e ""' }],
+  };
+
+  beforeEach(() => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'cez-cancel-orphan-'));
+    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
+    process.env.CEZ_DRY_RUN = '1';
+    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    manager = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 0 } }),
+    });
+  });
+
+  afterEach(() => {
+    manager.dispose(); // see DISPOSE at the top of this file
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    store.flush();
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it('cancelling a paused queue-only task settles the record even though it was never queued', () => {
+    const record = manager.startRun(PAUSED_CHECK, { task: 'paused job', queueOnly: true });
+    expect(store.getRun(record.id)?.status).toBe('queued');
+    expect(store.getRun(record.id)?.paused).toBe(true);
+
+    expect(manager.cancel(record.id)).toBe(true);
+
+    const settled = store.getRun(record.id);
+    expect(settled?.status).toBe('cancelled');
+    expect(settled?.paused).toBe(false);
+    expect(settled?.finishedAt).toBeDefined();
+    expect(manager.isActive(record.id)).toBe(false);
+  });
+
+  it('cancelling a running record the engine lost settles it instead of answering false', () => {
+    // A previous process (or a lost `starting` entry) can leave a `running`
+    // record no manager holds. Cancel must still be terminal.
+    const record = store.createRun({
+      title: 'orphaned',
+      workflow: 'quick-task',
+      task: 'lost by the engine',
+      steps: [{ id: 'task', name: 'Task', kind: 'agent' }],
+    });
+    store.updateStep(record.id, 'task', { status: 'running' });
+    store.updateRun(record.id, { status: 'running', currentStepId: 'task' });
+
+    expect(manager.cancel(record.id)).toBe(true);
+    expect(store.getRun(record.id)?.status).toBe('cancelled');
+    expect(
+      store
+        .readEvents(record.id)
+        .some(
+          (event) =>
+            event.type === 'lifecycle' &&
+            typeof event.message === 'string' &&
+            /cancel/i.test(event.message),
+        ),
+    ).toBe(true);
+    expect(manager.isActive(record.id)).toBe(false);
+  });
+
+  it('a spawn that left the queue before the cancel stands down instead of reviving the run', async () => {
+    // The other half of the race the orphan path closes: the record is
+    // settled first, and execute() must observe it rather than opening a
+    // session for a cancelled run.
+    const record = store.createRun({
+      title: 'cancelled mid-start',
+      workflow: 'paused-check',
+      task: 'never starts',
+      steps: [{ id: 'noop', name: 'Noop', kind: 'check' }],
+    });
+    store.updateRun(record.id, { status: 'queued' });
+    const internals = manager as unknown as {
+      starting: Set<string>;
+      execute(runId: string, workflow: WorkflowDef, input: { task: string }): Promise<void>;
+    };
+    internals.starting.add(record.id);
+
+    expect(manager.cancel(record.id)).toBe(true);
+    await internals.execute(record.id, PAUSED_CHECK, { task: 'never starts' });
+
+    expect(store.getRun(record.id)?.status).toBe('cancelled');
+    expect(manager.isActive(record.id)).toBe(false);
+    expect(internals.starting.has(record.id)).toBe(false);
+  });
+
+  it('a continuation for a settled record stands down without touching a session', async () => {
+    const record = store.createRun({
+      title: 'settled continuation',
+      workflow: 'quick-task',
+      task: 'do not resume',
+      steps: [{ id: 'task', name: 'Task', kind: 'agent' }],
+    });
+    store.updateStep(record.id, 'task', { status: 'running', sessionId: 'session-gone', backend: 'claude' });
+    store.updateRun(record.id, {
+      status: 'cancelled',
+      currentStepId: 'task',
+      finishedAt: new Date().toISOString(),
+    });
+    const internals = manager as unknown as {
+      runContinuation(
+        runId: string,
+        stepId: string,
+        sessionId: string | undefined,
+        backend: 'claude',
+        prompt: string,
+      ): Promise<void>;
+    };
+
+    await internals.runContinuation(record.id, 'task', 'session-gone', 'claude', 'do not resume');
+
+    expect(store.getRun(record.id)?.status).toBe('cancelled');
+    expect(manager.isActive(record.id)).toBe(false);
+  }, 30_000);
+
+  it('cancelling an already-settled or unknown run still answers false', () => {
+    const record = store.createRun({
+      title: 'done',
+      workflow: 'quick-task',
+      task: 'done',
+      steps: [{ id: 'task', name: 'Task', kind: 'agent' }],
+    });
+    store.updateRun(record.id, { status: 'done', finishedAt: new Date().toISOString() });
+    expect(manager.cancel(record.id)).toBe(false);
+    expect(manager.cancel('does-not-exist')).toBe(false);
+  });
+});

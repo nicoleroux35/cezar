@@ -102,7 +102,7 @@ function completeProviderRows(value: unknown): ProviderStatus[] | null {
   // Ordered by PROVIDER_ORDER, not RUNNER_ORDER: this is the list the cockpit reads back, and a
   // row it does not name (`http`) is still a row it must be able to find. Dropping them was the
   // bug this replaces — the server emits an http row, `providerStatusFor` is what the HTTP Agent's
-  // provider card reads to say "Credentials found", and the parse threw for the WHOLE response.
+  // provider card reads to say "Installed", and the parse threw for the WHOLE response.
   // It still cannot reach the runner pills: `usableRunners` filters back through RUNNER_ORDER.
   return PROVIDER_ORDER.flatMap((provider) => {
     const row = byProvider.get(provider)

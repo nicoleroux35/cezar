@@ -76,26 +76,6 @@ const CONNECTED_OUTPUT = {
   http: 'http authenticated',
 } satisfies Record<ProviderId, string>;
 
-const DISCONNECTED_OUTPUT = {
-  claude: '{"loggedIn":false}',
-  codex: 'Not logged in',
-  opencode: [
-    '┌  Credentials ~/.local/share/opencode/auth.json',
-    '└  0 credentials',
-  ].join('\n'),
-  cursor: JSON.stringify({
-    status: 'unauthenticated',
-    isAuthenticated: false,
-  }),
-  pi: 'No models available. Use /login to authenticate.',
-  junie: 'Junie version: 26.9.22 (3419.7)',
-  copilot: '{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Authentication required"}}',
-  kilo: 'kilo not authenticated',
-  gemini: 'gemini not authenticated',
-  antigravity: 'antigravity not authenticated',
-  http: 'http not authenticated',
-} satisfies Record<ProviderId, string>;
-
 const providerForExecutable = (executable: string): ProviderId => {
   if (executable === 'claude' || executable === 'codex' || executable === 'opencode' || executable === 'pi' || executable === 'junie' || executable === 'copilot') return executable;
   if (executable === 'agent') return 'cursor';
@@ -163,13 +143,16 @@ describe('workspace provider API', () => {
       if (state === 'not-installed') {
         return { stdout: 'secret output', stderr: 'secret error', exitCode: null, errorCode: 'ENOENT' };
       }
+      // The probe is an installation check: a spawn that throws is 'unknown', and anything that
+      // spawns is 'connected'. A probe-level 'disconnected' no longer exists — the runtime-auth
+      // latch is the only source of that state, so cases needing one raise it explicitly.
       if (state === 'unknown') {
-        return { stdout: 'secret output', stderr: 'secret error', exitCode: 17 };
+        throw new Error('secret fixture failure');
       }
       return {
-        stdout: state === 'connected' ? CONNECTED_OUTPUT[provider] : DISCONNECTED_OUTPUT[provider],
+        stdout: CONNECTED_OUTPUT[provider],
         stderr: '',
-        exitCode: state === 'connected' || provider === 'opencode' ? 0 : 1,
+        exitCode: 0,
       };
     }),
   });
@@ -217,7 +200,7 @@ describe('workspace provider API', () => {
   it('GET /api/v1/providers/status returns all provider rows with global enablement', async () => {
     const workspaceConfig = memoryWorkspaceConfig(['codex']);
     const response = await apiRequest(app({
-      providerAuth: service({ claude: 'connected', codex: 'disconnected', opencode: 'not-installed' }),
+      providerAuth: service({ claude: 'connected', codex: 'unknown', opencode: 'not-installed' }),
       workspaceConfig,
     }), '/api/v1/providers/status');
 
@@ -225,7 +208,12 @@ describe('workspace provider API', () => {
     expect(await response.json()).toEqual({
       providers: [
         { provider: 'claude', status: 'connected', enabled: true },
-        { provider: 'codex', status: 'disconnected', enabled: false },
+        {
+          provider: 'codex',
+          status: 'unknown',
+          hint: 'Authentication could not be verified. Try again.',
+          enabled: false,
+        },
         {
           provider: 'opencode',
           status: 'not-installed',
@@ -466,9 +454,9 @@ describe('workspace provider API', () => {
   });
 
   it('changes API truth immediately after a runtime auth rejection', async () => {
-    // A CLI that agrees the credentials are gone, so the latch's self-check confirms the rejection
-    // and this case stays about its own subject: the API tells the truth the moment one is raised.
-    const providerAuth = service({ claude: 'disconnected' }, undefined, () => 'auth-incident-1');
+    // The CLI is missing, so the latch's self-check cannot clear the rejection — and this case
+    // stays about its own subject: the API tells the truth the moment one is raised.
+    const providerAuth = service({ claude: 'not-installed' }, undefined, () => 'auth-incident-1');
     const bus = new WorkspaceEventBus();
     const seen: unknown[] = [];
     bus.on((event, data) => {
@@ -524,9 +512,9 @@ describe('workspace provider API', () => {
     const contexts = new ProjectContexts({
       listProjects: async () => [{ id: 'lazy', root: lazyRoot, status: 'not-git' }],
     });
-    // As above: the subject is that a lazily built project's store is observed at all, so the CLI
-    // must confirm the rejection rather than let the self-check clear it.
-    const providerAuth = service({ claude: 'disconnected' });
+    // As above: the subject is that a lazily built project's store is observed at all, so the
+    // missing CLI must keep the self-check from clearing the rejection.
+    const providerAuth = service({ claude: 'not-installed' });
     const recover = vi.spyOn(RunManager.prototype, 'recover').mockImplementationOnce(
       async function recoveryFailure(this: RunManager) {
         const recoveringStore = (
@@ -650,9 +638,13 @@ describe('workspace provider API', () => {
   });
 
   it('POST opens the fixed login command for a disconnected provider', async () => {
+    // A probe-level 'disconnected' no longer exists — the runtime latch is the only source of
+    // that state, so the disconnected row under test is a latched one.
+    const providerAuth = service();
+    providerAuth.reportRuntimeAuthFailure('codex');
     const openTerminal = vi.fn(async () => true);
     const response = await connect(app({
-      providerAuth: service({ codex: 'disconnected' }),
+      providerAuth,
       openTerminal,
     }), 'codex');
 
@@ -749,9 +741,11 @@ describe('workspace provider API', () => {
   });
 
   it('POST returns 409 plus command when localHandoff is false', async () => {
+    const providerAuth = service();
+    providerAuth.reportRuntimeAuthFailure('codex');
     const openTerminal = vi.fn(async () => true);
     const response = await connect(app({
-      providerAuth: service({ codex: 'disconnected' }),
+      providerAuth,
       openTerminal,
       bindHost: '0.0.0.0',
     }), 'codex');
@@ -765,9 +759,11 @@ describe('workspace provider API', () => {
   });
 
   it('POST returns 409 plus command when the terminal launcher returns false', async () => {
+    const providerAuth = service();
+    providerAuth.reportRuntimeAuthFailure('codex');
     const openTerminal = vi.fn(async () => false);
     const response = await connect(app({
-      providerAuth: service({ codex: 'disconnected' }),
+      providerAuth,
       openTerminal,
     }), 'codex');
 
@@ -780,11 +776,13 @@ describe('workspace provider API', () => {
   });
 
   it('POST returns the manual command when the terminal launcher rejects', async () => {
+    const providerAuth = service();
+    providerAuth.reportRuntimeAuthFailure('codex');
     const openTerminal = vi.fn(async () => {
       throw new Error('private launcher failure');
     });
     const response = await connect(app({
-      providerAuth: service({ codex: 'disconnected' }),
+      providerAuth,
       openTerminal,
     }), 'codex');
 

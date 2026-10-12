@@ -69,14 +69,13 @@ const providerForExecutable = (executable: string): ProviderId => {
   throw new Error(`unexpected executable: ${executable}`);
 };
 
-/** A service whose Claude CLI agrees the credentials are gone, so the latch's self-check confirms
- *  the rejection instead of clearing it. */
-function loggedOutClaudeProviderAuth(): ProviderAuthService {
+/** A service whose Claude CLI is missing, so the latch's self-check cannot clear the rejection. */
+function missingClaudeProviderAuth(): ProviderAuthService {
   return new ProviderAuthService({
     platform: 'linux',
     runCommand: vi.fn<RunProviderCommand>(async (executable) => (
       executable === 'claude'
-        ? { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 }
+        ? { stdout: '', stderr: '', exitCode: null, errorCode: 'ENOENT' }
         : { stdout: CONNECTED_OUTPUT[providerForExecutable(executable)], stderr: '', exitCode: 0 }
     )),
     createAuthFailureId: () => 'auth-incident-1',
@@ -343,8 +342,8 @@ describe('watchProviderRuntimeAuthFailures', () => {
       });
     });
 
-    it('leaves the latch standing when the CLI confirms the logout', async () => {
-      providerAuth = loggedOutClaudeProviderAuth();
+    it('leaves the latch standing when the CLI is missing', async () => {
+      providerAuth = missingClaudeProviderAuth();
       const onProviderStatus = watch();
       const verifying = vi.spyOn(providerAuth, 'verifyRuntimeAuthFailure');
 
@@ -439,9 +438,9 @@ describe('watchProviderRuntimeAuthFailures', () => {
       runner: 'claude',
       steps: [],
     });
-    // A CLI that agrees the credentials are gone, so the self-check leaves the latch standing and
+    // A missing Claude CLI, so the self-check leaves the latch standing and
     // this case stays about its own subject: observation is attached BEFORE recovery runs.
-    providerAuth = loggedOutClaudeProviderAuth();
+    providerAuth = missingClaudeProviderAuth();
     const observer = new ProviderRuntimeAuthObserver(providerAuth, vi.fn());
 
     await recoverWithProviderRuntimeAuthObservation(

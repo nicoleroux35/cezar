@@ -22,7 +22,7 @@ cezar/
 │   │
 │   └── cezar/
 │       ├── workflows/
-│       │   └── security-audit-example.yaml      ✨ NOUVEAU
+│       │   └── security-audit-with-remediation.yaml      ✨ NOUVEAU
 │       │
 │       └── skills/
 │           ├── security-scan.md                 ✨ NOUVEAU
@@ -156,7 +156,7 @@ cezar/
 
 ### Exemples (6 fichiers)
 
-#### 12. `.ai/cezar/workflows/security-audit-example.yaml` ✨
+#### 12. `.ai/cezar/workflows/security-audit-with-remediation.yaml` ✨
 - **Type:** Workflow complet
 - **Contenu:**
   - 10 étapes
@@ -217,7 +217,7 @@ cezar/
 
 ### Pour les utilisateurs
 1. **Commencer par:** `WORKFLOW_ENHANCEMENTS_GUIDE.md`
-2. **Voir un exemple:** `.ai/cezar/workflows/security-audit-example.yaml`
+2. **Voir un exemple:** `.ai/cezar/workflows/security-audit-with-remediation.yaml`
 3. **Référence technique:** `.ai/specs/2026-10-07-workflow-enhancements.md`
 
 ### Pour la review

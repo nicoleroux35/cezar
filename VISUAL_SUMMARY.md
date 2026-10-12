@@ -138,7 +138,7 @@
 │   • CHANGELOG_*.md (changelog)                                  │
 │                                                                 │
 │   Examples:                                                     │
-│   • security-audit-example.yaml (workflow)                      │
+│   • security-audit-with-remediation.yaml (workflow)                      │
 │   • full-review.md (composed skill)                             │
 │   • security-scan.md (parameterized skill)                      │
 │   • + 3 more base skills                                        │
@@ -202,4 +202,4 @@
 - 🔧 [Implementation Summary](IMPLEMENTATION_SUMMARY_WORKFLOW_ENHANCEMENTS.md)
 - 🇫🇷 [Résumé Français](RECAPITULATIF_FINAL_WORKFLOWS.md)
 - 📝 [Changelog](CHANGELOG_WORKFLOW_ENHANCEMENTS.md)
-- 💡 [Example Workflow](.ai/cezar/workflows/security-audit-example.yaml)
+- 💡 [Example Workflow](.ai/cezar/workflows/security-audit-with-remediation.yaml)

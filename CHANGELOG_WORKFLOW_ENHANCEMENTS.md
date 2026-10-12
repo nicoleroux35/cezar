@@ -86,7 +86,7 @@
 - `packages/cezar/src/workflows/execution-context.test.ts` — Unit tests (27 tests, all passing)
 - `.ai/specs/2026-10-07-workflow-enhancements.md` — Feature specification
 - `WORKFLOW_ENHANCEMENTS_GUIDE.md` — User guide with examples
-- `.ai/cezar/workflows/security-audit-example.yaml` — Complete example workflow
+- `.ai/cezar/workflows/security-audit-with-remediation.yaml` — Complete example workflow
 - `.ai/cezar/skills/full-review.md` — Example composed skill
 
 #### Modified Files

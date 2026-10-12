@@ -124,7 +124,7 @@ Toutes les vérifications doivent passer.
 
 ### Exemples
 
-6. **`.ai/cezar/workflows/security-audit-example.yaml`**
+6. **`.ai/cezar/workflows/security-audit-with-remediation.yaml`**
    - Workflow complet de 10 étapes
    - Utilise les 4 fonctionnalités
    - Pipeline de sécurité réaliste

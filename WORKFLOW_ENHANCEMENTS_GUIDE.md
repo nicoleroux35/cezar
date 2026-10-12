@@ -418,5 +418,5 @@ steps:
 ## See Also
 
 - [Full specification](.ai/specs/2026-10-07-workflow-enhancements.md)
-- [Example workflows](.ai/cezar/workflows/security-audit-example.yaml)
+- [Example workflows](.ai/cezar/workflows/security-audit-with-remediation.yaml)
 - [Example skills](.ai/cezar/skills/)

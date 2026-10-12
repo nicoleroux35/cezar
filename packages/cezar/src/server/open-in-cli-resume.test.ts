@@ -49,7 +49,9 @@ const providerAuth = (disconnected: ProviderId[] = []) => new ProviderAuthServic
         : executable === 'opencode'
           ? 'opencode'
           : 'pi';
-    if (disconnected.includes(provider)) return { stdout: '', stderr: '', exitCode: 1 };
+    // A probe-level 'disconnected' no longer exists — the probe is an installation check — so
+    // the unavailable rows these cases need are missing binaries.
+    if (disconnected.includes(provider)) return { stdout: '', stderr: '', exitCode: null, errorCode: 'ENOENT' };
     if (provider === 'claude') return { stdout: '{"loggedIn":true}', stderr: '', exitCode: 0 };
     if (provider === 'codex') return { stdout: 'Logged in using ChatGPT', stderr: '', exitCode: 0 };
     if (provider === 'opencode') {

@@ -46,7 +46,7 @@ const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
 })
 
 const STATUS_PRESENTATION = {
-  connected: { label: 'Credentials found', tone: 'success' },
+  connected: { label: 'Installed', tone: 'success' },
   disconnected: { label: 'Not connected', tone: 'pending' },
   'not-installed': { label: 'Not installed', tone: 'neutral' },
   unknown: { label: 'Could not verify', tone: 'danger' },
@@ -230,7 +230,7 @@ export function ProviderSettings() {
               ? { label: 'Checking…', tone: 'neutral' as const }
               : STATUS_PRESENTATION.unknown
           const isConnecting = connect.isPending && connect.variables === provider.id
-          const canRefresh = state === 'disconnected' || state === 'unknown'
+          const isChecking = refresh.isPending
           const incidentId = current?.authFailureId
 
           return (
@@ -269,19 +269,20 @@ export function ProviderSettings() {
                         onCheckedChange={(enabled) => queueToggle(provider.id, enabled)}
                       />
                     ) : null}
-                    {canRefresh ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={refresh.isPending}
-                        onClick={() => refresh.mutate(undefined, {
-                          onError: (error) => toast(error.message, { tone: 'danger' }),
-                        })}
-                      >
-                        Check again
-                      </Button>
-                    ) : null}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-action="provider-check"
+                      aria-label={`Check ${provider.label}`}
+                      title={`Verify ${provider.label} installation and authentication`}
+                      disabled={refresh.isPending || status.isPending}
+                      onClick={() => refresh.mutate(undefined, {
+                        onError: (error) => toast(error.message, { tone: 'danger' }),
+                      })}
+                    >
+                      {isChecking ? 'Checking…' : 'Check'}
+                    </Button>
                     {state === 'disconnected' ? (
                       <Button
                         type="button"

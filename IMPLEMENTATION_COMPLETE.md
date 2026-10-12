@@ -36,7 +36,7 @@ Successfully implemented 4 high-impact enhancements to cezar's workflow system:
 8. `IMPLEMENTATION_COMPLETE.md` — This file
 
 ### Examples
-9. `.ai/cezar/workflows/security-audit-example.yaml` — Complete workflow
+9. `.ai/cezar/workflows/security-audit-with-remediation.yaml` — Complete workflow
 10. `.ai/cezar/skills/full-review.md` — Composed skill
 11. `.ai/cezar/skills/security-scan.md` — Parameterized skill
 

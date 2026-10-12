@@ -859,11 +859,14 @@ describe('agent profiles API', () => {
    * the CLI creates the folder", and the branch the cockpit now calls.
    */
   describe('connect, aimed at one account', () => {
-    it('re-probes rather than answering "already connected" from a warm cache', async () => {
+    it('re-probes rather than answering from a warm cache', async () => {
       // The trap: `profileStatus` serves the per-account cache, and a CONNECTED answer stands for
       // ten minutes. Without an eviction, Connect after a `claude /logout` opens nothing and says
       // "already connected" — and contradicts this module's own claim that opening a login is an
       // explicit invalidation point rather than something that waits out a window.
+      //
+      // The probe is an installation check, so the fresh answer is still 'connected' (the binary
+      // spawns); what this pins is that the answer came from a NEW spawn, not the warmed cache.
       delete process.env.CEZ_DRY_RUN;
       let loggedIn = true;
       let spawns = 0;
@@ -896,8 +899,9 @@ describe('agent profiles API', () => {
         body: JSON.stringify({ provider: 'claude', profileId: created.profile.id }),
       });
       expect(res.status).toBe(200);
-      // Opened a terminal for the logout it actually found — not "already connected".
-      expect(await res.json()).toMatchObject({ opened: true });
+      // An installed CLI reports connected even after the terminal logout — but from a FRESH
+      // probe, not the warmed cache: the spawn count is the assertion that matters here.
+      expect(await res.json()).toMatchObject({ opened: false, connected: true });
       expect(spawns).toBeGreaterThan(warmed);
     });
 

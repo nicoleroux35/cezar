@@ -218,423 +218,67 @@ describe('runtime provider authentication failures', () => {
   });
 });
 
-describe('provider auth parsers', () => {
-  it('accepts only Claude JSON with loggedIn true as connected', async () => {
+describe('provider installation probe', () => {
+  // The probe is an INSTALLATION check, not an authentication check: any CLI that spawns
+  // counts as connected, whatever its exit code or output says about the vendor login.
+  // External credential managers (cc-switch and the like) configure endpoints the vendor's
+  // own status command cannot see, so trusting its answer blocked working setups. Only a
+  // missing binary (ENOENT) is not-installed; only a spawn that throws is unknown.
+  it('reports connected for logged-out, failing and unrecognized CLI output alike', async () => {
     const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'claude'
-        ? { stdout: '{"loggedIn":true}', stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
+      runCommand: runner((executable) => {
+        if (executable === 'claude') return { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 };
+        if (executable.includes('codex')) return { stdout: 'Not logged in', stderr: '', exitCode: 1 };
+        if (executable.includes('opencode')) {
+          return { stdout: 'No authenticated integrations', stderr: '', exitCode: 0 };
+        }
+        if (executable === 'agent') {
+          return { stdout: JSON.stringify({ isAuthenticated: false }), stderr: '', exitCode: 0 };
+        }
+        if (executable === 'pi') {
+          return { stdout: 'No models available. Use /login to authenticate.', stderr: '', exitCode: 0 };
+        }
+        if (executable.includes('copilot')) {
+          return { stdout: '{"error":"Authentication required"}', stderr: '', exitCode: 0 };
+        }
+        return { stdout: 'Models may be available', stderr: 'private detail', exitCode: 3 };
+      }),
     });
 
-    await expect(statuses(service)).resolves.toMatchObject({ claude: { status: 'connected' } });
+    const rows = await statuses(service);
+    for (const provider of ['claude', 'codex', 'opencode', 'cursor', 'pi', 'copilot', 'kilo', 'gemini', 'antigravity']) {
+      expect(rows[provider]).toMatchObject({ status: 'connected' });
+    }
   });
 
-  it('maps Claude loggedIn false, including exit 1 JSON, to disconnected', async () => {
+  it('reports connected when the CLI errors or hangs — the binary still proved it is installed', async () => {
     const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'claude'
-        ? { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
+      runCommand: runner((executable) => {
+        if (executable === 'claude') {
+          return { stdout: '', stderr: 'denied', exitCode: null, errorCode: 'EACCES' };
+        }
+        if (executable.includes('codex')) {
+          return { stdout: '', stderr: '', exitCode: null, errorCode: 'ETIMEDOUT', timedOut: true };
+        }
+        return resultFor(executable);
+      }),
     });
 
-    await expect(statuses(service)).resolves.toMatchObject({ claude: { status: 'disconnected' } });
+    await expect(statuses(service)).resolves.toMatchObject({
+      claude: { status: 'connected' },
+      codex: { status: 'connected' },
+    });
   });
 
-  it.each([
-    ['loggedIn true on exit 7', '{"loggedIn":true}', 7],
-    ['loggedIn false on exit 0', '{"loggedIn":false}', 0],
-  ])('treats Claude %s as unknown', async (_case, stdout, exitCode) => {
+  it('reports unknown only when the spawn itself throws', async () => {
     const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'claude'
-        ? { stdout, stderr: '', exitCode }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
+      runCommand: runner((executable) => {
+        if (executable === 'claude') throw new Error('spawn failure');
+        return resultFor(executable);
+      }),
     });
 
     await expect(statuses(service)).resolves.toMatchObject({ claude: { status: 'unknown' } });
-  });
-
-  it('treats malformed Claude JSON as unknown', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'claude'
-        ? { stdout: '{not json', stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ claude: { status: 'unknown' } });
-  });
-
-  it.each([
-    'Logged in using ChatGPT',
-    'Logged in using an API key',
-    'Logged in using Agent Identity',
-  ])('recognizes Codex connected output: %s', async (stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable.includes('codex')
-        ? { stdout: `\u001B[32m${stdout}\u001B[0m`, stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'connected' } });
-  });
-
-  it.each([
-    'Logged in using ChatGPT',
-    'Logged in using an API key - sk-proj-***ABCDE',
-    'Logged in using access token',
-    'Logged in using personal access token',
-    'Logged in using Amazon Bedrock API key',
-  ])('recognizes current Codex stderr output: %s', async (statusLine) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable.includes('codex')
-        ? {
-          stdout: '',
-          stderr: [
-            'WARNING: experimental feature enabled',
-            `\u001B[32m${statusLine}\u001B[0m`,
-          ].join('\n'),
-          exitCode: 0,
-        }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'connected' } });
-  });
-
-  it('recognizes current Codex not-logged-in stderr on exit 1', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable.includes('codex')
-        ? {
-          stdout: '',
-          stderr: ['WARNING: config migration available', 'Not logged in'].join('\n'),
-          exitCode: 1,
-        }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'disconnected' } });
-  });
-
-  it.each([
-    {
-      case: 'duplicate answers',
-      stdout: 'Logged in using ChatGPT',
-      stderr: 'Logged in using ChatGPT',
-    },
-    {
-      case: 'conflicting answers',
-      stdout: 'Logged in using ChatGPT',
-      stderr: 'Not logged in',
-    },
-  ])('treats Codex $case across output channels as unknown', async ({ stdout, stderr }) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable.includes('codex')
-        ? { stdout, stderr, exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'unknown' } });
-  });
-
-  it('never returns the masked Codex API-key identifier', async () => {
-    const masked = 'sk-proj-***ABCDE';
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable.includes('codex')
-        ? { stdout: '', stderr: `Logged in using an API key - ${masked}`, exitCode: 0 }
-        : resultFor(executable)),
-    });
-
-    const response = await service.status();
-    expect(response.providers.find(({ provider }) => provider === 'codex')).toEqual({
-      provider: 'codex',
-      status: 'connected',
-    });
-    expect(JSON.stringify(response)).not.toContain(masked);
-  });
-
-  it('does not accept known Codex connected output on an unexpected nonzero exit', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable.includes('codex')
-        ? { stdout: 'Logged in using ChatGPT', stderr: '', exitCode: 7 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'unknown' } });
-  });
-
-  it.each([
-    'Not logged in',
-    'Run codex login to authenticate',
-  ])('recognizes Codex disconnected output: %s', async (stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable.includes('codex')
-        ? { stdout, stderr: '', exitCode: 1 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'disconnected' } });
-  });
-
-  it('does not accept known Codex disconnected output on exit 0', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable.includes('codex')
-        ? { stdout: 'Not logged in', stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'unknown' } });
-  });
-
-  it('does not guess from unrecognized Codex output', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable.includes('codex')
-        ? { stdout: 'Codex status: account maybe ready', stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'unknown' } });
-  });
-
-  it.each([
-    [
-      'one ANSI-styled credential',
-      [
-        '\u001B[90m┌  Credentials ~/.local/share/opencode/auth.json\u001B[0m',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[36m●\u001B[0m  Acme Enterprise \u001B[2moauth\u001B[0m',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[90m└\u001B[0m  1 credential',
-      ].join('\n'),
-    ],
-    [
-      'multiple arbitrary credential rows',
-      [
-        '┌  Credentials /srv/opencode/auth.json',
-        '│',
-        '●  Acme Enterprise oauth',
-        '●  local-provider api',
-        '●  Custom Gateway wellknown',
-        '●  Another Provider api',
-        '│',
-        '└  4 credentials',
-      ].join('\n'),
-    ],
-  ])('recognizes OpenCode %s as connected', async (_case, stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout, stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'connected' } });
-  });
-
-  it('recognizes an OpenCode decorated zero-credential list as disconnected', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? {
-          stdout: [
-            '┌  Credentials ~/.local/share/opencode/auth.json',
-            '│',
-            '└  0 credentials',
-          ].join('\n'),
-          stderr: '',
-          exitCode: 0,
-        }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'disconnected' } });
-  });
-
-  it.each([
-    'OpenCode Go  OpenCode Go                 stored',
-    [
-      '\u001B[36mOpenCode Go\u001B[0m  OpenCode Go                 stored',
-      'Anthropic  Claude                 stored',
-    ].join('\n'),
-  ])('recognizes OpenCode 2.x stored credential rows: %s', async (stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout, stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'connected' } });
-  });
-
-  it('recognizes an OpenCode 2.x successful empty list as disconnected', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout: '', stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'disconnected' } });
-  });
-
-  it('does not guess from a malformed OpenCode 2.x credential row', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout: 'OpenCode Go stored maybe', stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'unknown' } });
-  });
-
-  it.each([
-    [
-      'one environment variable',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '│',
-        '└  0 credentials',
-        '',
-        '┌  Environment',
-        '│',
-        '●  Anthropic ANTHROPIC_API_KEY',
-        '│',
-        '└  1 environment variable',
-      ].join('\n'),
-    ],
-    [
-      'multiple environment variables',
-      [
-        '\u001B[90m┌  Credentials /srv/opencode/auth.json\u001B[0m',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[90m└\u001B[0m  0 credentials',
-        '',
-        '\u001B[90m┌  Environment\u001B[0m',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[36m●\u001B[0m  Acme ACME_API_KEY',
-        '\u001B[36m●\u001B[0m  Custom Gateway CUSTOM_TOKEN',
-        '\u001B[90m│\u001B[0m',
-        '\u001B[90m└\u001B[0m  2 environment variables',
-      ].join('\n'),
-    ],
-  ])('recognizes OpenCode zero stored credentials plus %s as connected', async (_case, stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout, stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'connected' } });
-  });
-
-  it.each([
-    [
-      'a missing stored-credential summary',
-      [
-        '┌  Environment',
-        '●  Acme ACME_API_KEY',
-        '└  1 environment variable',
-      ].join('\n'),
-    ],
-    [
-      'duplicate stored-credential summaries',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '└  1 credential',
-      ].join('\n'),
-    ],
-    [
-      'conflicting environment summaries',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '┌  Environment',
-        '└  1 environment variable',
-        '└  2 environment variables',
-      ].join('\n'),
-    ],
-    [
-      'a malformed environment summary',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '┌  Environment',
-        '└  environment variables: many',
-      ].join('\n'),
-    ],
-    [
-      'an environment summary without its block',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '└  1 environment variable',
-      ].join('\n'),
-    ],
-    [
-      'an unsafe environment count',
-      [
-        '┌  Credentials ~/.local/share/opencode/auth.json',
-        '└  0 credentials',
-        '┌  Environment',
-        '└  9007199254740992 environment variables',
-      ].join('\n'),
-    ],
-  ])('treats OpenCode output with %s as unknown', async (_case, stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout, stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'unknown' } });
-  });
-
-  it('does not accept an OpenCode credential summary on an unexpected nonzero exit', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { ...connectedResults.opencode!, exitCode: 7 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'unknown' } });
-  });
-
-  it.each([
-    'New auth output format v99',
-    ['┌  Credentials ~/.local/share/opencode/auth.json', '└  credentials: many'].join('\n'),
-  ])('does not guess from OpenCode output without a valid count summary', async (stdout) => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
-        ? { stdout, stderr: 'error', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'unknown' } });
-  });
-
-  it('recognizes Cursor isAuthenticated: true as connected', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => (executable === 'agent' || executable.includes('cursor'))
-        ? { stdout: JSON.stringify({ isAuthenticated: true }), stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ cursor: { status: 'connected' } });
-  });
-
-  it('recognizes Cursor isAuthenticated: false with no CURSOR_API_KEY as disconnected', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => (executable === 'agent' || executable.includes('cursor'))
-        ? { stdout: JSON.stringify({ isAuthenticated: false }), stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ cursor: { status: 'disconnected' } });
-  });
-
-  it('treats malformed Cursor JSON with no CURSOR_API_KEY as unknown', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => (executable === 'agent' || executable.includes('cursor'))
-        ? { stdout: 'not json', stderr: '', exitCode: 0 }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ cursor: { status: 'unknown' } });
   });
 
   describe('Cursor CURSOR_API_KEY precheck', () => {
@@ -647,12 +291,10 @@ describe('provider auth parsers', () => {
       expect(runCommand).not.toHaveBeenCalledWith('agent', expect.anything(), expect.anything());
     });
 
-    // The bug this pins (#patzick): `agent status` hanging until the probe timeout used to report
-    // 'unknown' regardless of a valid CURSOR_API_KEY, because probe()'s timedOut branch returned
-    // before parseCursorStatus's own (now-removed) fallback ever ran. The precheck answers before
-    // the process is even spawned, so a hang can no longer reach this outcome at all. Only the
-    // cursor executable is made to hang here — the other four providers resolve normally, so a
-    // regression that makes cursor wait on the real probe fails this test instead of hanging it.
+    // The precheck answers before the process is even spawned, so a hanging `agent status`
+    // can no longer hide a valid CURSOR_API_KEY. Only the cursor executable hangs here — the
+    // other providers resolve normally, so a regression that makes cursor wait on the real
+    // probe fails this test instead of hanging it.
     it('is unaffected by `agent status` hanging past the probe timeout', async () => {
       process.env.CURSOR_API_KEY = 'sk-test-key';
       const runCommand = vi.fn<RunProviderCommand>(async (executable) =>
@@ -663,7 +305,7 @@ describe('provider auth parsers', () => {
       expect(runCommand).not.toHaveBeenCalledWith('agent', expect.anything(), expect.anything());
     });
 
-    it('ignores a whitespace-only CURSOR_API_KEY and falls back to the real probe', async () => {
+    it('ignores a whitespace-only CURSOR_API_KEY and falls back to the installation probe', async () => {
       process.env.CURSOR_API_KEY = '   ';
       const service = new ProviderAuthService({
         runCommand: runner((executable) => (executable === 'agent' || executable.includes('cursor'))
@@ -671,42 +313,18 @@ describe('provider auth parsers', () => {
           : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
       });
 
-      await expect(statuses(service)).resolves.toMatchObject({ cursor: { status: 'disconnected' } });
+      await expect(statuses(service)).resolves.toMatchObject({ cursor: { status: 'connected' } });
     });
   });
 
-  it('recognizes pi model availability as connected without reading credential files', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'pi'
-        ? connectedResults.pi!
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ pi: { status: 'connected' } });
-  });
-
-  it('recognizes pi explicit no-models login guidance as disconnected', async () => {
-    const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'pi'
-        ? {
-          stdout: 'No models available. Use /login to authenticate.',
-          stderr: '',
-          exitCode: 0,
-        }
-        : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
-    });
-
-    await expect(statuses(service)).resolves.toMatchObject({ pi: { status: 'disconnected' } });
-  });
-
-  it('does not guess from unrecognized pi model output', async () => {
+  it('reports pi connected for any model-list output, without reading credential files', async () => {
     const service = new ProviderAuthService({
       runCommand: runner((executable) => executable === 'pi'
         ? { stdout: 'Models may be available', stderr: 'private detail', exitCode: 0 }
         : { stdout: 'unrecognized', stderr: '', exitCode: 0 }),
     });
 
-    await expect(statuses(service)).resolves.toMatchObject({ pi: { status: 'unknown' } });
+    await expect(statuses(service)).resolves.toMatchObject({ pi: { status: 'connected' } });
   });
 });
 
@@ -769,7 +387,7 @@ describe('ProviderAuthService', () => {
     await expect(statuses(service)).resolves.toMatchObject({ codex: { status: 'not-installed' } });
   });
 
-  it.each(['ETIMEDOUT', 'EACCES'])('maps %s to unknown without exposing raw output', async (errorCode) => {
+  it.each(['ETIMEDOUT', 'EACCES'])('maps %s to connected without exposing raw output', async (errorCode) => {
     const secret = 'provider-auth-sentinel-secret';
     const service = new ProviderAuthService({
       runCommand: runner((executable) => executable === 'codex'
@@ -785,8 +403,10 @@ describe('ProviderAuthService', () => {
 
     const response = await service.status();
     const codex = response.providers.find(({ provider }) => provider === 'codex');
-    expect(codex).toMatchObject({ provider: 'codex', status: 'unknown' });
-    expect(codex?.hint).not.toContain(secret);
+    // The binary spawned, so it is installed — and installed counts as connected. The raw
+    // output still never reaches the client.
+    expect(codex).toMatchObject({ provider: 'codex', status: 'connected' });
+    expect(codex?.hint).toBeUndefined();
     expect(JSON.stringify(response)).not.toContain(secret);
   });
 
@@ -814,15 +434,15 @@ describe('ProviderAuthService', () => {
       expect(runCommand).toHaveBeenCalledTimes(PROBE_ROUND * 2);
     });
 
-    it('re-checks a NOT-connected answer sooner, so a terminal login is noticed on its own', async () => {
-      // cezar cannot see `claude auth login` happen, so a card that says disconnected has to find
+    it('re-checks a NOT-connected answer sooner, so a missing binary is noticed on its own', async () => {
+      // cezar cannot see a CLI being installed, so a card that says not-installed has to find
       // out for itself. A minute, not seconds: every expiry costs a background probe now that
       // reading revalidates behind the answer, and a polling cockpit would turn a five-second
       // window into a spawn every five seconds forever.
       let now = 1_000;
       const runCommand = runner((executable) =>
         executable === 'claude'
-          ? { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 }
+          ? { stdout: '', stderr: '', exitCode: null, errorCode: 'ENOENT' }
           : resultFor(executable));
       const service = new ProviderAuthService({ runCommand, now: () => now });
 
@@ -981,29 +601,37 @@ describe('ProviderAuthService', () => {
       await expect(statuses(service)).resolves.toMatchObject({ claude: { status: 'connected' } });
     });
 
-    it('keeps the incident when the CLI confirms the credentials are gone', async () => {
+    it('clears the incident when the CLI spawns, even with a logged-out answer', async () => {
+      // Installation is the only thing the probe checks: a binary that runs counts as healthy
+      // enough to retry, so the vendor's own "not logged in" no longer keeps the latch.
       const service = new ProviderAuthService({
         runCommand: runner((executable) => (executable === 'claude' ? loggedOutClaude : resultFor(executable))),
         createAuthFailureId: () => 'incident-1',
       });
       service.reportRuntimeAuthFailure('claude');
 
-      await expect(service.verifyRuntimeAuthFailure('claude')).resolves.toBeNull();
+      await expect(service.verifyRuntimeAuthFailure('claude'))
+        .resolves.toEqual({ provider: 'claude', status: 'connected' });
       await expect(service.status()).resolves.toMatchObject({
         providers: expect.arrayContaining([
-          expect.objectContaining({ provider: 'claude', status: 'disconnected', authFailureId: 'incident-1' }),
+          expect.objectContaining({ provider: 'claude', status: 'connected' }),
         ]),
       });
     });
 
-    it.each(['unknown', 'not-installed'] as const)(
+    it.each(['not-installed', 'thrown'] as const)(
       'treats an inconclusive probe (%s) as no evidence of health',
       async (kind) => {
-        const claudeResult: ProviderCommandResult = kind === 'not-installed'
-          ? { stdout: '', stderr: '', exitCode: null, errorCode: 'ENOENT' }
-          : { stdout: 'not json at all', stderr: '', exitCode: 0 };
+        const runCommand = kind === 'not-installed'
+          ? runner((executable) => (executable === 'claude'
+            ? { stdout: '', stderr: '', exitCode: null, errorCode: 'ENOENT' }
+            : resultFor(executable)))
+          : runner((executable) => {
+            if (executable === 'claude') throw new Error('spawn failure');
+            return resultFor(executable);
+          });
         const service = new ProviderAuthService({
-          runCommand: runner((executable) => (executable === 'claude' ? claudeResult : resultFor(executable))),
+          runCommand,
           createAuthFailureId: () => 'incident-1',
         });
         service.reportRuntimeAuthFailure('claude');
@@ -1088,9 +716,10 @@ describe('ProviderAuthService', () => {
     });
 
     it('folds the verified row into the cache instead of uncovering an older answer', async () => {
-      // What the cockpit last heard about Claude, then what the CLI says when the latch is checked.
+      // What the cockpit last heard about Claude (binary missing), then what the reinstall
+      // looks like when the latch is checked.
       const claudeAnswers: ProviderCommandResult[] = [
-        { stdout: 'not json at all', stderr: '', exitCode: 0 },
+        { stdout: '', stderr: '', exitCode: null, errorCode: 'ENOENT' },
         { stdout: '{"loggedIn":true}', stderr: '', exitCode: 0 },
       ];
       const service = new ProviderAuthService({
@@ -1103,13 +732,13 @@ describe('ProviderAuthService', () => {
         createAuthFailureId: () => 'incident-1',
       });
 
-      await expect(statuses(service)).resolves.toMatchObject({ claude: { status: 'unknown' } });
+      await expect(statuses(service)).resolves.toMatchObject({ claude: { status: 'not-installed' } });
       service.reportRuntimeAuthFailure('claude');
       await expect(service.verifyRuntimeAuthFailure('claude'))
         .resolves.toEqual({ provider: 'claude', status: 'connected' });
 
       // peekStatus never spawns, so this is the cache itself: dropping the latch must not put the
-      // stale `unknown` back on screen in place of the answer the self-check just got.
+      // stale `not-installed` back on screen in place of the answer the self-check just got.
       expect(service.peekStatus()).toMatchObject({
         providers: expect.arrayContaining([
           expect.objectContaining({ provider: 'claude', status: 'connected' }),
@@ -1417,16 +1046,15 @@ describe('ProviderAuthService', () => {
       let calls = 0;
       const runCommand: RunProviderCommand = vi.fn(async (executable, args, _timeout, env) => {
         calls += 1;
-        // The work account is signed out; the personal one is not.
-        return env?.CLAUDE_CONFIG_DIR === '/work'
-          ? { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 }
-          : connectedResults.claude!;
+        // The work account's CLI cannot spawn; the personal one can.
+        if (env?.CLAUDE_CONFIG_DIR === '/work') throw new Error('spawn failure');
+        return resultFor(executable);
       });
       const service = new ProviderAuthService({ runCommand });
 
       const work = await service.profileStatus('claude', { id: 'work', configDir: '/work' });
       const client = await service.profileStatus('claude', { id: 'client', configDir: '/client' });
-      expect(work.status).toBe('disconnected');
+      expect(work.status).toBe('unknown');
       expect(client.status).toBe('connected');
       expect(calls).toBe(2);
 
@@ -1434,7 +1062,7 @@ describe('ProviderAuthService', () => {
       // (`cacheTtlFor`) — not a flat 5s window; that spelling is what this file's own
       // "cache lifetime is asymmetric on purpose" block replaced.
       expect((await service.profileStatus('claude', { id: 'work', configDir: '/work' })).status)
-        .toBe('disconnected');
+        .toBe('unknown');
       expect(calls).toBe(2);
 
       service.forgetProfileStatus();
@@ -1598,7 +1226,7 @@ describe('ProviderAuthService', () => {
       const { providers } = await service.status();
       const pi = providers.find((p) => p.provider === 'pi');
       expect(pi?.status).toBe('connected');
-      expect(runCommand).not.toHaveBeenCalledWith(expect.stringContaining('pi'), expect.anything(), expect.anything());
+      expect(runCommand).not.toHaveBeenCalledWith('pi', expect.anything(), expect.anything());
     });
 
     it('detects Gemini via GEMINI_API_KEY without calling CLI', async () => {
@@ -1662,7 +1290,7 @@ describe('ProviderAuthService', () => {
 
       const { providers } = await service.status();
       const claude = providers.find((p) => p.provider === 'claude');
-      expect(claude?.status).toBe('disconnected');
+      expect(claude?.status).toBe('connected');
       expect(runCommand).toHaveBeenCalledWith('claude', ['auth', 'status', '--json'], 10_000);
     });
 
@@ -1863,9 +1491,10 @@ describe('ProviderAuthService', () => {
       }
     });
 
-    it('does NOT accept a bare base_url on a provider that still needs the ChatGPT login', async () => {
-      // A guard, not a regression test: the built-in `openai` provider keeps its login even when
-      // pointed at another host, so a base_url alone must not claim "connected".
+    it('falls through to the CLI for a bare base_url — and an installed CLI still reports connected', async () => {
+      // The file alone must not CLAIM connected (the built-in `openai` provider keeps its login
+      // even when pointed at another host), but the fall-through CLI probe answers from
+      // installation, not from the vendor login — so the row is connected either way.
       const home = sandbox();
       writeCodexConfig(home, [
         'model_provider = "custom"',
@@ -1878,7 +1507,7 @@ describe('ProviderAuthService', () => {
       const service = new ProviderAuthService({ runCommand });
 
       const { providers } = await service.status();
-      expect(providers.find((p) => p.provider === 'codex')?.status).toBe('disconnected');
+      expect(providers.find((p) => p.provider === 'codex')?.status).toBe('connected');
       expect(runCommand).toHaveBeenCalledWith('codex', ['login', 'status'], 10_000);
     });
 
@@ -1891,7 +1520,7 @@ describe('ProviderAuthService', () => {
         const service = new ProviderAuthService({ runCommand });
 
         const { providers } = await service.status();
-        expect(providers.find((p) => p.provider === 'codex')?.status).toBe('disconnected');
+        expect(providers.find((p) => p.provider === 'codex')?.status).toBe('connected');
         expect(runCommand).toHaveBeenCalledWith('codex', ['login', 'status'], 10_000);
       }
     });
@@ -1938,7 +1567,7 @@ describe('ProviderAuthService', () => {
         const service = new ProviderAuthService({ runCommand });
 
         const { providers } = await service.status();
-        expect(providers.find((p) => p.provider === 'claude')?.status).toBe('disconnected');
+        expect(providers.find((p) => p.provider === 'claude')?.status).toBe('connected');
         expect(runCommand).toHaveBeenCalledWith('claude', ['auth', 'status', '--json'], 10_000);
       }
     });
@@ -1956,7 +1585,9 @@ describe('ProviderAuthService', () => {
       const service = new ProviderAuthService({ runCommand });
 
       const { providers } = await service.status();
-      expect(providers.find((p) => p.provider === 'claude')?.status).toBe('disconnected');
+      expect(providers.find((p) => p.provider === 'claude')?.status).toBe('connected');
+      // The default row fell through to the CLI — it did not read the named account's file.
+      expect(runCommand).toHaveBeenCalledWith('claude', ['auth', 'status', '--json'], 10_000);
       const row = await service.profileStatus('claude', { id: 'work', configDir: profileHome });
       expect(row).toEqual({ provider: 'claude', status: 'connected', profileId: 'work' });
     });
@@ -2069,25 +1700,29 @@ describe('ProviderAuthService', () => {
         const service = new ProviderAuthService({ runCommand });
 
         const { providers } = await service.status();
-        // The CLI's bare version parses to no auth signal, so the honest answer is 'unknown' —
-        // the credential file must not manufacture a 'connected' from a shape it cannot read.
-        expect(providers.find((p) => p.provider === 'gemini')?.status).toBe('unknown');
+        // The bare version proves the binary is installed, which is all the probe checks — the
+        // credential file must not manufacture a 'connected' from a shape it cannot read, but the
+        // CLI fall-through reports connected anyway.
+        expect(providers.find((p) => p.provider === 'gemini')?.status).toBe('connected');
         expect(runCommand).toHaveBeenCalledWith('gemini', ['--version'], 10_000);
       }
     });
 
     it('does not let an Antigravity login claim Gemini, nor the reverse', async () => {
       // The two products share `~/.gemini`, so this pins that each reads only its OWN credential:
-      // a precheck that accepted either file would report both connected on a machine signed into
-      // one of them.
+      // Gemini falls through to its CLI (proving its file read found nothing), while Antigravity
+      // answers from its file without spawning at all.
       const home = sandboxHome();
       writeGeminiFile(home, 'antigravity-cli/antigravity-oauth-token', JSON.stringify({ token: 'ya29.test' }));
       process.env.HOME = home;
-      const service = new ProviderAuthService({ runCommand: versionOnlyRunner() });
+      const runCommand = versionOnlyRunner();
+      const service = new ProviderAuthService({ runCommand });
 
       const { providers } = await service.status();
-      expect(providers.find((p) => p.provider === 'gemini')?.status).toBe('unknown');
+      expect(providers.find((p) => p.provider === 'gemini')?.status).toBe('connected');
+      expect(runCommand).toHaveBeenCalledWith('gemini', ['--version'], 10_000);
       expect(providers.find((p) => p.provider === 'antigravity')?.status).toBe('connected');
+      expect(runCommand).not.toHaveBeenCalledWith('agy', expect.anything(), expect.anything());
     });
 
     it('falls through for Antigravity when its token file carries no credential', async () => {
@@ -2098,7 +1733,7 @@ describe('ProviderAuthService', () => {
       const service = new ProviderAuthService({ runCommand });
 
       const { providers } = await service.status();
-      expect(providers.find((p) => p.provider === 'antigravity')?.status).toBe('unknown');
+      expect(providers.find((p) => p.provider === 'antigravity')?.status).toBe('connected');
       expect(runCommand).toHaveBeenCalledWith('agy', ['--version'], 10_000);
     });
   });

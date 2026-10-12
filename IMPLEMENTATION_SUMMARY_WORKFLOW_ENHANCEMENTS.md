@@ -57,7 +57,7 @@ Four high-impact enhancements to cezar's workflow and skills system:
    - Best practices
    - Troubleshooting
 
-5. **`.ai/cezar/workflows/security-audit-example.yaml`** (example workflow)
+5. **`.ai/cezar/workflows/security-audit-with-remediation.yaml`** (example workflow)
    - Real-world example using all 4 features
    - 10-step security pipeline
    - Parameters, outputs, conditionals, composed skills

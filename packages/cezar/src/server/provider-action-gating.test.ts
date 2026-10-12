@@ -20,12 +20,12 @@ vi.mock('../core/claude-bin.ts', async (importOriginal) => ({
   resolveClaudeBin: () => process.env.CEZ_CLAUDE_BIN ?? 'claude',
 }));
 
-// Junie has no read-only auth-status command, so `ProviderAuthService` probes it through a real
-// ACP session instead of `runCommand`. Left unmocked, the junie test below spawned a real
-// `junie` process (#M3 review). `connected: false` with no hint is what a genuinely unverifiable
-// ACP handshake maps to — the 'unknown' status the one junie test in this file is about.
+// Junie is probed through a real ACP session instead of `runCommand`. Left unmocked, the junie
+// test below spawned a real `junie` process (#M3 review). The outcome value is irrelevant — the
+// installation check maps anything but a missing binary to connected — so a constant stub matches
+// every case.
 vi.mock('../core/junie-auth-probe.ts', () => ({
-  probeJunieAuthentication: vi.fn(async () => ({ connected: false })),
+  probeJunieAuthentication: vi.fn(async () => ({ connected: true })),
 }));
 
 const DISABLED_MESSAGE = 'Codex is disabled. Enable it in Settings → Agents → Providers.';
@@ -273,11 +273,11 @@ describe('provider action gating', () => {
 /**
  * The gate re-probes before it refuses (`providerActionError` in `server.ts`).
  *
- * Auth state is served stale-while-revalidate, so a cached "disconnected" can predate a login cezar
- * never saw — someone typing `claude auth login` in a terminal. Refusing on that would lock a user
- * out of their own cockpit with no way back but waiting, which is exactly what a short cache window
- * used to paper over, at the cost of making every reader of `GET /api/v1/providers/status`
- * periodically pay for a CLI spawn.
+ * Installation state is served stale-while-revalidate, so a cached "not-installed" can predate
+ * an install cezar never saw. Refusing on that would lock a user out of their own cockpit with
+ * no way back but waiting, which is exactly what a short cache window used to paper over, at
+ * the cost of making every reader of `GET /api/v1/providers/status` periodically pay for a
+ * CLI spawn.
  */
 describe('the gate verifies before it refuses', () => {
   let repoRoot: string;
@@ -307,16 +307,19 @@ describe('the gate verifies before it refuses', () => {
     else process.env.CEZ_DRY_RUN = savedDryRun;
   });
 
-  /** A claude whose login state the test controls, with a clock it can advance. */
+  /** A claude whose installation the test controls, with a clock it can advance. */
   const setup = (options: { disabled?: ProviderId[] } = {}) => {
     let now = 1_000;
-    const state = { claudeLoggedIn: false, probes: 0 };
+    const state = { claudeLoggedIn: false, claudeMissing: false, probes: 0 };
     const providerAuth = new ProviderAuthService({
       platform: 'linux',
       now: () => now,
       runCommand: async (executable) => {
         state.probes += 1;
         if (executable === 'claude') {
+          if (state.claudeMissing) {
+            return { stdout: '', stderr: '', exitCode: null, errorCode: 'ENOENT' };
+          }
           return state.claudeLoggedIn
             ? { stdout: '{"loggedIn":true}', stderr: '', exitCode: 0 }
             : { stdout: '{"loggedIn":false}', stderr: '', exitCode: 1 };
@@ -342,18 +345,19 @@ describe('the gate verifies before it refuses', () => {
     body: JSON.stringify({ task: 'Task', runner, steps: [{ id: 'task', prompt: '{{task}}' }] }),
   });
 
-  it('starts the run when the cached refusal is out of date — a terminal login is honoured', async () => {
+  it('starts the run when the cached refusal is out of date — a fresh install is honoured', async () => {
     const { app, providerAuth, state, advance } = setup();
-    await providerAuth.status(); // learns: claude disconnected
+    state.claudeMissing = true;
+    await providerAuth.status(); // learns: claude not-installed
     advance(61_000); // …and that answer goes stale
-    state.claudeLoggedIn = true; // meanwhile, the user logs in from a terminal
+    state.claudeMissing = false; // meanwhile, the user installs the CLI
 
     const response = await start(app, 'claude');
     expect(response.status).toBe(201);
     expect(startRun).toHaveBeenCalledTimes(1);
   });
 
-  it('allows Junie runs when credentials are unknown because Junie has no read-only auth probe', async () => {
+  it('allows Junie runs — an installed Junie counts as connected', async () => {
     const { app } = setup();
 
     const response = await start(app, 'junie');
@@ -363,9 +367,10 @@ describe('the gate verifies before it refuses', () => {
   });
 
   it('still refuses when the fresh answer agrees — verifying is not a way in', async () => {
-    const { app, providerAuth, advance } = setup();
-    await providerAuth.status();
-    advance(61_000);
+    const { app, providerAuth, state, advance } = setup();
+    state.claudeMissing = true;
+    await providerAuth.status(); // learns: claude not-installed
+    advance(61_000); // …and that answer goes stale
 
     const response = await start(app, 'claude');
     expect(response.status).toBe(409);
