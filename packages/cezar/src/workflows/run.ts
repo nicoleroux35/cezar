@@ -3381,6 +3381,23 @@ export class RunManager {
     return this.active.has(runId) || this.starting.has(runId) || this.queue.includes(runId);
   }
 
+  /** Resolves once the engine no longer owns the run — not active, not starting, not queued.
+   *
+   *  Cancelling a live session releases its slot only after the provider teardown settles
+   *  (`cancelOne` marks the record immediately, then reaps through `CANCEL_GRACE_MS` +
+   *  hardStop), so a caller that must not race the engine — delete removes the record and the
+   *  transcript the unwinding session would still write (`appendEvent` throws on a forgotten
+   *  run) — waits here instead of deleting blind. Bounded: a teardown that never settles must
+   *  not hang the caller, so `false` answers "still owned after timeoutMs". */
+  async whenReleased(runId: string, timeoutMs = 5_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.isActive(runId)) {
+      if (Date.now() >= deadline) return false;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return true;
+  }
+
   /**
    * Fold a queued run's persisted prompt — `run.task` plus everything stacked
    * onto it (#472) — into the job input that is about to execute.

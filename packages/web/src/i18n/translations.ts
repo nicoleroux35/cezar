@@ -307,10 +307,6 @@ export const translations = {
     en: 'selected',
     fr: 'sélectionnées',
   },
-  'tasks.action.selectionBlocked': {
-    en: 'still running — cannot be deleted',
-    fr: 'en cours — suppression impossible',
-  },
   'tasks.action.done': {
     en: 'Done',
     fr: 'Terminer',
@@ -332,8 +328,8 @@ export const translations = {
     fr: 'Supprimer ces tâches ?',
   },
   'tasks.action.deleteTasksBody': {
-    en: 'Each one is removed with its transcript, worktree and branch. This cannot be undone.',
-    fr: 'Chaque tâche est supprimée avec son transcript, son worktree et sa branche. Action irréversible.',
+    en: 'Each one is removed with its transcript, worktree and branch. A task still running is stopped first. This cannot be undone.',
+    fr: 'Chaque tâche est supprimée avec son transcript, son worktree et sa branche. Une tâche en cours est arrêtée au préalable. Action irréversible.',
   },
   'tasks.action.keepThem': {
     en: 'Keep them',

@@ -11,13 +11,21 @@ import type { TranslationKey } from '@/i18n/translations'
  */
 
 /**
- * The statuses a run can be deleted in — the server's own answer, stated client-side so the menu
- * never offers what `DELETE /runs/:id` would refuse: the route 409s while the engine still owns
- * the run (active, starting, or parked in the queue), which is exactly `running`/`queued`/
- * `waiting`. `review` counts as deletable — a parked review is finished work, the same call
- * `runActionFlags` makes when it shows the thread header's Delete button.
+ * The statuses a run can be deleted in. Since the server's delete STOPS what the engine still
+ * owns first (cancel + bounded wait for release, then remove), every status is deletable —
+ * `running`/`queued`/`waiting` included. The list stays explicit (not `Object.values`) so a
+ * future status must be consciously added here rather than silently swept, and so the menu
+ * order below stays deliberate.
  */
-const DELETABLE_STATUSES = ['done', 'failed', 'cancelled', 'review'] as const satisfies readonly RunStatus[]
+const DELETABLE_STATUSES = [
+  'queued',
+  'running',
+  'waiting',
+  'done',
+  'failed',
+  'cancelled',
+  'review',
+] as const satisfies readonly RunStatus[]
 
 const DELETABLE: ReadonlySet<RunStatus> = new Set(DELETABLE_STATUSES)
 

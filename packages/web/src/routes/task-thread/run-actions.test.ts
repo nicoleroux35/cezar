@@ -42,19 +42,21 @@ const run = (status: RunStatus, extra: Partial<RunRecord> = {}): RunRecord => ({
 
 describe('runActionFlags — the visibility matrix, all 7 statuses × archived', () => {
   // The legacy header's rules verbatim (web/app.js `updateDetail`):
-  //   active(running|queued|waiting) → cancel, no delete/archive/continue/terminal;
+  //   active(running|queued|waiting) → cancel, no archive/continue/terminal;
   //   finish only at the waiting/review gates; continue+terminal need a closed run WITH a
   //   session; notes always. `archived` flips nothing here — it only relabels Archive.
-  // `pin` (#935) is the one flag `archived` does turn off, since archiving retires the pin: the
-  // archived rows below assert exactly that, and every live row offers it whatever the status,
-  // because a pin is about what YOU are working on rather than what the engine is doing.
-  // `markUnread` (#775) is false in every cell of this matrix because the fixture carries no
-  // `finishedAt` — a record with no finish instant can never wear the unread marker, whatever
-  // its status says. The flag's real matrix is the FINISHED one in its own describe below.
+  // DELETE is offered in every cell: the server stops an active run before removing it, so the
+  // header may show Delete beside Cancel/Stop. `pin` (#935) is the one flag `archived` does turn
+  // off, since archiving retires the pin: the archived rows below assert exactly that, and every
+  // live row offers it whatever the status, because a pin is about what YOU are working on rather
+  // than what the engine is doing. `markUnread` (#775) is false in every cell of this matrix
+  // because the fixture carries no `finishedAt` — a record with no finish instant can never wear
+  // the unread marker, whatever its status says. The flag's real matrix is the FINISHED one in
+  // its own describe below.
   const matrix: Array<{ status: RunStatus; expected: Omit<ReturnType<typeof runActionFlags>, 'notes'> }> = [
-    { status: 'queued', expected: { finish: false, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, pause: true, deleteRun: false } },
-    { status: 'running', expected: { finish: false, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, pause: true, deleteRun: false } },
-    { status: 'waiting', expected: { finish: true, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, pause: true, deleteRun: false } },
+    { status: 'queued', expected: { finish: false, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, pause: true, deleteRun: true } },
+    { status: 'running', expected: { finish: false, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, pause: true, deleteRun: true } },
+    { status: 'waiting', expected: { finish: true, continueRun: false, terminal: false, archive: false, markUnread: false, pin: true, cancel: true, pause: true, deleteRun: true } },
     { status: 'review', expected: { finish: true, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, pause: false, deleteRun: true } },
     { status: 'done', expected: { finish: false, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, pause: false, deleteRun: true } },
     { status: 'failed', expected: { finish: false, continueRun: true, terminal: true, archive: true, markUnread: false, pin: true, cancel: false, pause: false, deleteRun: true } },
@@ -69,11 +71,10 @@ describe('runActionFlags — the visibility matrix, all 7 statuses × archived',
     expect(runActionFlags(run(status, { archived: true }))).toEqual({ ...expected, notes: true, pin: false })
   })
 
-  it('cancel and delete are mutually exclusive in every cell', () => {
+  it('delete is offered in every cell — an active run is stopped first', () => {
     for (const { status } of matrix) {
       for (const archived of [false, true]) {
-        const flags = runActionFlags(run(status, { archived }))
-        expect(flags.cancel && flags.deleteRun).toBe(false)
+        expect(runActionFlags(run(status, { archived })).deleteRun).toBe(true)
       }
     }
   })

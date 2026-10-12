@@ -128,12 +128,13 @@ export interface RunActionFlags {
    *  read. Both halves come from `lib/read-state.ts` so the header can never offer an action
    *  whose result the marker rule would ignore. */
   markUnread: boolean
-  /** Stop an active run. Mutually exclusive with delete, by construction below. */
+  /** Stop an active run. Also offered where delete is: delete itself stops first. */
   cancel: boolean
   /** Park an active run as paused — resumable via Start. Never offered for an
    *  already-paused run (that one offers Start instead). */
   pause: boolean
-  /** Remove the run, its transcript, worktree and branch. Terminal runs only. */
+  /** Remove the run, its transcript, worktree and branch. Offered at every status —
+   *  the server cancels an active run and waits for its release before deleting. */
   deleteRun: boolean
 }
 
@@ -150,7 +151,7 @@ export function runActionFlags(run: RunRecord): RunActionFlags {
     markUnread: canBeUnread(run) && !isUnread(run),
     cancel: active,
     pause: active && !run.paused,
-    deleteRun: !active,
+    deleteRun: true,
   }
 }
 

@@ -1304,8 +1304,8 @@ function ConfirmDialog({ run, actions }: { run: ApiRun; actions: RunActions }) {
           <AlertDialogDescription>
             {confirming === 'delete' ? (
               <>
-                This removes the run, its transcript, its worktree and its branch. There is no
-                undo.
+                This stops the task if it is still running, then removes the run, its transcript,
+                its worktree and its branch. There is no undo.
                 <span className="mt-1 block truncate font-medium text-foreground" title={runTitle(run)}>
                   {runTitle(run)}
                 </span>

@@ -79,7 +79,6 @@ import { shortAge } from '@/lib/format'
 import { isReadDoneItem, isUnread, unreadDoneCount } from '@/lib/read-state'
 import {
   deletableRuns,
-  isDeletableRun,
   STATUS_TRANSLATION_KEYS,
   statusClearOptions,
   type StatusClearOption,
@@ -264,11 +263,8 @@ export function TasksOverview({
   // reason the view flip below resets it — the Archived list is a different list.
   const tickedRuns = React.useMemo(() => visible.filter((run) => ticked.has(run.id)), [visible, ticked])
   const allTicked = visible.length > 0 && tickedRuns.length === visible.length
-  // How many of the ticked rows the engine still owns. The checkbox is shown for every row rather
-  // than withheld — the mode is one gesture, and a list that hid its boxes mid-selection would
-  // read as broken — so the refusal is stated HERE, before the click, instead of surfacing as a
-  // server 409 after it.
-  const blockedCount = React.useMemo(() => tickedRuns.filter((run) => !isDeletableRun(run)).length, [tickedRuns])
+  // Every status is deletable now — the server stops an active run before removing it — so the
+  // ticked selection needs no per-row gate; the confirm below is the one checkpoint.
   const clearOptions = React.useMemo(() => statusClearOptions(visible), [visible])
   const deletableCount = React.useMemo(() => deletableRuns(visible).length, [visible])
   React.useEffect(() => {
@@ -523,7 +519,6 @@ export function TasksOverview({
           <SelectionBar
             total={visible.length}
             selectedCount={tickedRuns.length}
-            blockedCount={blockedCount}
             allSelected={allTicked}
             onToggleAll={toggleAllTicked}
             onDelete={() => setPendingDelete({ ids: tickedRuns.map((run) => run.id), kind: 'selected' })}
@@ -1148,7 +1143,6 @@ function SelectModeToggle({ active, onToggle }: { active: boolean; onToggle: () 
 function SelectionBar({
   total,
   selectedCount,
-  blockedCount,
   allSelected,
   onToggleAll,
   onDelete,
@@ -1157,8 +1151,6 @@ function SelectionBar({
 }: {
   total: number
   selectedCount: number
-  /** Of the selected, how many the engine still owns — the delete will not take those. */
-  blockedCount: number
   allSelected: boolean
   onToggleAll: () => void
   onDelete: () => void
@@ -1176,13 +1168,6 @@ function SelectionBar({
         {selectedCount}
       </span>
       <span className="text-[12.5px] text-muted-foreground">{t('tasks.action.selected')}</span>
-      {/* Said before the click rather than toasted after it: a task the engine still owns cannot
-          be deleted, and the count is the difference between "3 deleted" and "3 of 5 gone". */}
-      {blockedCount > 0 ? (
-        <span data-slot="selection-blocked" className="text-[12.5px] text-danger">
-          {blockedCount} {t('tasks.action.selectionBlocked')}
-        </span>
-      ) : null}
       <Button type="button" variant="ghost" size="sm" onClick={onToggleAll} disabled={total === 0}>
         {allSelected ? t('tasks.action.deselectAll') : t('tasks.action.selectAll')}
       </Button>

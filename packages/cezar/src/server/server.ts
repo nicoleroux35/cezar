@@ -5211,9 +5211,19 @@ export function createApp(deps: ServerDeps) {
     .delete('/runs/:id', async (c) => {
       const { root: repoRoot, store, manager } = c.get('project');
       const id = c.req.param('id');
-      if (manager.isActive(id)) return c.json({ error: 'run is active — cancel it first' }, 409);
       const run = store.getRun(id);
       if (!run) return c.json({ error: 'not found' }, 404);
+      // Delete stops what the engine still owns: an active/queued/starting run is cancelled
+      // first and the delete WAITS for the engine to release it — removing the record while a
+      // session is still unwinding would race the engine's terminal writes (`appendEvent`
+      // throws on a forgotten run). The wait is bounded; a teardown that outlives it answers
+      // 409 instead of deleting under a live engine.
+      if (manager.isActive(id)) {
+        manager.cancel(id);
+        if (!(await manager.whenReleased(id))) {
+          return c.json({ error: 'run is still stopping — try again in a moment' }, 409);
+        }
+      }
       // Delete cleans up after itself: worktree + branch go with the run (spec 006).
       if (run.worktreePath) await removeWorktree(repoRoot, run.worktreePath, run.branch);
       const deleted = store.deleteRun(id);

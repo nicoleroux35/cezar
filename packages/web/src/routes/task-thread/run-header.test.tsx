@@ -297,10 +297,12 @@ describe('editable title (#389)', () => {
 describe('action bar visibility per status (the legacy rules, rendered)', () => {
   // Pin (#935) is in every row: unlike every other action here it asks nothing of the engine,
   // so it is offered whatever the run is doing — only archiving takes it away.
+  // Delete is in every row too: the server stops an active run before removing it, so an active
+  // row shows Delete beside Cancel instead of hiding it.
   const matrix: Array<{ status: RunStatus; visible: string[] }> = [
-    { status: 'queued', visible: ['Notes', 'Pin', 'Pause', 'Cancel'] },
-    { status: 'running', visible: ['Notes', 'Pin', 'Pause', 'Cancel'] },
-    { status: 'waiting', visible: ['Finish', 'Notes', 'Pin', 'Pause', 'Cancel'] },
+    { status: 'queued', visible: ['Notes', 'Pin', 'Pause', 'Cancel', 'Delete'] },
+    { status: 'running', visible: ['Notes', 'Pin', 'Pause', 'Cancel', 'Delete'] },
+    { status: 'waiting', visible: ['Finish', 'Notes', 'Pin', 'Pause', 'Cancel', 'Delete'] },
     // Terminal folded into the Open in… menu — it shows whenever the session can be resumed.
     { status: 'review', visible: ['Finish', 'Continue', 'Open in…', 'Notes', 'Pin', 'Archive', 'Delete'] },
     { status: 'done', visible: ['Continue', 'Open in…', 'Notes', 'Pin', 'Archive', 'Delete'] },

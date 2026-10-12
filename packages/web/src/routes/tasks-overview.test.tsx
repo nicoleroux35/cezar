@@ -844,11 +844,12 @@ describe('TasksOverview — header', () => {
 })
 
 describe('TasksOverview — bulk deletion', () => {
-  it('offers no status sweep while every row on screen belongs to the engine', () => {
+  it('offers the status sweep even while every row on screen belongs to the engine', () => {
+    // Delete stops active runs first, so the engine-owned rows are sweepable like any other.
     renderOverview({
       runs: [run({ id: 'live', status: 'running' }), run({ id: 'parked', status: 'queued' })],
     })
-    expect(screen.queryAllByRole('button', { name: /Clear by status/ })).toHaveLength(0)
+    expect(screen.queryAllByRole('button', { name: /Clear by status/ })).toHaveLength(2)
     // Selection mode is still there: ticking a row is not itself a deletion.
     expect(selectToggles()).toHaveLength(2)
   })
@@ -865,13 +866,14 @@ describe('TasksOverview — bulk deletion', () => {
     })
 
     const menu = await openClearMenu()
-    // Counts of the rows on screen, in the menu order — and no running entry at all: the server
-    // answers those with a 409, so the menu does not offer a click it knows will fail.
+    // Counts of the rows on screen, in the menu order — running included: the delete stops
+    // active runs before removing them, so the menu offers the click it used to refuse.
     expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Running1',
       'Done2',
       'Failed1',
       'Cancelled1',
-      'Everything deletable4',
+      'Everything deletable5',
     ])
 
     fireEvent.click(within(menu).getByRole('menuitem', { name: /Done/ }))
@@ -895,7 +897,8 @@ describe('TasksOverview — bulk deletion', () => {
     fireEvent.click(within(menu).getByRole('menuitem', { name: /Everything deletable/ }))
     fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
 
-    expect(onDeleteRuns).toHaveBeenCalledWith(['d1', 'f1'])
+    // The running row goes with the others — stopped by the server before its record is removed.
+    expect(onDeleteRuns).toHaveBeenCalledWith(['live', 'd1', 'f1'])
   })
 
   it('sweeps the archived list when that tab is the one showing', async () => {
@@ -964,7 +967,7 @@ describe('TasksOverview — bulk deletion', () => {
     expect(onDeleteRuns).toHaveBeenCalledWith(['c', 'b', 'a'])
   })
 
-  it('says how many of the ticked rows are still running, before the delete', async () => {
+  it('deletes ticked rows that are still running too — the server stops them first', async () => {
     const { onDeleteRuns } = renderOverview({
       runs: [
         run({ id: 'a', status: 'done', createdAt: ago(2 * 60_000) }),
@@ -974,11 +977,8 @@ describe('TasksOverview — bulk deletion', () => {
     fireEvent.click(selectToggles()[0])
     fireEvent.click(within(document.querySelector('[data-slot="selection-bar"]') as HTMLElement).getByRole('button', { name: 'Select all' }))
 
-    expect(document.querySelector('[data-slot="selection-blocked"]')?.textContent).toBe(
-      '1 still running — cannot be deleted',
-    )
-    // Both go: which of them the server refuses is the route's answer to report, not a reason to
-    // silently drop a row the user can see and ticked.
+    // No blocked note anymore — every status is deletable, delete stops active runs first.
+    expect(document.querySelector('[data-slot="selection-blocked"]')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Delete (2)' }))
     fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }))
     // The running row sorts above the done one, so the sweep follows the table's order.
