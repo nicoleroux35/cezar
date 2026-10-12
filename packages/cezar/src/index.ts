@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import { spawn, execFileSync } from 'node:child_process';
+import { networkInterfaces } from 'node:os';
 import { createServer } from 'node:net';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -89,10 +90,12 @@ Options:
                               reverse proxy owning :80/:443 (Dokploy/Traefik, Coolify,
                               Caddy, your own nginx). Installs the service only — no
                               nginx, no certbot. That proxy must provide TLS + auth.
-      --bind-host <host>      host the cockpit binds (default 127.0.0.1). Use with
-                              --external-proxy when the proxy runs in a container and
-                              cannot reach loopback (e.g. docker bridge 172.17.0.1).
-                              cezar has NO built-in auth — never expose this publicly.
+      --bind-host <host>      host the cockpit binds (default 127.0.0.1, or CEZ_BIND_HOST).
+                              A non-loopback value (e.g. 0.0.0.0) makes the cockpit reachable
+                              from the local network — cezar has NO built-in auth, only do
+                              this on a trusted LAN, never expose it publicly. Also used by
+                              server-install --external-proxy (container proxies cannot
+                              reach loopback, e.g. docker bridge 172.17.0.1).
       --yes                   server-install: accept safe defaults (never auto-sudo)
       --reconfigure <ids>     server-install: force re-run of step id(s), comma-separated
       --reinstall             server-install: force re-run of every step (full reinstall)
@@ -239,12 +242,36 @@ async function main(): Promise<void> {
 
 // ---- serve -----------------------------------------------------------------
 
+/** URLs the cockpit answers on, for the startup banner. A loopback bind (the
+ *  default) announces only localhost; a specific non-loopback host announces
+ *  itself; `0.0.0.0`/`::` announce every non-internal IPv4 interface, so a user
+ *  who opened cezar to the LAN learns the address to type without digging for
+ *  `ip addr`. */
+function cockpitUrls(port: number, bindHost?: string): string[] {
+  const localhost = `http://localhost:${port}`;
+  if (!bindHost || ['127.0.0.1', 'localhost', '::1'].includes(bindHost)) return [localhost];
+  if (bindHost !== '0.0.0.0' && bindHost !== '::') return [`http://${bindHost}:${port}`];
+  const lan: string[] = [];
+  for (const list of Object.values(networkInterfaces())) {
+    for (const i of list ?? []) {
+      if (i.family === 'IPv4' && !i.internal && !lan.includes(i.address)) {
+        lan.push(`http://${i.address}:${port}`);
+      }
+    }
+  }
+  return [localhost, ...lan];
+}
+
 async function serveCommand(
   repoRoot: string,
   preferredPort: number,
   openBrowser: boolean,
-  bindHost?: string,
+  bindHostFlag?: string,
 ): Promise<void> {
+  // Explicit CLI flag wins over the CEZ_BIND_HOST environment default — the env
+  // var exists so a systemd unit, alias or desktop launcher can persist a LAN
+  // bind without editing the command line.
+  const bindHost = bindHostFlag ?? (process.env.CEZ_BIND_HOST || undefined);
   const bootProjectId = await initWorkspace(repoRoot);
   // ONE workspace semaphore for the whole process (spec 2026-07-20, step 2.5,
   // per-project amendment): the boot manager and every lazily-built project
@@ -349,7 +376,7 @@ async function serveCommand(
     workspaceEvents,
     selfUpdate,
   }, port);
-  const url = `http://localhost:${port}`;
+  const urls = cockpitUrls(port, bindHost);
 
   console.log(`\n  cezar v${version} — ${repoRoot}`);
   console.log(`  ${repo ? `branch ${repo.branch}` : 'not a git repository (tasks run in place, one at a time; repo view is empty)'}`);
@@ -359,7 +386,9 @@ async function serveCommand(
     console.log(`  ${mark} ${check.name.padEnd(6)} ${detail}`);
   }
   if (port !== preferredPort) console.log(`  (port ${preferredPort} was busy — using ${port})`);
-  console.log(`\n  cockpit → ${url}\n`);
+  console.log(`\n  cockpit → ${urls[0]}`);
+  for (const lan of urls.slice(1)) console.log(`  network → ${lan}`);
+  console.log();
   // Silenced by CEZ_NO_BANNER=1 or by dismissing the cockpit's banner (#391).
   await printSkillsBanner(repoRoot);
   // The star ask's terminal line — same block, same two off switches.
@@ -423,8 +452,10 @@ async function serveCommand(
   // Open the browser only once the server actually answers, so the first
   // paint is the cockpit and never a connection error.
   if (openBrowser) {
-    const healthy = await waitForHealth(`${url}/api/v1/health`, 5_000);
-    if (healthy) openUrl(url);
+    const localhostUrl = urls[0];
+    if (!localhostUrl) return;
+    const healthy = await waitForHealth(`${localhostUrl}/api/v1/health`, 5_000);
+    if (healthy) openUrl(localhostUrl);
   }
 }
 

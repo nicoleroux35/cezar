@@ -455,6 +455,7 @@ Useful environment variables:
 |---|---|
 | `CEZ_DRY_RUN=1` | Use the bundled mock instead of the real `claude` CLI — the entire cockpit works offline, for demos and development. |
 | `CEZ_INSTANCE_ID` | Internal server-install identity set automatically in generated systemd/launchd services; normally leave unset. It is surfaced additively by `/api/v1/health` for install verification. |
+| `CEZ_BIND_HOST=0.0.0.0` | Bind the cockpit to a network interface so other machines on the LAN can open it (`0.0.0.0` = every interface). Same as `cezar serve --bind-host`, which wins when both are set; the startup banner then prints the `network →` URLs to open from other machines. **cezar has no built-in auth and starts agents on this machine** — only bind non-loopback on a network you trust, never port-forward it; a non-loopback bind also switches the cockpit to hosted mode (no local handoff, agent-config editing refused). |
 | `CEZ_AGENT_MODELS_LOCKED=1` | Globally lock each runner to the model configured in its native Claude/Codex/OpenCode settings while keeping runner selection available. Exact `1` also delegates authentication and provider enablement to those native agents, so Cezar skips its credential probes and provider-disable preferences. Existing Cezar presets are preserved but ignored, and an environment change requires a restart. The config-file equivalent is `"modelsLocked": true` in global `~/.cezar/config.json` or one repository's `.ai/cezar/config.json`; config-file locks do not disable provider checks. |
 | `CEZ_APPROVAL_GATE=1` | Select Claude's `acceptEdits` mode. Cezar has no cockpit permission response channel; by default, unapproved tools are denied without interrupting the run. |
 | `CEZ_FOLLOWUPS=1` | Turn on the global follow-up **Inbox**: agents are asked to leave follow-ups in `todos.json` when they finish, and the Inbox view appears. Off by default — each task's own **Notes** handoff journal runs either way. |
@@ -663,6 +664,21 @@ a shared team box, a VPS, your phone — put an **authenticated public front** i
 front of it. The built-in installer does this interactively, per **platform
 strategy**, and never escalates silently: every privileged command is printed
 and verified, and it ends with a real authenticated end-to-end check.
+
+**Just the local network?** For a desktop box you want to reach from your phone
+or another laptop, no public front is needed — bind a LAN interface and restart:
+
+```bash
+cezar serve --bind-host 0.0.0.0   # or persist it: CEZ_BIND_HOST=0.0.0.0
+```
+
+The startup banner then prints the `network → http://<lan-ip>:<port>` URLs to
+open from other machines. cezar still has **no built-in auth**: anything on the
+network can start agents on this machine, so only do this on a network you trust
+and never port-forward it. A non-loopback bind also switches the cockpit to
+hosted mode — local-handoff affordances (open in editor/terminal) and
+agent-config editing are refused, since the viewer may be another device.
+For anything beyond a trusted LAN, use the authenticated front below.
 
 ```bash
 npx cezar-run server-install   --platform ubuntu-vps   # stand it up
