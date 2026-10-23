@@ -477,6 +477,10 @@ export const translations = {
     en: 'Add to queue',
     fr: 'Ajouter à la file',
   },
+  'newTask.scheduleTask': {
+    en: 'Schedule task',
+    fr: 'Programmer la tâche',
+  },
   'newTask.startingTask': {
     en: 'Starting task…',
     fr: 'Démarrage de la tâche…',

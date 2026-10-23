@@ -1,3 +1,8 @@
+import { StartTimePicker, type StartChoice } from '@/components/start-time-picker'
+import { ApiError, createDeferredStart } from '@/api/client'
+import { deferredCreateInputSchema } from '@open-mercato/cezar-api-client'
+import { markScheduledTasks } from '@/lib/scheduled-tasks-gate'
+import { automationsQueryKey } from './automations/use-automations'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CheckIcon,
@@ -34,6 +39,7 @@ import { useTranslations } from '@/i18n/use-translations'
 import type {
   AttachmentEntry,
   DispatchIntent,
+  DeferredCreateInput,
   ProjectListEntry,
   RepoResponse,
   Runner,
@@ -103,6 +109,31 @@ import {
 } from './new-task-form'
 import { parseNewTaskParams } from './new-task-params'
 import { trackMessageSent } from '@/lib/telemetry'
+
+// Keep recovery across route changes and reloads in this tab. Storage can be unavailable;
+// the memory copy still protects navigation within the running cockpit.
+const pendingSchedules = new Map<string, DeferredCreateInput>()
+function scheduleRecoveryKey(projectId: string | null) {
+  return `cez-pending-schedule:${projectId ?? 'default'}`
+}
+function readScheduleRecovery(key: string): DeferredCreateInput | null {
+  const cached = pendingSchedules.get(key)
+  if (cached) return cached
+  try {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(key) ?? 'null')
+    // Validate without replacing the wire body with schema defaults/transforms.
+    if (deferredCreateInputSchema.safeParse(stored).success) return stored as DeferredCreateInput
+  } catch { /* storage unavailable */ }
+  return null
+}
+function saveScheduleRecovery(key: string, request: DeferredCreateInput | null) {
+  if (request) pendingSchedules.set(key, request)
+  else pendingSchedules.delete(key)
+  try {
+    if (request) sessionStorage.setItem(key, JSON.stringify(request))
+    else sessionStorage.removeItem(key)
+  } catch { /* memory still retains the frozen request */ }
+}
 
 /**
  * `/new` — the full-screen new-task hero (spec §"New task (full-screen, #386)"; visual
@@ -424,6 +455,12 @@ export function NewTaskRoute() {
     if (deepLinkHandled.current) return
     if (!deepLink.auto || deepLink.ref === '') return
     if (providers.isPending) return
+    if (scheduleRequest.current) {
+      deepLinkHandled.current = true
+      setAutoStarting(false)
+      setNotice({ kind: 'prefill' })
+      return
+    }
     if (!providersReady || runner === null) {
       deepLinkHandled.current = true
       // Authentication could not be established: keep the deep-link intent in the disabled
@@ -506,7 +543,97 @@ export function NewTaskRoute() {
       ?.focus()
   }, [notice, sourcesReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [startChoice, setStartChoice] = useState<StartChoice | null>(null)
+  const [scheduleBlocked, setScheduleBlocked] = useState<string>()
+  const recoveryKey = scheduleRecoveryKey(draftProjectId)
+  const [scheduleRecovery, setScheduleRecovery] = useState(() => readScheduleRecovery(recoveryKey))
+  const scheduleRequest = useRef<DeferredCreateInput | null>(scheduleRecovery)
+  const [recovering, setRecovering] = useState(false)
+  const [recoveryError, setRecoveryError] = useState<string>()
+  const finishSchedule = async (scheduled: Awaited<ReturnType<typeof createDeferredStart>>['scheduled'], preserveDraft: boolean) => {
+    saveScheduleRecovery(recoveryKey, null)
+    markScheduledTasks()
+    if (!preserveDraft) clearStartedDraft(draftProjectId)
+    scheduleRequest.current = null
+    setScheduleRecovery(null)
+    await queryClient.invalidateQueries({ queryKey: automationsQueryKey() })
+    if (scheduled.outcome === 'cancelled') toast('The original schedule was already cancelled.')
+    navigate(scheduled.outcome === 'launched' && scheduled.runIds[0] ? `/tasks/${scheduled.runIds[0]}` : '/')
+  }
+  const sendSchedule = async (request: DeferredCreateInput, preserveDraft = false) => {
+    const wasAmbiguous = scheduleRequest.current !== null
+    scheduleRequest.current = request
+    saveScheduleRecovery(recoveryKey, request)
+    let result: Awaited<ReturnType<typeof createDeferredStart>>
+    try {
+      result = await createDeferredStart(request)
+    } catch (error) {
+      // Only a definite first-attempt rejection releases the frozen intent.
+      // A rejected replay cannot rule out an earlier accepted write.
+      const rejected = !wasAmbiguous && error instanceof ApiError && (error.status === 400 ||
+        (error.status === 409 && (error.message === 'Settings or reset time changed. Check the preview again.' ||
+          error.message === 'Automations are off — this cockpit was started with CEZ_AUTOMATIONS=0')))
+      if (rejected) {
+        saveScheduleRecovery(recoveryKey, null)
+        scheduleRequest.current = null
+        setScheduleRecovery(null)
+        setStartChoice(choice => choice ? { start: choice.start, invalidated: error.message } : choice)
+      } else {
+        setScheduleRecovery(request)
+      }
+      throw error
+    }
+    await finishSchedule(result.scheduled, preserveDraft)
+  }
+  const recoverSchedule = async () => {
+    if (!scheduleRequest.current || recovering) return
+    setRecovering(true)
+    setRecoveryError(undefined)
+    try {
+      await sendSchedule(scheduleRequest.current, true)
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setRecovering(false)
+    }
+  }
+  // Trimmed on both sides: the composer submits the trimmed body, so the preview must match it.
+  const taskBody = (text: string, submitted: AttachmentEntry[]) => {
+    return buildCreateRunBody({
+        task: text.trim(),
+        source,
+        model,
+        modelsLocked,
+        runner: runner ?? defaultRunner ?? 'claude',
+        runnerExplicit: draft.runner !== null,
+        agentProfile,
+        defaultRunner,
+        variants,
+        images: submitted,
+        worktree: worktreeOn,
+        newBranch: draft.newBranch,
+        branch: draft.branchName,
+        autonomous: autonomousOn,
+        generateFollowups: generateFollowupsOn,
+        // #374: when the Inbox's "Run" sent us here, hand the entry's id back so the server
+        // records this run on it and it leaves the inbox — the audit trail the old
+        // POST /api/todos/:id/start kept, minus the blind launch. Empty otherwise.
+        // Deliberately not gated on generateFollowupsOn (#444): turning off follow-up
+        // generation for THIS task must not stop the entry it came from being marked started.
+        todoId: deepLink.todo,
+        dispatch,
+        queueOnly: draft.queueOnly,
+        taskGroupId: draft.taskGroupId,
+        taskGroupName: draft.taskGroupName,
+        readOnly: askOn,
+        inPlaceByDefault,
+      })
+  }
+  const schedulingDisabledReason = images.length ? 'Remove attachments to schedule this task.' : deepLink.todo ? 'Tasks linked to a todo can only start now.' : health.data?.capabilities?.automations !== true ? 'Scheduling is disabled on this server.' : undefined
+  const previewTask = taskBody(draft.text, images)
+  const scheduleReady = !schedulingDisabledReason && !!startChoice?.preview && Date.parse(startChoice.preview.notBefore) > Date.now() && startChoice.taskJson === JSON.stringify(previewTask)
   const submit = async (text: string, submitted: AttachmentEntry[]) => {
+    if (scheduleRequest.current) throw new Error('Recover the original schedule before starting another task.')
     if (!providersReady || runner === null) {
       throw new Error(
         providers.isPending
@@ -538,37 +665,13 @@ export function NewTaskRoute() {
       }
       return
     }
-    const created = await createRun(
-      buildCreateRunBody({
-        task: text,
-        source,
-        model,
-        modelsLocked,
-        runner,
-        runnerExplicit: draft.runner !== null,
-        agentProfile,
-        defaultRunner,
-        variants,
-        images: submitted,
-        worktree: worktreeOn,
-        newBranch: draft.newBranch,
-        branch: draft.branchName,
-        autonomous: autonomousOn,
-        generateFollowups: generateFollowupsOn,
-        // #374: when the Inbox's "Run" sent us here, hand the entry's id back so the server
-        // records this run on it and it leaves the inbox — the audit trail the old
-        // POST /api/todos/:id/start kept, minus the blind launch. Empty otherwise.
-        // Deliberately not gated on generateFollowupsOn (#444): turning off follow-up
-        // generation for THIS task must not stop the entry it came from being marked started.
-        todoId: deepLink.todo,
-        dispatch,
-        queueOnly: draft.queueOnly,
-        taskGroupId: draft.taskGroupId,
-        taskGroupName: draft.taskGroupName,
-        readOnly: askOn,
-        inPlaceByDefault,
-      }),
-    )
+    const body = taskBody(text, submitted)
+    if (startChoice) {
+      if (schedulingDisabledReason || !startChoice.preview || Date.parse(startChoice.preview.notBefore) <= Date.now() || startChoice.taskJson !== JSON.stringify(body)) throw new Error('Check the start time again after changing the task settings.')
+      await sendSchedule({ task: body, start: startChoice.start, previewRevision: startChoice.preview.previewRevision, idempotencyKey: crypto.randomUUID() })
+      return
+    }
+    const created = await createRun(body)
     trackMessageSent('new_task')
     // Remember what was actually run so the next visit preselects it (legacy
     // `saveLastTaskSource`) and float it to the top of the picker next time
@@ -695,6 +798,17 @@ export function NewTaskRoute() {
           </p>
         </header>
 
+        {scheduleRecovery && (
+          <div role="alert" className="mb-4 rounded-lg border p-4 text-sm">
+            <p>The original task may already be scheduled. Recover it before starting another task.</p>
+            <p className="mt-2 whitespace-pre-wrap">{scheduleRecovery.task.task}</p>
+            <p className="mt-2">Recovery uses the original prompt, settings and start time. Your current edits will not be submitted. If scheduling is disabled, restore it on the server and retry recovery; the original request is kept to prevent duplicates. Once recovered, you can manage the task in Scheduled.</p>
+            <button type="button" className="mt-3 underline" disabled={recovering} onClick={() => void recoverSchedule()}>
+              {recovering ? 'Recovering original schedule…' : 'Recover original schedule'}
+            </button>
+          </div>
+        )}
+        {recoveryError && <p role="alert" className="mb-3 text-sm">{recoveryError}</p>}
         <Composer
           ref={composerRef}
           onSubmit={submit}
@@ -705,7 +819,17 @@ export function NewTaskRoute() {
           autoFocus
           placeholder={t('newTask.placeholder')}
           ariaLabel={t('newTask.ariaLabel')}
-          sendAriaLabel={draft.queueOnly ? t('newTask.addToQueue') : draft.planFirst ? t('newTask.planTask') : t('newTask.startTask')}
+          sendAriaLabel={
+            startChoice
+              ? t('newTask.scheduleTask')
+              : draft.queueOnly
+                ? t('newTask.addToQueue')
+                : draft.planFirst
+                  ? t('newTask.planTask')
+                  : t('newTask.startTask')
+          }
+          sendLabel={startChoice ? t('newTask.scheduleTask') : undefined}
+          submitDisabled={!!scheduleRecovery || recovering || (!!startChoice && !scheduleReady)}
           disabled={!providersReady || starting}
           disabledReason={
             providers.isPending
@@ -717,6 +841,9 @@ export function NewTaskRoute() {
           autocompleteSkills
           footerStart={
             <>
+              <StartTimePicker task={previewTask} value={startChoice} onChange={setStartChoice}
+                disabledReason={schedulingDisabledReason} onBlockedChange={setScheduleBlocked} />
+
               {/* The project pill LEADS the row (mockup new-task-project.html): everything to
                   its right is resolved against it, so it reads left-to-right as "in this
                   project, run this skill, with this model". Rendered only once the workspace
@@ -890,6 +1017,12 @@ export function NewTaskRoute() {
           }
           footerEnd={
             <>
+              {startChoice && scheduleBlocked ? (
+                <span role="status" data-slot="schedule-blocked" title={scheduleBlocked}
+                  className="max-w-[16rem] truncate text-xs text-muted-foreground">
+                  {scheduleBlocked}
+                </span>
+              ) : null}
               {!providersReady && !providers.isPending ? (
                 <Link
                   to="/settings/agents#providers"
