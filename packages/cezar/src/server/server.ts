@@ -5968,6 +5968,7 @@ export function createApp(deps: ServerDeps) {
           variant: r.variant ?? '?',
           title: r.title,
           status: r.status,
+          archived: r.archived,
           tokensUsed: r.tokensUsed,
           ...(r.inputTokens !== undefined ? { inputTokens: r.inputTokens } : {}),
           ...(r.outputTokens !== undefined ? { outputTokens: r.outputTokens } : {}),
@@ -5976,11 +5977,11 @@ export function createApp(deps: ServerDeps) {
             r.worktreePath && existsSync(r.worktreePath)
               ? await worktreeDiffStat(r.worktreePath, r.baseBranch ?? 'HEAD')
               : '',
+          handoffExcerpt: handoffProgressExcerpt(readHandoff(dataDir, r.id)),
         })),
       );
       return c.json({
         groupId: c.req.param('groupId'),
-        title: runs[0]?.title ?? 'Variant Group',
         runs: detailed,
       } satisfies GroupResponse);
     })

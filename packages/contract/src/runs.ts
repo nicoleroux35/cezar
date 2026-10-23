@@ -777,26 +777,29 @@ export type PickVariantResponse = z.infer<typeof pickVariantResponseSchema>;
 /** One variant tile of the compare strip (#380). */
 export const groupVariantSchema = z.object({
   id: z.string(),
+  /** 'A' | 'B' | 'C' in practice; `'?'` for a record that lost its letter. */
   variant: z.string(),
   title: z.string(),
   status: runStatusSchema,
-  /** Present only on a `review`/`done`/`failed` run. */
-  finishedAt: z.string().optional(),
+  archived: z.boolean(),
   tokensUsed: z.number(),
+  inputTokens: usageCounterSchema.optional(),
+  outputTokens: usageCounterSchema.optional(),
   costUsd: z.number().optional(),
   /**
    * CAREFUL: `diffStat` here is the raw `git diff --stat` TEXT the server runs in the variant's
    * worktree, NOT the stored `diffStat` object. The panel reads it, the consumer does not parse
    * it — see the route handler comment.
    */
-  diffStat: z.string().optional(),
+  diffStat: z.string(),
+  /** First lines of the handoff journal's "## Progress log" section, as markdown. */
+  handoffExcerpt: z.string(),
 });
 export type GroupVariant = z.infer<typeof groupVariantSchema>;
 
-/** `GET /groups/:groupId` — the compare strip's source. */
+/** `GET /groups/:groupId` — every run sharing a groupId, side by side. */
 export const groupResponseSchema = z.object({
   groupId: z.string(),
-  title: z.string(),
   runs: z.array(groupVariantSchema),
 });
 export type GroupResponse = z.infer<typeof groupResponseSchema>;
