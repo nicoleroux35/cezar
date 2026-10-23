@@ -7,7 +7,7 @@ import {
   SquareIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useParams, useSearchParams } from 'react-router'
+import { Link as GlobalLink, useParams, useSearchParams } from 'react-router'
 
 import { Link, useNavigate } from '@/lib/project-router'
 
@@ -15,7 +15,7 @@ import { createRun, getLaunchKey, postPlan, putConfig, putUiState } from '@/api/
 import { buildPlannedRunBody, pendingPlanOf, type PendingPlan } from './new-task-plan'
 import { PlanReview } from './plan-review'
 import { useProjectScope } from '@/api/project-scope-context'
-import { hasAccountChoice, useAgentAccounts } from '@/api/agent-accounts'
+import { hasAccountChoice, useAgentAccounts, useSelectedAccountCheck } from '@/api/agent-accounts'
 import {
   queryKeys,
   useConfig,
@@ -32,7 +32,7 @@ import {
 } from '@/api/queries'
 import { useTranslations } from '@/i18n/use-translations'
 import type {
-  AttachmentInput,
+  AttachmentEntry,
   DispatchIntent,
   ProjectListEntry,
   RepoResponse,
@@ -77,7 +77,9 @@ import {
 } from './new-task-autostart'
 import {
   clearStartedDraft,
+  autoLandsUnreviewed,
   composerRunModeNote,
+  explicitWorktreeFor,
   handOffComposition,
   readAttachments,
   readDraft,
@@ -93,11 +95,14 @@ import {
   pushRecentSource,
   resolveModel,
   resolveRunner,
+  looksLikeQuestion,
+  projectDefaultSource,
   resolveSource,
   startedRunPath,
   type TaskSource,
 } from './new-task-form'
 import { parseNewTaskParams } from './new-task-params'
+import { trackMessageSent } from '@/lib/telemetry'
 
 /**
  * `/new` — the full-screen new-task hero (spec §"New task (full-screen, #386)"; visual
@@ -210,7 +215,19 @@ export function NewTaskRoute() {
     skills.data !== undefined && workflows.data !== undefined && !uiState.isPending
   // The draft's pick alone — a fresh `/new` selects nothing (see `resolveSource` for what the
   // persisted `lastTask` preselection was load-bearing for, and why it is gone).
-  const source = resolveSource(draft.source, skillList, workflowList)
+  // Trunk-based projects (spec 2026-10-20-trunk-based-projects): an in-place project offers
+  // the Ask chip, a trunk-based project asks on its own when the message is a question, and nothing
+  // picked falls back to the project's default (or Ask) skill.
+  const inPlaceByDefault = config.data?.taskWorkspace === 'in-place'
+  const askOffered = repo.data?.info != null && (inPlaceByDefault || config.data?.profile === 'trunk')
+  const askWanted =
+    askOffered &&
+    draft.variants <= 1 &&
+    draft.dispatch === null &&
+    (draft.readOnly ?? (config.data?.profile === 'trunk' && looksLikeQuestion(draft.text)))
+  const source =
+    resolveSource(draft.source, skillList, workflowList) ??
+    projectDefaultSource(config.data, askWanted, skillList)
   const selectedSkill = source?.source === 'skill'
     ? skillList.find((skill) => skill.name === source.ref)
     : undefined
@@ -270,6 +287,8 @@ export function NewTaskRoute() {
   )
     ? draft.agentProfile
     : null
+  // The account this task will actually run on — what the server's gate judges (ac53a6ef).
+  const accountCheck = useSelectedAccountCheck(displayRunner, agentProfile ?? repoAccount?.[displayRunner])
 
   // A cold /new load mounts the textarea disabled while provider status is checked. Restore
   // the route's autofocus contract once that check enables the form, but never steal focus if
@@ -338,14 +357,17 @@ export function NewTaskRoute() {
     variants,
     planFirst: draft.planFirst,
     explicitAutonomous: draft.autonomous,
-    explicitWorktree: draft.worktree,
+    explicitWorktree: explicitWorktreeFor(draft, config.data?.taskWorkspace),
     interactive: selectedSkill?.interactive,
-    configuredAutonomous:
+    configuredAutonomous: autoLandsUnreviewed(
       workspaceConfig.data?.composerDefaults?.autonomous
       ?? workspaceConfig.data?.composerDefaults?.inheritedAutonomous
       ?? 'source-dependent',
-    configuredWorktree:
-      workspaceConfig.data?.composerDefaults?.worktree
+      config.data?.landing === 'auto',
+    ),
+    configuredWorktree: config.data?.taskWorkspace
+      ? config.data.taskWorkspace === 'worktree'
+      : workspaceConfig.data?.composerDefaults?.worktree
       ?? workspaceConfig.data?.composerDefaults?.inheritedWorktree
       ?? true,
     // Nothing picked runs the plain built-in workflow, and the 'source-dependent' autonomy
@@ -353,7 +375,8 @@ export function NewTaskRoute() {
     source: source?.source ?? 'workflow',
     dispatch: dispatchOn,
   })
-  const worktreeOn = runMode.worktree
+  const askOn = askWanted && !dispatchOn && variants <= 1
+  const worktreeOn = runMode.worktree && !askOn
   const autonomousOn = runMode.autonomous
 
   // Follow-up generation (#444) is offered only while the server has the global inbox on
@@ -440,6 +463,7 @@ export function NewTaskRoute() {
       if (launchKey !== '' && deepLink.key === launchKey) {
         try {
           const created = await createRun(bookmarkletRunBody(deepLink, runner, defaultRunner))
+          trackMessageSent('bookmarklet')
           clearStartedDraft(draftProjectId)
           void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
           void navigate(startedRunPath(created))
@@ -482,7 +506,7 @@ export function NewTaskRoute() {
       ?.focus()
   }, [notice, sourcesReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const submit = async (text: string, submitted: AttachmentInput[]) => {
+  const submit = async (text: string, submitted: AttachmentEntry[]) => {
     if (!providersReady || runner === null) {
       throw new Error(
         providers.isPending
@@ -491,6 +515,10 @@ export function NewTaskRoute() {
             ? 'Provider authentication could not be verified.'
             : 'Connect an agent provider before starting a task.',
       )
+    }
+    if (accountCheck.blocked !== null) {
+      const blocked = await accountCheck.verify()
+      if (blocked !== null) throw new Error(blocked)
     }
     if (!sourcesReady) {
       // Rejection restores the draft — nothing typed is lost to a race with the pickers.
@@ -523,6 +551,8 @@ export function NewTaskRoute() {
         variants,
         images: submitted,
         worktree: worktreeOn,
+        newBranch: draft.newBranch,
+        branch: draft.branchName,
         autonomous: autonomousOn,
         generateFollowups: generateFollowupsOn,
         // #374: when the Inbox's "Run" sent us here, hand the entry's id back so the server
@@ -535,8 +565,11 @@ export function NewTaskRoute() {
         queueOnly: draft.queueOnly,
         taskGroupId: draft.taskGroupId,
         taskGroupName: draft.taskGroupName,
+        readOnly: askOn,
+        inPlaceByDefault,
       }),
     )
+    trackMessageSent('new_task')
     // Remember what was actually run so the next visit preselects it (legacy
     // `saveLastTaskSource`) and float it to the top of the picker next time
     // (recency sort) — fire-and-forget: a failed write only costs the convenience.
@@ -655,6 +688,9 @@ export function NewTaskRoute() {
               hasGit,
               dispatch: dispatchOn,
               autonomous: autonomousOn,
+              newBranch: draft.newBranch,
+              readOnly: askOn,
+              autoLand: config.data?.landing === 'auto' && config.data.landingBlocked === null,
             })}
           </p>
         </header>
@@ -789,7 +825,10 @@ export function NewTaskRoute() {
                   extras (templates, dispatch) | WHERE it forks from. The dividers only
                   exist on md-and-up; a phone wraps the row and a divider mid-wrap is noise. */}
               <PillDivider />
-              {worktreeToggleShown ? (
+              {askOffered ? (
+                <AskToggle on={askOn} auto={draft.readOnly === undefined} onChange={(on) => update({ readOnly: on })} />
+              ) : null}
+              {worktreeToggleShown && !askOn ? (
                 <WorktreeToggle
                   on={worktreeOn}
                   disabled={worktreeForced}
@@ -798,7 +837,15 @@ export function NewTaskRoute() {
                       ? "Dispatch forks this task's commits — subtasks need a worktree"
                       : 'Parallel variants always use isolated worktrees'
                   }
-                  onChange={(on) => update({ worktree: on })}
+                  onChange={(on) => update({ worktree: on, worktreeBasis: config.data?.taskWorkspace ?? 'default' })}
+                />
+              ) : null}
+              {worktreeToggleShown && !worktreeOn && !askOn ? (
+                <NewBranchToggle
+                  on={draft.newBranch === true}
+                  name={draft.branchName ?? ''}
+                  onChange={(on) => update({ newBranch: on })}
+                  onNameChange={(branchName) => update({ branchName })}
                 />
               ) : null}
               <AutonomousToggle
@@ -871,6 +918,23 @@ export function NewTaskRoute() {
           }
         />
 
+        {accountCheck.blocked !== null ? (
+          <p
+            data-slot="account-signed-out"
+            role="alert"
+            className="mt-2 rounded-md border border-destructive/30 bg-destructive/[0.07] px-3 py-1.5 text-xs text-muted-foreground"
+          >
+            {accountCheck.blocked}{' '}
+            {/* Global settings sit outside every project scope — react-router's own Link. */}
+            <GlobalLink
+              to="/settings/global/accounts"
+              className="font-medium text-foreground underline underline-offset-2"
+            >
+              Agent accounts
+            </GlobalLink>
+          </p>
+        ) : null}
+
         {dispatchOn && (dispatchSettingsOpen || dispatchHintFlash) ? (
           <p
             data-slot="dispatch-hint"
@@ -916,6 +980,33 @@ function PillDivider() {
   return <span aria-hidden="true" className="mx-0.5 h-3.5 w-px shrink-0 bg-border max-md:hidden" />
 }
 
+/** The Ask chip (spec 2026-10-20-trunk-based-projects): a read-only question about the
+ *  checkout — no branch, no lease, nothing lands. */
+function AskToggle({ on, auto, onChange }: { on: boolean; auto: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={on}
+      data-slot="ask-toggle"
+      onClick={() => onChange(!on)}
+      title={
+        on
+          ? `Read-only question — answers from the checkout, changes nothing${auto ? ' (picked because the message is a question)' : ''}`
+          : 'Check to ask a read-only question instead of filing a change'
+      }
+      className={cn(chipClass, on && 'border-primary/60 text-foreground')}
+    >
+      {on ? (
+        <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
+      ) : (
+        <SquareIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
+      )}
+      Ask
+    </button>
+  )
+}
+
 /** Worktree opt-out toggle (#worktree-toggle): a checkbox-style chip for ordinary runs.
  *  Checked = isolated worktree (the default); unchecked = run in the repo working tree. */
 function WorktreeToggle({
@@ -953,6 +1044,55 @@ function WorktreeToggle({
       )}
       Worktree
     </button>
+  )
+}
+
+/** In-place on a new branch (spec 2026-10-19-repo-git-sync): shown only with the worktree off.
+ *  Checked forks the checkout onto `name` (or a generated branch) from the base first. */
+function NewBranchToggle({
+  on,
+  name,
+  onChange,
+  onNameChange,
+}: {
+  on: boolean
+  name: string
+  onChange: (on: boolean) => void
+  onNameChange: (name: string) => void
+}) {
+  return (
+    <span className="flex items-center gap-1">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={on}
+        data-slot="new-branch-toggle"
+        onClick={() => onChange(!on)}
+        title={
+          on
+            ? 'Switches the repo checkout to a new branch from the base before the agent starts'
+            : 'Runs on whatever branch is checked out — check to start a new branch from the base'
+        }
+        className={cn(chipClass, on && 'border-primary/60 text-foreground')}
+      >
+        {on ? (
+          <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
+        ) : (
+          <SquareIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
+        )}
+        New branch
+      </button>
+      {on ? (
+        <input
+          aria-label="New branch name"
+          data-slot="new-branch-name"
+          value={name}
+          placeholder="feat/… (auto)"
+          onChange={(event) => onNameChange(event.target.value)}
+          className="h-6 w-36 rounded-md border border-input bg-card px-2 font-mono text-[11px] outline-none focus-visible:border-ring"
+        />
+      ) : null}
+    </span>
   )
 }
 

@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import { RegistryCache } from '../self-update/registry.ts';
+import { SelfUpdateService } from '../self-update/service.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
@@ -173,6 +175,33 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
     );
     expect(a.store.getRun(third.id)?.status).toBe('done');
   }, 45_000);
+
+  // #1524: the self-update dialog read the boot project's store only, so tasks in any other
+  // project — or every task, when cezar booted outside a project — counted as zero.
+  it('the self-update status counts running and queued runs in every project', async () => {
+    const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 1 } });
+    const a = project('cez-wsem-upd-a-', semaphore);
+    const b = project('cez-wsem-upd-b-', semaphore);
+    const offline = (async () => new Response('', { status: 503 })) as unknown as typeof fetch;
+    const selfUpdate = new SelfUpdateService({
+      pkgName: 'x',
+      version: '0.0.0',
+      entry: 'index.js',
+      restart: () => {},
+      runs: semaphore,
+      registry: new RegistryCache('x', offline),
+    });
+    expect((await selfUpdate.status()).activeRuns).toBe(0);
+
+    const slowA = a.manager.startRun(SLOW, { task: 'running in A' });
+    await waitFor(() => a.store.getRun(slowA.id)?.status === 'running', 'the A run to start');
+    // Per-project cap: B has its own slot even while A holds its one, so B runs too.
+    const runB = b.manager.startRun(SLOW, { task: 'running in B' });
+    await waitFor(() => b.store.getRun(runB.id)?.status === 'running', 'the B run to start');
+
+    expect((await selfUpdate.status()).activeRuns).toBe(2);
+    expect(semaphore.idle()).toBe(false);
+  });
 
   it("a slot freed in a project starts THAT project's queued run while the other project stays saturated", async () => {
     // A saturates its own cap and B saturates its own cap plus queues a third.

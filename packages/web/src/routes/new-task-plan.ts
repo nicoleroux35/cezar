@@ -1,6 +1,6 @@
 import type {
   CreateRunInput,
-  AttachmentInput,
+  AttachmentEntry,
   DispatchIntent,
   PlanResponse,
   Runner,
@@ -25,12 +25,12 @@ export interface PendingPlan {
   steps: WorkflowStepDef[]
   rationale: string
   fallback: boolean
-  images: AttachmentInput[]
+  images: AttachmentEntry[]
 }
 
 export function pendingPlanOf(
   task: string,
-  images: readonly AttachmentInput[],
+  images: readonly AttachmentEntry[],
   response: PlanResponse,
 ): PendingPlan {
   return {
@@ -98,7 +98,7 @@ export function buildPlannedRunBody(opts: {
   runnerExplicit?: boolean
   defaultRunner?: Runner
   variants: number
-  images: readonly AttachmentInput[]
+  images: readonly AttachmentEntry[]
   generateFollowups?: boolean
   todoId?: string
   dispatch?: DispatchIntent | null

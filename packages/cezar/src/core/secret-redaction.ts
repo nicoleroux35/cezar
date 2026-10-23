@@ -40,6 +40,15 @@ const SECRET_VALUE_NAME_ALLOW: ReadonlySet<string> = new Set([
   'XDG_SESSION_TYPE',
   'XDG_SESSION_CLASS',
   'XDG_SESSION_DESKTOP',
+  // The same rule, one desktop further: GNOME/XDG export the session's PATH, id and bus
+  // address, and pi exports its own session file/id. None is a credential, and collecting one
+  // makes `StreamRedaction` hold back a trailing character of ordinary output (a session id
+  // starting with `t` split "fixture-output" into two frames in the lifecycle suite).
+  'GNOME_DESKTOP_SESSION_ID',
+  'XDG_SESSION_PATH',
+  'DBUS_SESSION_BUS_ADDRESS',
+  'PI_SESSION_FILE',
+  'PI_SESSION_ID',
 ]);
 
 /**

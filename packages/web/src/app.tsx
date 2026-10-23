@@ -15,6 +15,7 @@ import { ThemeProvider } from './components/theme-provider'
 import { Toaster } from './components/ui/toaster'
 import { TranslationProvider } from './i18n/use-translations'
 import { useAppearance } from './components/appearance-provider'
+import { Telemetry } from './lib/telemetry'
 import { AppRoutes } from './routes'
 
 /** Wraps the app routes with the translation provider, reading language from appearance. */
@@ -25,6 +26,9 @@ function TranslatedApp() {
     <TranslationProvider language={language}>
       <BrowserRouter>
         <LastLocationController />
+        {/* Page views + error hooks; the server forwards them only after the user opted in
+            (docs/telemetry.md). Renders nothing. */}
+        <Telemetry />
         {/* At the root for the same reason the event stream is: the sidebar, the task table
             and an open run header all paint PR/issue chips, often the SAME ones, and each
             asking for itself was several round trips and a staggered wave of colour. They

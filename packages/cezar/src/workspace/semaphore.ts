@@ -118,6 +118,9 @@ export interface SemaphoreParticipant {
     * nothing.
     */
   accountHolds?(): AccountHolds;
+  /** Runs a restart would interrupt (queued, waiting or running) — the self-update dialog's
+   *  warning. Optional for stubs; absent counts none. */
+  activeRuns?(): number;
 }
 
 const DEFAULT_LIMITS: WorkspaceResourceLimits = {
@@ -218,6 +221,22 @@ export class WorkspaceSemaphore {
       if (this.scopes.get(participant) === scope) total += participant.busySlots();
     }
     return total;
+  }
+
+  /** Runs a restart would interrupt, across every registered project — not just the boot one. */
+  activeRuns(): number {
+    let total = 0;
+    for (const participant of this.participants) total += participant.activeRuns?.() ?? 0;
+    return total;
+  }
+
+  /** No slot held and nothing queued anywhere in the workspace — when "update when idle" may
+   *  restart. Waiting runs do not count (#347): they are parked on the user, and boot resumes them. */
+  idle(): boolean {
+    for (const participant of this.participants) {
+      if (participant.busySlots() > 0 || participant.oldestQueuedAt() !== null) return false;
+    }
+    return true;
   }
 
   /** Cached per-project default parallel cap (the workspace `resources`

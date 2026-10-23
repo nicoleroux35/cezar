@@ -1,82 +1,44 @@
+import { parseRemote } from '../../git-remotes.ts';
+import { isGithubHost } from '../../github-hosts.ts';
 import type { RepoInfo } from '../git.ts';
 import { createGithubDriver } from './github.ts';
-import { createGitlabDriver } from './gitlab.ts';
 import { createEnhancedGitlabDriver } from './gitlab-enhanced.ts';
-import { createGiteaDriver } from './gitea.ts';
 import { createEnhancedGiteaDriver, createEnhancedForgejoDriver } from './gitea-enhanced.ts';
-import { createForgejoDriver } from './forgejo.ts';
 import type { ForgeDriver, ForgeKind } from './types.ts';
 
 /**
  * Forge resolution (cockpit-ui redesign spec §"Forge-driver seam"): map the
- * repo's origin remote to a driver — github.com → the GitHub driver, anything
- * else (GitLab, self-hosted, no remote, not a repo) → null. The health route
+ * repo's origin remote to a driver — github.com or a GitHub Enterprise host → the GitHub driver,
+ * GitLab/Gitea/Forgejo (the fork's multi-forge support) → their enhanced drivers, anything
+ * else (no remote, not a repo) → null. The health route
  * serializes the result as `forge: {kind, available, reason?} | null`; a null
  * forge means plain-git features only (diffs, commit, push, branches).
  */
 
-export interface ParsedRemote {
-  host: string;
-  owner: string;
-  repo: string;
+export { parseRemote, type ParsedRemote } from '../../git-remotes.ts';
+
+/** Remote host → forge kind. The one lookup both `resolveForge` and the registry probe read;
+ *  GitHub means github.com or any GitHub Enterprise host (`github-hosts.ts`), and the fork adds
+ *  self-hosted GitLab/Gitea/Forgejo by name pattern. */
+function forgeKindOfHost(host: string): ForgeKind | null {
+  if (isGithubHost(host)) return 'github';
+  if (isGitLabHost(host)) return 'gitlab';
+  if (isGiteaHost(host)) return 'gitea';
+  if (isForgejoHost(host)) return 'forgejo';
+  return null;
 }
 
-/**
- * Parse a git remote URL into host/owner/repo. Handles the scheme forms
- * (`https://`, `ssh://`, `git://`, with optional credentials and port) and the
- * scp-like form (`git@host:owner/repo.git`). Null for local paths and anything
- * else that doesn't look like a forge remote.
- */
-export function parseRemote(remote: string): ParsedRemote | null {
-  const r = remote.trim().replace(/\/+$/, '');
-  let host: string | undefined;
-  let path: string | undefined;
-  const url = /^(?:https?|ssh|git|git\+ssh):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/.exec(r);
-  if (url) {
-    [, host, path] = url;
-  } else {
-    // scp-like: [user@]host:owner/repo(.git) — a leading '/' (local path)
-    // can't match the host group, so plain directories fall through to null.
-    const scp = /^(?:[^@/:]+@)?([^:/]+):(.+)$/.exec(r);
-    if (!scp) return null;
-    [, host, path] = scp;
-  }
-  if (!host || !path) return null;
-  const parts = path.replace(/\.git$/i, '').split('/').filter(Boolean);
-  const owner = parts[parts.length - 2];
-  const repo = parts[parts.length - 1];
-  if (!owner || !repo) return null;
-  return { host: host.toLowerCase(), owner, repo };
-}
-
-/** Remote host → forge kind. The one host table both `resolveForge` and the
- *  registry probe read. */
-const FORGE_HOSTS: Record<string, ForgeKind> = {
-  'github.com': 'github',
-  'gitlab.com': 'gitlab',
-  'codeberg.org': 'forgejo',
-};
-
-/**
- * Detect if a host is a GitLab instance (gitlab.com or self-hosted).
- * Self-hosted detection uses common naming patterns.
- */
+/** Detect a GitLab instance (gitlab.com or self-hosted, by naming convention). */
 function isGitLabHost(host: string): boolean {
   return host === 'gitlab.com' || host.includes('gitlab');
 }
 
-/**
- * Detect if a host is a Gitea instance.
- * Self-hosted detection uses common naming patterns.
- */
+/** Detect a Gitea instance (self-hosted, by naming convention). */
 function isGiteaHost(host: string): boolean {
   return host.includes('gitea');
 }
 
-/**
- * Detect if a host is a Forgejo instance (codeberg.org or self-hosted).
- * Self-hosted detection uses common naming patterns.
- */
+/** Detect a Forgejo instance (codeberg.org or self-hosted, by naming convention). */
 function isForgejoHost(host: string): boolean {
   return host === 'codeberg.org' || host.includes('forgejo');
 }
@@ -89,18 +51,8 @@ function isForgejoHost(host: string): boolean {
  */
 export function forgeKindOfRemote(remote: string | undefined): ForgeKind | null {
   const parsed = remote ? parseRemote(remote) : null;
-  if (!parsed) return null;
-  
-  // Check known hosts first
-  const kind = FORGE_HOSTS[parsed.host];
-  if (kind) return kind;
-  
-  // Check self-hosted patterns
-  if (isGitLabHost(parsed.host)) return 'gitlab';
-  if (isGiteaHost(parsed.host)) return 'gitea';
-  if (isForgejoHost(parsed.host)) return 'forgejo';
-  
-  return null;
+  return parsed ? forgeKindOfHost(parsed.host) : null;
+
 }
 
 /**
@@ -113,7 +65,7 @@ export function forgeKindOfRemote(remote: string | undefined): ForgeKind | null 
  */
 export function forgeWebRoot(remote: string | undefined): string | null {
   const parsed = remote ? parseRemote(remote) : null;
-  if (!parsed || !(parsed.host in FORGE_HOSTS)) return null;
+  if (!parsed || !forgeKindOfHost(parsed.host)) return null;
   return `https://${parsed.host}/${parsed.owner}/${parsed.repo}`;
 }
 
@@ -122,24 +74,23 @@ export function resolveForge(repoInfo: RepoInfo | null): ForgeDriver | null {
   if (!repoInfo?.remote) return null;
   const parsed = parseRemote(repoInfo.remote);
   if (!parsed) return null;
-  
-  const kind = FORGE_HOSTS[parsed.host];
+  const kind = forgeKindOfHost(parsed.host);
   if (kind === 'github') {
-    return createGithubDriver(repoInfo.root, { owner: parsed.owner, repo: parsed.repo });
+    return createGithubDriver(repoInfo.root, { host: parsed.host, owner: parsed.owner, repo: parsed.repo });
   }
   
   // GitLab: Use enhanced driver with full merge/diff support
-  if (kind === 'gitlab' || isGitLabHost(parsed.host)) {
+  if (kind === 'gitlab') {
     return createEnhancedGitlabDriver(repoInfo.root, { host: parsed.host, owner: parsed.owner, repo: parsed.repo });
   }
   
   // Gitea: Use enhanced driver
-  if (kind === 'gitea' || isGiteaHost(parsed.host)) {
+  if (kind === 'gitea') {
     return createEnhancedGiteaDriver(repoInfo.root, { host: parsed.host, owner: parsed.owner, repo: parsed.repo });
   }
   
   // Forgejo: Use enhanced driver
-  if (kind === 'forgejo' || isForgejoHost(parsed.host)) {
+  if (kind === 'forgejo') {
     return createEnhancedForgejoDriver(repoInfo.root, { host: parsed.host, owner: parsed.owner, repo: parsed.repo });
   }
   

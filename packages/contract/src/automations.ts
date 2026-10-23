@@ -3,7 +3,7 @@ import { trackerAssociationSchema, trackerAutomationEventSchema, trackerFailureS
 // An automation launches an ORDINARY cezar task, so the task it carries is the composer's own
 // run-creation input minus the keys an automation supplies itself. Consumed rather than
 // redeclared — the same one-way direction `./runs.ts` takes towards `./workflows.ts`.
-import { createRunInputKeys, runStatusSchema } from './runs.ts';
+import { createRunInputBaseSchema, runStatusSchema } from './runs.ts';
 import { DISPATCH_MAX_SUBTASKS, dispatchKindSchema } from './dispatch.ts';
 import { automationScheduleSchema } from './automation-schedule.ts';
 
@@ -28,7 +28,7 @@ import { automationScheduleSchema } from './automation-schedule.ts';
 
 // ---- the definition ------------------------------------------------------------------------
 
-/** The GitHub activity an automation reacts to. Seven events, all bounded polls — never a webhook. */
+/** The GitHub activity an automation reacts to. Nine events, all bounded polls — never a webhook. */
 export const automationEventSchema = z.enum([
   'pull_request.opened',
   'issue.opened',
@@ -37,6 +37,8 @@ export const automationEventSchema = z.enum([
   'pull_request.reviewed',
   'pull_request.review_requested',
   'pull_request.rereview_requested',
+  'pull_request.closed',
+  'pull_request.merged',
 ]);
 export type AutomationEvent = z.infer<typeof automationEventSchema>;
 
@@ -107,14 +109,8 @@ export const automationDispatchSchema = z.object({
 export type AutomationDispatch = z.infer<typeof automationDispatchSchema>;
 
 /**
- * The task a match launches: `POST /runs`' own body minus the keys an automation owns itself —
- * `task` (the rendered prompt), `images`, `title` and `todoId`. The prompt TEMPLATE arrives as
- * `prompt` instead.
- *
- * `title` is one of the keys the automation owns: a launched run is named from the automation's
- * own `name` and the rendered prompt, so nothing here carries a per-task title and the contract
- * must not demand one. `createRunInputKeys.title` is REQUIRED, so inheriting it made every
- * automation response fail to parse (#1258).
+ * The task a match launches: `POST /runs`' own body minus the three keys an automation owns
+ * itself — `task` (the rendered prompt), `images` and `todoId` — plus the prompt TEMPLATE.
  *
  * Two keys are re-spelled rather than inherited, because the automation schema really does differ
  * from the composer's and the contract has to describe the automation route:
@@ -126,8 +122,8 @@ export type AutomationDispatch = z.infer<typeof automationDispatchSchema>;
  *    which makes the key REQUIRED (`string | undefined`) on the output side; the automation route
  *    stores and answers it plainly, so it stays optional.
  */
-export const automationTaskSchema = createRunInputKeys
-  .omit({ task: true, images: true })
+export const automationTaskSchema = createRunInputBaseSchema
+  .omit({ task: true, images: true, todoId: true, systemPrompt: true })
   .extend({
     /** The prompt template. `{{github.number}}`, `{{github.title}}`, `{{github.url}}` and
      *  `{{github.labels}}` are substituted per match; GitHub content is appended as untrusted
@@ -136,9 +132,6 @@ export const automationTaskSchema = createRunInputKeys
     variants: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
     systemPrompt: z.string().optional(),
     dispatch: automationDispatchSchema.optional(),
-    /** Full boolean, not the run-creation opt-out: the store's own task shape carries
-     *  `worktree?: boolean`, and the automation routes validate against it. */
-    worktree: z.boolean().optional(),
     /** Where the launched run's worktree forks from (spec 2026-10-06-agentic-e2e-checks Phase 3):
      *  omitted/`'base'` = the configured base; `'pr-head'` = the matched pull request's head.
      *  GitHub automations whose events are all `pull_request.*` only. */
@@ -411,13 +404,18 @@ export const automationTemplateSchema = z.object({
   schedule: automationScheduleSchema.optional(),
   events: z.array(automationEventSchema).optional(),
   intervalSeconds: z.number().optional(),
+  /** `github` kind only. A copy without them would launch for every item. */
+  filters: automationFiltersSchema.optional(),
   task: z.object({
     prompt: z.string(),
     workflow: z.string().optional(),
+    steps: automationTaskSchema.shape.steps,
     runner: z.string().optional(),
     model: z.string().optional(),
     autonomous: z.boolean().optional(),
     dispatch: automationDispatchSchema.optional(),
+    checkout: automationTaskSchema.shape.checkout,
+    allowForkHeads: automationTaskSchema.shape.allowForkHeads,
   }),
 });
 export type AutomationTemplate = z.infer<typeof automationTemplateSchema>;
