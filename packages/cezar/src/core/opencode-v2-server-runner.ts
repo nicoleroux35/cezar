@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import type {
   AgentEvent,
   AgentRunResult,
@@ -26,7 +27,7 @@ import {
   type OpencodeUiMapperState,
 } from './opencode-ui-mapper.ts';
 import { mapOpencodeV2Event } from './opencode-v2-ui-mapper.ts';
-import { KILL_GRACE_MS, TURN_IDLE_GRACE_MS } from './opencode-server-runner.ts';
+import { KILL_GRACE_MS } from './opencode-server-runner.ts';
 
 export interface OpencodeV2RunnerOptions {
   /** Override the binary name/path; defaults to `opencode` on PATH. */
@@ -38,17 +39,26 @@ export interface OpencodeV2RunnerOptions {
 const SERVER_START_TIMEOUT_MS = 30_000;
 
 /**
- * `AgentRunner` over `opencode serve` v2 — OpenCode version 2.x with updated protocol.
- * 
- * This runner handles OpenCode v2's revised API endpoints and event schema while
- * maintaining the same session-based architecture as v1. Key differences:
- * - Endpoints prefixed with `/v2/`
- * - Model format: `{ provider, model }` instead of `{ providerID, modelID }`
- * - Revised SSE event types and structure
- * 
- * Like v1, one server per session bound to the run's worktree. Auth = host's opencode
- * config. Auto-approved permissions. `spec.allowedTools` ignored (OpenCode has no
- * per-tool allowlist). `spec.model` is `provider/model`.
+ * `AgentRunner` over `opencode serve` for OpenCode 2.x, against the HTTP API that version
+ * actually serves (verified live against 2.1.4 — `opencode serve --help` calls itself "the v2
+ * API and web server"):
+ *
+ *   POST /api/session              { title, model: { providerID, id } } → { data: { id } }
+ *   POST /api/session/:id/prompt   { text }
+ *   POST /api/session/:id/interrupt
+ *   GET  /api/event                SSE, one `data: {...}` per event
+ *
+ * Every call carries `authorization: Basic opencode:<password>`; the server prints that password
+ * at boot, so this runner sets `OPENCODE_SERVER_PASSWORD` on the child instead of scraping the
+ * banner — deterministic, and it cannot pin a stale password from a previous process.
+ *
+ * Events are the typed `session.*` bus (`session.text.delta`, `session.tool.*`,
+ * `session.step.ended`, `session.execution.succeeded|failed|interrupted`), not the v1
+ * `message.part.*` shape.
+ *
+ * One server per session bound to the run's worktree. Auto-approved permissions.
+ * `spec.allowedTools` is ignored (OpenCode has no per-tool allowlist). `spec.model` is
+ * `provider/model`.
  */
 export class OpencodeV2ServerRunner implements AgentRunner {
   readonly backend = 'opencode' as const;
@@ -89,6 +99,8 @@ class OpencodeV2Session implements AgentSession {
   private readonly hasExited: () => boolean;
   private serverOpen = true;
   private baseUrl: string | undefined;
+  /** `authorization` value every call (and the event stream) must carry. */
+  private readonly authHeader: string;
   private sessionId: string | undefined;
   private ready!: Promise<void>;
   private resolveExit!: () => void;
@@ -102,7 +114,8 @@ class OpencodeV2Session implements AgentSession {
     this.emit({ type: 'text', text });
   });
   private readonly toolsSeen = new Set<string>();
-  private readonly msgRole = new Map<string, string>();
+  /** `session.tool.input.started` id → tool name, for the later `called` event. */
+  private readonly toolNames = new Map<string, string>();
   private tokensUsed = 0;
   private lastCost: number | undefined;
   private turnInFlight = false;
@@ -126,8 +139,13 @@ class OpencodeV2Session implements AgentSession {
     private readonly opts: SessionOptions,
   ) {
     const port = 40000 + Math.floor(Math.random() * 20000);
+    // A password of our own, set on the child rather than scraped from its banner: the server
+    // answers 401 without it, and reusing whatever the printed line said would tie us to text
+    // that can change between releases.
+    const password = randomUUID().replaceAll('-', '');
+    this.authHeader = `Basic ${Buffer.from(`opencode:${password}`).toString('base64')}`;
     try {
-      const env = buildChildEnv({ backend: 'opencode', extraEnv: spec.env });
+      const env = buildChildEnv({ backend: 'opencode', extraEnv: { ...spec.env, OPENCODE_SERVER_PASSWORD: password } });
       const [file, argv] = disclaimedCommand(bin, ['serve', '--hostname', '127.0.0.1', '--port', String(port)], env);
       this.child = nodeSpawn(file, argv, { cwd: spec.cwd, env });
     } catch (err) {
@@ -245,7 +263,7 @@ class OpencodeV2Session implements AgentSession {
   interrupt(): void {
     this.serverOpen = false;
     if (this.baseUrl && this.sessionId) {
-      void this.http('POST', `/v2/session/${this.sessionId}/abort`, undefined).catch(() => undefined);
+      void this.http('POST', `/api/session/${this.sessionId}/interrupt`, undefined).catch(() => undefined);
     }
     this.finishTurn();
     this.sse.abort();
@@ -300,9 +318,13 @@ class OpencodeV2Session implements AgentSession {
   }
 
   private async bootstrap(): Promise<void> {
-    // v2 endpoint
-    const created = await this.http('POST', '/v2/session', { title: 'cezar task' });
-    this.sessionId = stringField(created, 'id');
+    const created = await this.http('POST', '/api/session', {
+      title: 'cezar task',
+      ...modelField(this.spec.model),
+    });
+    // `{ data: { id, … } }` — 2.x wraps every entity in `data`.
+    const data = (created.data as Record<string, unknown> | undefined) ?? created;
+    this.sessionId = stringField(data, 'id');
     if (!this.sessionId) throw new Error('opencode v2 did not return a session id');
     this.emit({ type: 'session', sessionId: this.sessionId });
     const sessionId = this.sessionId;
@@ -329,15 +351,12 @@ class OpencodeV2Session implements AgentSession {
     });
     this.emitUi(opencodeTurnStarted);
     
-    const body: Record<string, unknown> = { parts: [{ type: 'text', text }] };
-    const id = parseModelIdentity(this.spec.model);
-    // v2 model format
-    if (id) body.model = { provider: id.provider, model: id.model };
-    
+    // The 2.x prompt takes plain text; the model is a SESSION property, set at creation.
+    const body: Record<string, unknown> = { text };
+
     let failure: unknown;
     try {
-      // v2 endpoint
-      const res = await this.http('POST', `/v2/session/${this.sessionId}/message`, body);
+      const res = await this.http('POST', `/api/session/${this.sessionId}/prompt`, body);
       this.absorbUsage(res);
     } catch (err) {
       if (this.isDropWhileSessionLives(err)) {
@@ -351,6 +370,7 @@ class OpencodeV2Session implements AgentSession {
       this.finishTurn();
       throw failure;
     }
+    // Only fires if the bus was already dead; otherwise `session.execution.*` ends the turn.
     this.armTurnGrace();
     await turnEnded;
   }
@@ -378,18 +398,20 @@ class OpencodeV2Session implements AgentSession {
     resolve?.();
   }
 
+  /**
+   * Settle the turn when the event bus is gone — nothing else would ever say it finished, and a
+   * run must not wait out its wall-clock timeout.
+   *
+   * Deliberately NOT a timer. 2.x answers `POST /prompt` as soon as the message is ENQUEUED
+   * (unlike v1's long poll, which returned when the turn was over), so an idle timer armed at
+   * that point fires during the model's first tool round-trip and cuts the turn between steps:
+   * the run then ends with the text of a step it never received (verified live — a tool-using
+   * turn reported an empty answer). The boundary is `session.execution.succeeded|failed|
+   * interrupted`; the wall-clock deadline covers a server that goes silent with its bus open.
+   */
   private armTurnGrace(): void {
     if (!this.turnInFlight || !this.turnPostSettled) return;
-    if (this.turnGraceTimer) {
-      clearTimeout(this.turnGraceTimer);
-      this.turnGraceTimer = undefined;
-    }
-    if (!this.sseConnected || this.sseClosed) {
-      this.finishTurn();
-      return;
-    }
-    this.turnGraceTimer = setTimeout(() => this.finishTurn(), TURN_IDLE_GRACE_MS);
-    this.turnGraceTimer.unref?.();
+    if (!this.sseConnected || this.sseClosed) this.finishTurn();
   }
 
   private isDropWhileSessionLives(err: unknown): boolean {
@@ -402,8 +424,8 @@ class OpencodeV2Session implements AgentSession {
 
   private async consumeEvents(): Promise<void> {
     if (!this.baseUrl) return;
-    // v2 event endpoint
-    this.sseConnected = await openOpencodeEventStream(`${this.baseUrl}/v2/events`, {
+    this.sseConnected = await openOpencodeEventStream(`${this.baseUrl}/api/event`, {
+      headers: { authorization: this.authHeader },
       signal: this.sse.signal,
       onFrame: (frame) => this.handleFrame(frame),
       onClose: () => {
@@ -432,60 +454,80 @@ class OpencodeV2Session implements AgentSession {
 
   private handleEvent(evt: OpencodeV2Event): void {
     const type = evt.type ?? '';
-    const props = evt.properties ?? evt.data ?? {};
-    
-    // v2 event handling (similar structure to v1 but adapted for v2 event types)
-    if (type === 'message.updated' || type === 'message.created' || type === 'message.completed') {
-      const info = (props.info as Record<string, unknown>) ?? props;
-      const mid = stringField(info, 'id');
-      const role = stringField(info, 'role');
-      if (mid && role) this.msgRole.set(mid, role);
-      this.absorbUsage(info);
-      this.armTurnGrace();
-    } else if (type === 'message.part.updated' || type === 'message.part.created' || type === 'message.content') {
-      this.handlePart((props.part as Record<string, unknown>) ?? props);
-      this.armTurnGrace();
-    } else if (type === 'session.idle' || type === 'turn.completed') {
-      const sid = stringField(props, 'sessionID');
-      if (sid === undefined || sid === this.sessionId) this.finishTurn(true);
-    }
-  }
+    const data = (evt.data as Record<string, unknown> | undefined) ?? {};
+    // Every session event names its session; anything about another one is not ours.
+    const sid = stringField(data, 'sessionID');
+    if (sid !== undefined && this.sessionId !== undefined && sid !== this.sessionId) return;
 
-  private handlePart(part: Record<string, unknown>): void {
-    const messageID = stringField(part, 'messageID');
-    if (messageID && this.msgRole.get(messageID) !== 'assistant') return;
-    const kind = stringField(part, 'type');
-    const id = stringField(part, 'id') ?? stringField(part, 'partId') ?? messageID ?? '';
-    
-    if (kind === 'text') {
-      const full = stringField(part, 'text') ?? stringField(part, 'content') ?? '';
-      const seen = this.textSeen.get(id) ?? 0;
-      if (full.length > seen) {
-        this.textSeen.set(id, full.length);
-        this.textCoalescer.append(id, full.slice(seen));
+    switch (type) {
+      // ---- text: deltas are keyed by the assistant message's text ordinal
+      case 'session.text.delta': {
+        const delta = stringField(data, 'delta');
+        if (!delta) return;
+        const key = `${stringField(data, 'assistantMessageID') ?? ''}:${numField(data, 'ordinal')}`;
+        this.textCoalescer.append(key, delta);
+        return;
       }
-      const time = part.time as Record<string, unknown> | undefined;
-      if (time && typeof time === 'object' && typeof time.end === 'number') {
-        this.textCoalescer.complete(id, full);
+      case 'session.text.ended': {
+        const key = `${stringField(data, 'assistantMessageID') ?? ''}:${numField(data, 'ordinal')}`;
+        this.textCoalescer.complete(key, stringField(data, 'text') ?? '');
+        return;
       }
-    } else if (kind === 'tool') {
-      const state = (part.state as Record<string, unknown> | undefined) ?? {};
-      const status = stringField(state, 'status');
-      const name = stringField(part, 'tool') ?? stringField(part, 'name') ?? 'tool';
-      const callId = id || `${name}-${this.toolsSeen.size}`;
-      if (!this.toolsSeen.has(callId)) {
-        this.toolsSeen.add(callId);
-        this.toolCalls.push({ id: callId, name, input: state.input ?? state });
-        this.emit({ type: 'tool-call', id: callId, tool: name, input: state.input ?? state });
+      // ---- tools
+      // The name is announced on `input.started`; `called` carries only id/input/executed.
+      case 'session.tool.input.started': {
+        const id = stringField(data, 'id');
+        const name = stringField(data, 'name');
+        if (id && name) this.toolNames.set(id, name);
+        return;
       }
-      if (status === 'completed' || status === 'error') {
-        this.emit({
-          type: 'tool-result',
-          toolCallId: callId,
-          result: safeStringify(state.output ?? state.result ?? state),
-          isError: status === 'error',
-        });
+      case 'session.tool.called': {
+        const id = stringField(data, 'id');
+        if (!id) return;
+        const name = stringField(data, 'name') ?? this.toolNames.get(id) ?? 'tool';
+        if (this.toolsSeen.has(id)) return;
+        this.toolsSeen.add(id);
+        const input = data.input ?? {};
+        this.toolCalls.push({ id, name, input });
+        this.emit({ type: 'tool-call', id, tool: name, input });
+        return;
       }
+      case 'session.tool.success':
+      case 'session.tool.failed':
+      case 'session.tool.error': {
+        const id = stringField(data, 'id');
+        if (!id) return;
+        const content = data.content;
+        const text = Array.isArray(content)
+          ? content.map((part) => stringField(part as Record<string, unknown>, 'text') ?? '').join('')
+          : safeStringify(content ?? data.metadata ?? data);
+        this.emit({ type: 'tool-result', toolCallId: id, result: text, isError: type !== 'session.tool.success' });
+        return;
+      }
+      // ---- usage: `step.ended` carries the authoritative final counters
+      case 'session.step.ended':
+      case 'session.usage.updated': {
+        // Usage only — `session.execution.succeeded|failed` is the turn boundary, and a
+        // step can end mid-run (one per tool turn).
+        this.absorbUsage(data);
+        return;
+      }
+      // ---- turn boundaries
+      case 'session.execution.succeeded':
+        this.finishTurn(true);
+        return;
+      case 'session.execution.failed':
+      case 'session.execution.interrupted': {
+        const error = data.error as Record<string, unknown> | undefined;
+        const message = error ? (stringField(error, 'message') ?? safeStringify(error)) : undefined;
+        if (message && type === 'session.execution.failed') {
+          this.emit({ type: 'error', message: `opencode v2: ${message}` });
+        }
+        this.finishTurn(true);
+        return;
+      }
+      default:
+        return;
     }
   }
 
@@ -517,7 +559,7 @@ class OpencodeV2Session implements AgentSession {
     body: unknown,
   ): Promise<Record<string, unknown>> {
     if (!this.baseUrl) throw new Error('opencode v2 server not ready');
-    const res = await opencodeRequest(`${this.baseUrl}${path}`, { method, body });
+    const res = await opencodeRequest(`${this.baseUrl}${path}`, { method, body, headers: { authorization: this.authHeader } });
     if (res.status < 200 || res.status >= 300) {
       throw new Error(`${method} ${path} → ${res.status} ${res.body.slice(0, 200)}`);
     }
@@ -552,6 +594,24 @@ interface OpencodeV2Event {
   type?: string;
   properties?: Record<string, unknown>;
   data?: Record<string, unknown>;
+}
+
+/**
+ * `{ model: { providerID, id } }` for the session-create body, or `{}` when the run named no
+ * model (the server then uses the host's configured default). OpenCode spans providers, so a
+ * bare id is refused upstream by `parseModelIdentity`; here a malformed value degrades to "no
+ * model" rather than failing a run that would otherwise start.
+ */
+function modelField(model: string | undefined): Record<string, unknown> {
+  if (!model) return {};
+  let identity;
+  try {
+    identity = parseModelIdentity(model);
+  } catch {
+    return {};
+  }
+  if (!identity) return {};
+  return { model: { providerID: identity.provider, id: identity.model } };
 }
 
 function textOf(content: ContentBlock[]): string {

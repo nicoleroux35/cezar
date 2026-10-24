@@ -172,7 +172,8 @@ describe('model option resolution', () => {
     // Kilo ships no model listing, and its catalog adapter resolves `[]` with the comment "Kilo
     // runner not yet implemented". Listing it made the picker fire a `/models?runner=kilo` request
     // whose honest answer is always "no models", which is worse than not asking.
-    expect(MODEL_DISCOVERY_RUNNERS).toEqual(['claude', 'codex', 'opencode', 'cursor', 'junie'])
+    // pi discovers too (`pi --list-models`), so its static presets collapsed to `auto`.
+    expect(MODEL_DISCOVERY_RUNNERS).toEqual(['claude', 'codex', 'opencode', 'cursor', 'junie', 'pi'])
     expect(MODEL_DISCOVERY_RUNNERS.every((runner) => runnerDiscoversModels(runner))).toBe(true)
   })
 
