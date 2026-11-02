@@ -23,6 +23,8 @@ import { deriveAttention, isNeedsYouStatus } from '@/lib/attention'
 import { StatusDot } from '@/components/status-dot'
 import { Coverage } from './rows'
 import { ExportRows } from './export-rows'
+import { useTranslations } from '@/i18n/use-translations'
+import type { TranslationText } from '@/i18n/text'
 import { OutcomeInsights } from './insights'
 import { useDashboardFilter } from './url-filter'
 
@@ -31,7 +33,7 @@ const labels = {
   'needs-you': 'Needs you',
   completed: 'Completed',
   failed: 'Failed outcomes',
-}
+} as const
 const metricTints = {
   'needs-you': metricAccents.violet,
   running: metricAccents.info,
@@ -60,6 +62,7 @@ export function Overview({
   onCurrent?: (group: 'running' | 'needs-you', target: HTMLElement) => void
   children: (modules: { overview?: ReactNode; portfolio?: ReactNode }) => ReactNode
 }) {
+  const { tr } = useTranslations()
   const [period, setPeriod] = useDashboardFilter('period', ['7d', '30d'] as const, '7d')
   const trigger = useSheetTrigger('outcome', '[data-outcome-trigger]')
   const projects = useProjects().data?.projects
@@ -83,9 +86,9 @@ export function Overview({
   const overview = (
     <Card className="gap-0 py-0">
       <div className={widgetHeader}>
-        <h2 className={widgetHeading}>Workspace overview</h2>
+        <h2 className={widgetHeading}>{tr('Workspace overview')}</h2>
         <label className={filterLabel}>
-          Outcomes period
+          {tr('Outcomes period')}
           <FilterSelect
             value={period}
             onChange={(e) => {
@@ -93,8 +96,8 @@ export function Overview({
               setSelection(null)
             }}
           >
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
+            <option value="7d">{tr('Last 7 days')}</option>
+            <option value="30d">{tr('Last 30 days')}</option>
           </FilterSelect>
         </label>
       </div>
@@ -106,9 +109,9 @@ export function Overview({
         )}
         {query.isError && (
           <p role="alert">
-            {data ? 'Showing previous results. ' : ''}Could not refresh overview.{' '}
+            {data ? tr('Showing previous results.') : ''} {tr('Could not refresh overview.')}{' '}
             <Button variant="outline" onClick={() => void query.refetch()}>
-              Retry overview
+              {tr('Retry overview')}
             </Button>
           </p>
         )}
@@ -140,22 +143,22 @@ export function Overview({
                         onCurrent(group, event.currentTarget)
                       else open(group)
                     }}
-                    aria-label={`${labels[group]}: ${value}`}
+                    aria-label={`${tr(labels[group])}: ${value}`}
                   >
                     <MetricContent
-                      label={labels[group]}
+                      label={tr(labels[group])}
                       value={value}
                       icon={<Icon className="size-4" />}
                     >
                       {group === 'running' || group === 'needs-you'
-                        ? 'Current state'
-                        : `Last ${period === '7d' ? 7 : 30} calendar days`}
+                        ? tr('Current state')
+                        : `${tr('Last')} ${period === '7d' ? 7 : 30} ${tr('calendar days')}`}
                     </MetricContent>
                     <span
                       data-export-exclude
                       className="mt-4 flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors group-hover/metric:text-foreground"
                     >
-                      View tasks{' '}
+                      {tr('View tasks')}{' '}
                       <ChevronRight
                         className="size-3 transition-transform group-hover/metric:translate-x-0.5 motion-reduce:transition-none"
                         aria-hidden="true"
@@ -172,14 +175,13 @@ export function Overview({
                 <strong className="font-mono font-semibold text-foreground">
                   {hours(data.metrics.medianCycleHours)}
                 </strong>{' '}
-                · {data.metrics.timedTasks}/{data.metrics.completed} completed tasks have valid
-                timings.{' '}
+                · {data.metrics.timedTasks}/{data.metrics.completed} {tr('completed tasks have valid timings.')}{' '}
                 <Button
                   variant="ghost"
                   className="h-auto px-1.5 py-1 text-sm text-foreground underline-offset-4 hover:underline"
                   onClick={() => open('completed')}
                 >
-                  Inspect completed tasks
+                  {tr('Inspect completed tasks')}
                 </Button>
               </p>
               <p className="font-mono text-meta text-soft-foreground">
@@ -194,12 +196,10 @@ export function Overview({
                 className={`${disclosureSummary} py-1`}
               >
                 <DisclosureChevron />
-                How these metrics work
+                {tr('How these metrics work')}
               </summary>
               <p className="mt-1 max-w-prose pl-5 leading-relaxed">
-                Outcomes use finish dates, including archived tasks. Scheduled retries are
-                excluded from failed outcomes. Period includes today at your current fixed UTC
-                offset.
+                {tr('Outcomes use finish dates, including archived tasks. Scheduled retries are excluded from failed outcomes. Period includes today at your current fixed UTC offset.')}
               </p>
             </details>
             <ExportRows
@@ -227,28 +227,27 @@ export function Overview({
         data-export-context={`Outcomes: Last ${period === '7d' ? 7 : 30} calendar days; workload: current state`}
       >
         <div className={widgetHeader}>
-          <h2 className={widgetHeading}>Projects</h2>
+          <h2 className={widgetHeading}>{tr('Projects')}</h2>
         </div>
         <p className="px-4 pt-3 text-xs text-muted-foreground">
-          Current workload and outcomes for the selected period. Sorted by tasks needing you,
-          then running tasks. Counts include subtasks.
+          {tr('Current workload and outcomes for the selected period. Sorted by tasks needing you, then running tasks. Counts include subtasks.')}
         </p>
         <div
           className="overflow-x-auto px-1 pb-2"
           role="region"
-          aria-label="Project outcomes"
+          aria-label={tr('Project outcomes')}
           tabIndex={0}
         >
           <table className="w-full text-left text-sm">
             <thead>
               <tr>
-                {['Project', 'Needs you', 'Running', 'Completed', 'Failed', 'Median cycle'].map(
+                {(['Project', 'Needs you', 'Running', 'Completed', 'Failed', 'Median cycle'] as const).map(
                   (label) => (
                     <th
                       key={label}
                       className={`whitespace-nowrap px-3 py-2 eyebrow text-soft-foreground ${label === 'Project' ? '' : 'text-right'}`}
                     >
-                      {label}
+                      {tr(label)}
                     </th>
                   ),
                 )}
@@ -270,7 +269,7 @@ export function Overview({
                       </Link>
                       {source?.state !== 'complete' && (
                         <span className="block text-xs text-muted-foreground">
-                          Incomplete data
+                          {tr('Incomplete data')}
                         </span>
                       )}
                     </td>
@@ -280,12 +279,12 @@ export function Overview({
                           data-export-keep
                           variant="ghost"
                           className="min-h-11 tabular-nums"
-                          aria-label={`${projectName(project.projectId)}: ${labels[group]}: ${source?.state === 'unavailable' ? 'Unavailable' : project[group === 'needs-you' ? 'needsYou' : group]}`}
+                          aria-label={`${projectName(project.projectId)}: ${tr(labels[group])}: ${source?.state === 'unavailable' ? tr('Unavailable') : project[group === 'needs-you' ? 'needsYou' : group]}`}
                           disabled={source?.state === 'unavailable'}
                           onClick={() => open(group, project.projectId)}
                         >
                           {source?.state === 'unavailable'
-                            ? 'Unavailable'
+                            ? tr('Unavailable')
                             : project[group === 'needs-you' ? 'needsYou' : group]}
                         </Button>
                       </td>
@@ -293,7 +292,7 @@ export function Overview({
                     <td className="px-3 py-2 text-right tabular-nums">
                       {hours(project.medianCycleHours)}
                       <span className="block text-xs text-muted-foreground">
-                        {project.timedTasks}/{project.completed} timed
+                        {project.timedTasks}/{project.completed} {tr('timed')}
                       </span>
                     </td>
                   </tr>
@@ -301,7 +300,7 @@ export function Overview({
               })}
             </tbody>
           </table>
-          {!data.projects.length && <p className="py-4">No projects to compare yet.</p>}
+          {!data.projects.length && <p className="py-4">{tr('No projects to compare yet.')}</p>}
         </div>
         <ExportRows
           rows={data.projects.flatMap(({ projectId, ...metrics }) =>
@@ -342,12 +341,11 @@ export function Overview({
         >
           <SheetHeader>
             <SheetTitle>
-              {selection ? labels[selection.group] : 'Tasks'}
+              {selection ? tr(labels[selection.group]) : tr('Tasks')}
               {selection?.projectId ? ` · ${selection.projectId}` : ''}
             </SheetTitle>
             <SheetDescription>
-              Tasks behind the selected metric. Includes subtasks. Snapshot keeps counts and
-              rows consistent.
+              {tr('Tasks behind the selected metric. Includes subtasks. Snapshot keeps counts and rows consistent.')}
             </SheetDescription>
           </SheetHeader>
           {selection && (
@@ -375,6 +373,7 @@ function OutcomeTasks({
   refresh: () => void
   projectName: (id: string) => string
 }) {
+  const { tr } = useTranslations()
   const [offset, setOffset] = useSheetState(`outcome:${selection.identity}:offset`, 0)
   const query = useDashboardOverview({
     period: selection.snapshot.period,
@@ -397,11 +396,11 @@ function OutcomeTasks({
   }
   return (
     <div className="space-y-3 p-4" data-sheet-loading={query.isFetching}>
-      {query.isPending && <p>Loading tasks…</p>}
+      {query.isPending && <p>{tr('Loading tasks…')}</p>}
       {query.isError && (
         <p role="alert">
-          This snapshot may have expired or become unavailable.{' '}
-          <Button onClick={refresh}>Refresh overview</Button>
+          {tr('This snapshot may have expired or become unavailable.')}{' '}
+          <Button onClick={refresh}>{tr('Refresh overview')}</Button>
         </p>
       )}
       {query.data && (
@@ -415,7 +414,7 @@ function OutcomeTasks({
           {query.data.page.rows.map((row) => (
             <OutcomeTask key={`${row.projectId}:${row.id}`} row={row} group={selection.group} projectName={projectName} />
           ))}
-          {!query.data.page.rows.length && <p>No tasks in this group.</p>}
+          {!query.data.page.rows.length && <p>{tr('No tasks in this group.')}</p>}
         </>
       )}
       <div className="flex gap-2">
@@ -424,14 +423,14 @@ function OutcomeTasks({
           disabled={!offset || query.isFetching}
           onClick={() => goToPage(Math.max(0, offset - 20))}
         >
-          Previous
+          {tr('Previous')}
         </Button>
         <Button
           variant="outline"
           disabled={!query.data || query.data.page.nextOffset === null || query.isFetching}
           onClick={() => goToPage(query.data!.page.nextOffset!)}
         >
-          Next
+          {tr('Next')}
         </Button>
       </div>
     </div>

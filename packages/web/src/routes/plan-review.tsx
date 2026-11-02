@@ -36,6 +36,7 @@ import { toast } from '@/components/ui/toaster'
 import { cn } from '@/lib/utils'
 
 import { moveStep, planTaskLine, removeStep, stepHint, type PendingPlan } from './new-task-plan'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * The plan review overlay (spec 008 parity, Implementation Plan step 14): a FULL-SCREEN surface
@@ -73,6 +74,7 @@ export function PlanReview({
   onStart,
   onDiscard,
 }: PlanReviewProps) {
+  const { tr } = useTranslations()
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [overIndex, setOverIndex] = useState<number | null>(null)
 
@@ -106,7 +108,7 @@ export function PlanReview({
               Proposed chain
             </DialogTitle>
             <DialogClose
-              aria-label="Discard the plan"
+              aria-label={tr('Discard the plan')}
               className="-mt-1 -mr-1 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <XIcon aria-hidden="true" className="size-4" />
@@ -121,7 +123,7 @@ export function PlanReview({
           </DialogDescription>
           {plan.fallback ? (
             <p data-slot="plan-fallback" className="text-xs text-soft-foreground italic">
-              planner unavailable — single-step plan
+              {tr('planner unavailable — single-step plan')}
             </p>
           ) : plan.rationale !== '' ? (
             <p data-slot="plan-rationale" className="text-xs text-muted-foreground">
@@ -253,11 +255,11 @@ export function PlanReview({
             onClick={onStart}
           >
             <PlayIcon aria-hidden="true" className="size-3.5" />
-            {starting ? 'Starting…' : 'Start'}
+            {starting ? tr('Starting…') : tr('Start')}
           </Button>
           <SaveAsChain steps={plan.steps} disabled={empty} />
           <Button type="button" variant="ghost" className="ml-auto" onClick={onDiscard}>
-            Discard
+            {tr('Discard')}
           </Button>
         </div>
       </DialogContent>
@@ -271,6 +273,7 @@ export function PlanReview({
  * The review stays open afterwards — saving and starting are independent decisions.
  */
 function SaveAsChain({ steps, disabled }: { steps: WorkflowStepDef[]; disabled: boolean }) {
+  const { tr } = useTranslations()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -287,7 +290,7 @@ function SaveAsChain({ steps, disabled }: { steps: WorkflowStepDef[]; disabled: 
         steps,
         ...(overwrite ? { overwrite: true } : {}),
       })
-      toast(`Saved — ${saved.path.split('/').pop() ?? saved.path}`)
+      toast(`${tr('Saved')} — ${saved.path.split('/').pop() ?? saved.path}`)
       // The picker on /new lists workflows from this cache — the new chain must appear.
       void queryClient.invalidateQueries({ queryKey: queryKeys.workflows })
       setConfirmOverwrite(false)
@@ -313,15 +316,15 @@ function SaveAsChain({ steps, disabled }: { steps: WorkflowStepDef[]; disabled: 
         disabled={disabled}
         onClick={() => setOpen(true)}
       >
-        Save as chain
+        {tr('Save as chain')}
       </Button>
 
       <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : setOpen(false))}>
         <DialogContent data-slot="plan-save-dialog" className="sm:max-w-sm" showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Save as chain</DialogTitle>
+            <DialogTitle>{tr('Save as chain')}</DialogTitle>
             <DialogDescription>
-              Saves these steps as a reusable workflow — it joins the picker like any other chain.
+              {tr('Saves these steps as a reusable workflow — it joins the picker like any other chain.')}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -333,17 +336,17 @@ function SaveAsChain({ steps, disabled }: { steps: WorkflowStepDef[]; disabled: 
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              aria-label="Chain name"
-              placeholder="e.g. fix-and-verify-v2"
+              aria-label={tr('Chain name')}
+              placeholder={tr('e.g. fix-and-verify-v2')}
               maxLength={80}
               autoFocus
             />
             <DialogFooter className="mt-4">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
+                {tr('Cancel')}
               </Button>
               <Button type="submit" disabled={name.trim() === '' || saving}>
-                {saving ? 'Saving…' : 'Save'}
+                {saving ? tr('Saving…') : tr('Save')}
               </Button>
             </DialogFooter>
           </form>
@@ -356,15 +359,14 @@ function SaveAsChain({ steps, disabled }: { steps: WorkflowStepDef[]; disabled: 
       >
         <AlertDialogContent data-slot="plan-overwrite-dialog">
           <AlertDialogHeader>
-            <AlertDialogTitle>Overwrite “{name.trim()}”?</AlertDialogTitle>
+            <AlertDialogTitle>{tr('Overwrite')} “{name.trim()}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              A chain with this name already exists. Overwriting replaces its steps with this
-              plan.
+              {tr('A chain with this name already exists. Overwriting replaces its steps with this plan.')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep the existing chain</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void save(true)}>Overwrite</AlertDialogAction>
+            <AlertDialogCancel>{tr('Keep the existing chain')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void save(true)}>{tr('Overwrite')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

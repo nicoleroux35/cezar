@@ -23,6 +23,8 @@ import { IntegerStepper } from '@/components/integer-stepper'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
+import type { TranslationText } from '@/i18n/text'
 import { allProjectTags, suggestTags } from '@/lib/project-tags'
 import { cn } from '@/lib/utils'
 import { RemoveProjectDialog, useProjectRemoval } from './remove-project'
@@ -64,7 +66,7 @@ const MAX_PARALLEL_MAX = 16
 /** Human wording for a registry status probe. `not-git` is fully usable (single-queue
  *  degraded mode), so it reads as a note rather than a fault; only `missing` is a problem.
  *  Exported because the project's own General page states the same status about itself. */
-export const STATUS_LABEL: Record<ProjectListEntry['status'], string> = {
+export const STATUS_LABEL: Record<ProjectListEntry['status'], TranslationText> = {
   ok: 'ok',
   'not-git': 'no git repo',
   missing: 'folder not found',
@@ -79,6 +81,7 @@ function shortDate(iso: string): string {
 }
 
 export function ProjectsSection() {
+  const { tr } = useTranslations()
   const config = useWorkspaceConfig()
   const projects = useProjects()
 
@@ -94,7 +97,7 @@ export function ProjectsSection() {
       <CenteredState
         icon={<FoldersIcon />}
         tone="danger"
-        title="Project settings did not load"
+        title={tr('Project settings did not load')}
         subtitle={(config.error ?? projects.error)?.message}
         heading="h2"
       />
@@ -110,6 +113,7 @@ function ProjectsPane({
   config: WorkspaceConfigResponse
   registry: ProjectsResponse
 }) {
+  const { tr } = useTranslations()
   return (
     <div
       data-slot="projects-section"
@@ -122,22 +126,22 @@ function ProjectsPane({
       <WorkspaceRootField
         configKey="browseRoot"
         value={config.browseRoot}
-        title="Default browse folder"
-        hint="Where “Open local folder…” starts. The picker cannot navigate above this folder."
+        title={tr('Default browse folder')}
+        hint={tr('Where “Open local folder…” starts. The picker cannot navigate above this folder.')}
         placeholder="~/"
         slot="browse"
-        savedLabel="Browse folder"
-        footer="Only affects folder browsing; GitHub checkouts use the separate checkout folder."
+        savedLabel={tr('Browse folder')}
+        footer={tr('Only affects folder browsing; GitHub checkouts use the separate checkout folder.')}
       />
       <WorkspaceRootField
         configKey="projectsDir"
         value={config.projectsDir}
-        title="Default checkout folder"
-        hint="Where “Clone from GitHub” and “New project” put new projects: <folder>/<project name>."
+        title={tr('Default checkout folder')}
+        hint={tr('Where “Clone from GitHub” and “New project” put new projects: <folder>/<project name>.')}
         placeholder="~/cezar/projects"
         slot="checkout"
-        savedLabel="Checkout folder"
-        footer="Only affects new checkouts; projects already registered keep their location."
+        savedLabel={tr('Checkout folder')}
+        footer={tr('Only affects new checkouts; projects already registered keep their location.')}
         refreshProjects
       />
       <RegistryTable registry={registry} workspaceMax={config.resources.maxParallel} />
@@ -254,6 +258,7 @@ function RegistryTable({
   registry: ProjectsResponse
   workspaceMax: number
 }) {
+  const { tr } = useTranslations()
   const [confirming, setConfirming] = useState<Confirming>(null)
   const remove = useProjectRemoval()
   // One computation for the whole table: the vocabulary is a property of the WORKSPACE, and
@@ -269,7 +274,7 @@ function RegistryTable({
 
   return (
     <SettingsField
-      title="Registered projects"
+      title={tr('Registered projects')}
       hint={`The folders you have added. While this list is empty the folder cezar is serving is listed as “not registered” with an Add button; once you have projects, starting cezar somewhere new neither registers nor lists that folder — use “Add project” when you want to keep it. “Tags” group connected repositories — give the API, the web app and the design system a shared “storefront” tag and the global Tasks page can show all three as one piece of work. “Max parallel” caps how many of that project's tasks run at once (leave it empty to use the workspace default of ${workspaceMax}); each project runs up to its own value independently of the others. Removing a project only unregisters it — no files on disk are deleted.`}
     >
       {/* Defensive: `GET /api/v1/projects` names at least the folder this server is serving
@@ -286,7 +291,7 @@ function RegistryTable({
             {/* Not "registered": this table also renders the folder cezar is serving without
                 having saved it, whose only action is Add project. A screen-reader user was told
                 the list was registered projects and then met a row that is the opposite. */}
-            <caption className="sr-only">Projects in this workspace</caption>
+            <caption className="sr-only">{tr('Projects in this workspace')}</caption>
             {/* Explicit widths rather than letting the browser distribute them by content: Tags
                 is the one cell whose content GROWS with use, and auto-layout kept giving it
                 whatever the fixed-size controls left over — which was not enough for one chip. */}
@@ -349,6 +354,7 @@ function ProjectRow({
   disabled: boolean
   onRemove: () => void
 }) {
+  const { tr } = useTranslations()
   return (
     <tr data-slot="project-row" data-project={project.id} className="border-b border-border last:border-0">
       <th scope="row" className="max-w-0 px-3 py-2 text-left font-normal">
@@ -404,7 +410,7 @@ function ProjectRow({
             <RouterLink
               to={`/p/${encodeURIComponent(project.id)}/settings`}
               data-action="project-settings"
-              aria-label={`Settings for ${project.name}`}
+              aria-label={`${tr('Settings for')} ${project.name}`}
             >
               Settings
             </RouterLink>
@@ -434,7 +440,7 @@ function ProjectRow({
             disabled={disabled || isBoot}
             onClick={onRemove}
           >
-            Remove
+            {tr('Remove')}
           </Button>
         )}
       </td>
@@ -464,6 +470,7 @@ export function AddBootProjectButton({
   /** The server refuses this folder (`$HOME`, a task worktree): explain instead of 400-ing. */
   notAddable?: boolean
 }) {
+  const { tr } = useTranslations()
   const register = useRegisterProject()
   return (
     <Button
@@ -471,7 +478,7 @@ export function AddBootProjectButton({
       variant="outline"
       size="sm"
       data-action="project-add-boot"
-      aria-label={`Add ${name} to your projects`}
+      aria-label={`${tr('Add')} ${name} ${tr('to your projects')}`}
       title={
         notAddable
           ? 'Your home directory or a cezar task worktree cannot be a project — start cezar in a project folder, or use Open local folder'
@@ -485,7 +492,7 @@ export function AddBootProjectButton({
         })
       }
     >
-      Add project
+      {tr('Add project')}
     </Button>
   )
 }
@@ -524,6 +531,7 @@ export function ProjectTagsEditor({
    *  rather than derived here so all rows share one computation of the workspace's vocabulary. */
   vocabulary: readonly string[]
 }) {
+  const { tr } = useTranslations()
   const update = useUpdateProject()
   const [draft, setDraft] = useState('')
   const [open, setOpen] = useState(false)
@@ -702,8 +710,8 @@ export function ProjectTagsEditor({
           // and picking a suggestion for the happy path.
           onInteractOutside={(event) => event.preventDefault()}
         >
-          <p className="px-2 pt-1 pb-1.5 text-micro text-soft-foreground">
-            Tags used in this workspace
+          <p className="px-2 pt-1 pb-1.5 text-meta text-soft-foreground">
+            {tr('Tags used in this workspace')}
           </p>
           {suggestions.map((tag, index) => (
             <button
@@ -752,10 +760,11 @@ export function MaxParallelStepper({
   project: ProjectListEntry
   workspaceMax: number
 }) {
+  const { tr } = useTranslations()
   const update = useUpdateProject()
   return (
     <IntegerStepper
-      aria-label={`Max parallel tasks for ${project.name}`}
+      aria-label={`${tr('Max parallel tasks for')} ${project.name}`}
       data-slot="project-max-parallel"
       value={project.maxParallel ?? null}
       min={MAX_PARALLEL_MIN}

@@ -1,9 +1,11 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { translate, type Language, type TranslationKey } from './translations'
+import { translateText, type TranslationText } from './text'
 
 interface TranslationContextValue {
   language: Language
   t: (key: TranslationKey) => string
+  tr: (text: TranslationText) => string
 }
 
 /**
@@ -25,13 +27,15 @@ interface TranslationContextValue {
 const TranslationContext = createContext<TranslationContextValue>({
   language: 'en',
   t: (key: TranslationKey) => translate(key, 'en'),
+  tr: (text: TranslationText) => translateText(text, 'en'),
 })
 
 export function TranslationProvider({ language, children }: { language: Language; children: ReactNode }) {
   const t = (key: TranslationKey) => translate(key, language)
+  const tr = (text: TranslationText) => translateText(text, language)
 
   return (
-    <TranslationContext.Provider value={{ language, t }}>
+    <TranslationContext.Provider value={{ language, t, tr }}>
       {children}
     </TranslationContext.Provider>
   )
@@ -50,5 +54,5 @@ export function useTranslations() {
     if (typeof value !== 'string') throw new Error('useTranslations must be used within TranslationProvider')
     return value
   }
-  return { language: context.language, t: wrapped }
+  return { language: context.language, t: wrapped, tr: context.tr }
 }

@@ -29,3 +29,25 @@ describe('translations', () => {
     })
   })
 })
+
+import { textTranslations, translateText } from './text'
+
+describe('text translations (gettext-style)', () => {
+  it('renders the English source string unchanged', () => {
+    expect(translateText('New task', 'en')).toBe('New task')
+    expect(translateText('Open menu', 'en')).toBe('Open menu')
+  })
+
+  it('translates known source strings to French', () => {
+    expect(translateText('New task', 'fr')).toBe('Nouvelle tâche')
+    expect(translateText('Open menu', 'fr')).toBe('Ouvrir le menu')
+    expect(translateText('No tasks yet', 'fr')).toBe("Aucune tâche pour l'instant")
+  })
+
+  it('has a non-empty French string for every entry', () => {
+    for (const [source, french] of Object.entries(textTranslations)) {
+      expect(source.length).toBeGreaterThan(0)
+      expect(french.length).toBeGreaterThan(0)
+    }
+  })
+})

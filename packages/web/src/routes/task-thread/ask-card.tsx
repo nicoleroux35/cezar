@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Link } from '@/lib/project-router'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 
 import { useAskAnswer } from './ask-answer'
 import {
@@ -55,6 +56,7 @@ function formatAnswer(question: UiAskQuestion, answer: AskQuestionAnswer): strin
  * to a compact summary.
  */
 export function AskCard({ ask, run }: { ask: ThreadAsk; run: ApiRun }) {
+  const { tr } = useTranslations()
   // Answered — by Send or by a free-form reply in the composer — so the held picks are spent.
   useEffect(() => {
     if (ask.resolved) forgetAskSelections(run.id, ask)
@@ -70,7 +72,7 @@ export function AskCard({ ask, run }: { ask: ThreadAsk; run: ApiRun }) {
         data-resolved="true"
         className="rounded-lg border border-border bg-card px-3.5 py-2.5 text-xs text-muted-foreground"
       >
-        <span className="text-soft-foreground">Answered</span>
+        <span className="text-soft-foreground">{tr('Answered')}</span>
         {ask.answer ? (
           <span className="ml-1.5 break-words whitespace-pre-line text-foreground">{ask.answer}</span>
         ) : null}
@@ -215,6 +217,7 @@ function AskQuestionBlock({
   onChange: (answer: AskQuestionAnswer) => void
   onSubmit: (answer: AskQuestionAnswer) => void
 }) {
+  const { tr } = useTranslations()
   const multiSelect = question.multiSelect === true
   const otherOpen = answer.other !== undefined
   const otherInput = useRef<HTMLTextAreaElement>(null)
@@ -286,7 +289,7 @@ function AskQuestionBlock({
             disabled={disabled}
             onClick={toggleMoreInfo}
           >
-            Need more info
+            {tr('Need more info')}
           </AskExtraChoice>
         </div>
         {otherOpen ? (
@@ -294,8 +297,8 @@ function AskQuestionBlock({
             <Textarea
               ref={otherInput}
               rows={2}
-              aria-label={`Your own answer: ${question.question}`}
-              placeholder="Type your own answer"
+              aria-label={`${tr('Your own answer:')} ${question.question}`}
+              placeholder={tr('Type your own answer')}
               value={answer.other}
               disabled={disabled}
               onChange={(event) => onChange({ ...answer, other: event.target.value })}
@@ -309,7 +312,7 @@ function AskQuestionBlock({
             {oneTap ? (
               <div>
                 <Button size="sm" disabled={disabled || !isAnswered(answer)} onClick={() => onSubmit(answer)}>
-                  Send answer
+                  {tr('Send answer')}
                 </Button>
               </div>
             ) : null}

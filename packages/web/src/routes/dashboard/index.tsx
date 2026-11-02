@@ -59,7 +59,7 @@ export function DashboardRoute() {
 }
 
 function DashboardView({ entryKey }: { entryKey: string }) {
-  const { t } = useTranslations()
+  const { t, tr } = useTranslations()
   const location = useLocation()
   const [search, setSearch] = useSearchParams()
   const restored = useRef(readEntry(entryKey)).current
@@ -303,14 +303,14 @@ function DashboardView({ entryKey }: { entryKey: string }) {
                         setCustomizeOpen(false)
                       }}
                     >
-                      Show all in {viewLabel}
+                      {tr('Show all in')} {viewLabel}
                     </Button>
                   )}
                 </PopoverContent>
               </Popover>
             </div>
           </header>
-          <nav aria-label="Dashboard views" className="-mt-2 flex flex-wrap gap-5 border-b">
+          <nav aria-label={tr('Dashboard views')} className="-mt-2 flex flex-wrap gap-5 border-b">
             {views.map(([id, label]) => {
               const next = new URLSearchParams(search)
               next.set('view', id)
@@ -338,13 +338,13 @@ function DashboardView({ entryKey }: { entryKey: string }) {
             <p role="alert" className="text-sm">
               Layout changed for this session, but could not be saved.{' '}
               <Button variant="ghost" className="min-h-11" onClick={preferences.retry}>
-                Retry saving
+                {tr('Retry saving')}
               </Button>
             </p>
           )}
           {needsSnapshot && !live.connected && query.data && (
             <p role="status" className="text-xs text-muted-foreground">
-              Tasks disconnected · Last updated {shortAge(query.data.asOf)} ago
+              {tr('Tasks disconnected')} · {tr('Last updated')} {shortAge(query.data.asOf)} {tr('ago')}
             </p>
           )}
           {needsSnapshot && query.isError && (
@@ -357,7 +357,7 @@ function DashboardView({ entryKey }: { entryKey: string }) {
                   void query.refetch()
                 }}
               >
-                Retry
+                {tr('Retry')}
               </Button>
             </p>
           )}
@@ -368,12 +368,12 @@ function DashboardView({ entryKey }: { entryKey: string }) {
               <LayoutDashboardIcon className="size-4" aria-hidden="true" />
               Optional modules in this view are hidden.
               <Button variant="outline" className="min-h-11" onClick={() => showViewTiles()}>
-                Show all in {viewLabel}
+                {tr('Show all in')} {viewLabel}
               </Button>
             </p>
           ) : null}
           {query.isPending && (tiles.fleet || tiles.needsYou) && (
-            <p className="text-sm">Loading dashboard…</p>
+            <p className="text-sm">{tr('Loading dashboard…')}</p>
           )}
           {needsSnapshot && query.data && (
             <Coverage
@@ -409,10 +409,10 @@ function DashboardView({ entryKey }: { entryKey: string }) {
                             }))}
                           />
                           <div className={widgetHeader}>
-                            <h2 className={widgetHeading}>Queue & scheduling</h2>
+                            <h2 className={widgetHeading}>{tr('Queue & scheduling')}</h2>
                             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                               <StatusDot tone={live.connected ? 'success' : 'neutral'} />
-                              {live.connected ? 'Tasks connected' : 'Tasks disconnected'}
+                              {live.connected ? tr('Tasks connected') : tr('Tasks disconnected')}
                             </span>
                           </div>
                           <div className="grid grid-cols-2 divide-x">
@@ -445,13 +445,13 @@ function DashboardView({ entryKey }: { entryKey: string }) {
                           >
                             <summary className={`${disclosureSummary} py-2`}>
                               <DisclosureChevron />
-                              Technical details
+                              {tr('Technical details')}
                             </summary>
                             <div className="flex flex-wrap gap-x-5 gap-y-2">
                               <span>
-                                {query.data.counts.monitoring} monitoring (included in Running)
+                                {query.data.counts.monitoring} {tr('monitoring (included in Running)')}
                               </span>
-                              <span>Agent processes</span>
+                              <span>{tr('Agent processes')}</span>
                               {technicalOpen && (
                                 <FleetTelemetry running={query.data.counts.running} />
                               )}

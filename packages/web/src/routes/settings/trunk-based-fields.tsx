@@ -4,6 +4,7 @@ import { useSkills } from '@/api/queries'
 import type { ConfigResponse, SetConfigInput } from '@open-mercato/cezar-api-client'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
 import { SettingsField } from './settings-field'
 import { useConfigSave } from './use-config-save'
 
@@ -32,6 +33,7 @@ export const BRANCHES_PRESET: SetConfigInput = {
  * today's branch-per-task behavior.
  */
 export function TrunkBasedFields({ config }: { config: ConfigResponse }) {
+  const { tr } = useTranslations()
   const save = useConfigSave()
   const skills = useSkills()
   const skillNames = (skills.data ?? []).map((skill) => skill.name)
@@ -41,33 +43,33 @@ export function TrunkBasedFields({ config }: { config: ConfigResponse }) {
   return (
     <>
       <SettingsField
-        title="Development model"
-        hint="Trunk-based: tasks work directly in the checkout one at a time, and changes that pass the required checks land on the base branch without a PR. Read-only questions run beside them. Every setting below stays adjustable."
+        title={tr('Development model')}
+        hint={tr('Trunk-based: tasks work directly in the checkout one at a time, and changes that pass the required checks land on the base branch without a PR. Read-only questions run beside them. Every setting below stays adjustable.')}
       >
         <select
-          aria-label="Development model"
+          aria-label={tr('Development model')}
           data-slot="tasks-profile"
           value={trunk ? 'trunk' : 'branches'}
           disabled={save.isPending}
           onChange={(event) => {
             const toTrunk = event.target.value === 'trunk'
             save.mutate(toTrunk ? TRUNK_PRESET : BRANCHES_PRESET, {
-              onSuccess: () => toast(toTrunk ? 'Trunk-based defaults applied' : 'Branch-per-task defaults restored'),
+              onSuccess: () => toast(toTrunk ? tr('Trunk-based defaults applied') : tr('Branch-per-task defaults restored')),
             })
           }}
           className={selectClass}
         >
-          <option value="branches">Branch per task (default) — a worktree and branch per task, reviewed before merging</option>
-          <option value="trunk">Trunk-based — work in the checkout, land checked changes on the base branch</option>
+          <option value="branches">{tr('Branch per task (default) — a worktree and branch per task, reviewed before merging')}</option>
+          <option value="trunk">{tr('Trunk-based — work in the checkout, land checked changes on the base branch')}</option>
         </select>
       </SettingsField>
 
       <SettingsField
-        title="Where tasks work"
-        hint="In the checkout: no worktree or branch per task. Write tasks take turns on the working tree, so two tasks started together never conflict. The composer can still ask for a worktree per task."
+        title={tr('Where tasks work')}
+        hint={tr('In the checkout: no worktree or branch per task. Write tasks take turns on the working tree, so two tasks started together never conflict. The composer can still ask for a worktree per task.')}
       >
         <select
-          aria-label="Where tasks work"
+          aria-label={tr('Where tasks work')}
           data-slot="tasks-workspace"
           value={config.taskWorkspace ?? ''}
           disabled={save.isPending}
@@ -76,35 +78,35 @@ export function TrunkBasedFields({ config }: { config: ConfigResponse }) {
           }
           className={selectClass}
         >
-          <option value="">Composer default (isolated worktree)</option>
-          <option value="worktree">Isolated worktree per task</option>
+          <option value="">{tr('Composer default (isolated worktree)')}</option>
+          <option value="worktree">{tr('Isolated worktree per task')}</option>
           <option value="in-place">The repo checkout, one write task at a time</option>
         </select>
       </SettingsField>
 
       <SettingsField
-        title="How changes land"
+        title={tr('How changes land')}
         hint={
           inPlace
-            ? 'Auto-land: a finished task waits for your review — check Changes, send corrections, then use the task header\'s Commit to the base branch: it commits, rebases on the remote, runs the required checks and pushes. Autonomous tasks land on their own. A conflict or a failing check goes back to the agent. The agent is told this permission is granted.'
-            : 'Auto-land applies to tasks that work in the checkout — set "Where tasks work" first.'
+            ? tr('Auto-land: a finished task waits for your review — check Changes, send corrections, then use the task header\'s Commit to the base branch: it commits, rebases on the remote, runs the required checks and pushes. Autonomous tasks land on their own. A conflict or a failing check goes back to the agent. The agent is told this permission is granted.')
+            : tr('Auto-land applies to tasks that work in the checkout — set "Where tasks work" first.')
         }
       >
         <label className="flex w-fit items-center gap-3">
           <Switch
-            aria-label="Auto-land on the base branch"
+            aria-label={tr('Auto-land on the base branch')}
             data-slot="tasks-landing"
             checked={config.landing === 'auto'}
             disabled={save.isPending}
             onCheckedChange={(checked) =>
               save.mutate(
                 { landing: checked ? 'auto' : null },
-                { onSuccess: () => toast(checked ? 'Auto-land on — finished tasks push to the base branch' : 'Auto-land off') },
+                { onSuccess: () => toast(checked ? tr('Auto-land on — finished tasks push to the base branch') : tr('Auto-land off')) },
               )
             }
           />
           <span className="text-ui text-muted-foreground">
-            {config.landing === 'auto' ? 'Auto-land on the base branch' : 'Review — nothing lands by itself (default)'}
+            {config.landing === 'auto' ? tr('Auto-land on the base branch') : tr('Review — nothing lands by itself (default)')}
           </span>
         </label>
         {config.landingBlocked ? (
@@ -117,12 +119,12 @@ export function TrunkBasedFields({ config }: { config: ConfigResponse }) {
       <RequiredChecksField config={config} />
 
       <SettingsField
-        title="Default skills"
-        hint="Preselected in the composer when nothing is picked: one for a new task, one for a read-only question (the Ask chip). A trunk-based project picks Ask on its own when the message ends with a question mark."
+        title={tr('Default skills')}
+        hint={tr('Preselected in the composer when nothing is picked: one for a new task, one for a read-only question (the Ask chip). A trunk-based project picks Ask on its own when the message ends with a question mark.')}
       >
         <div className="flex flex-col gap-2 sm:flex-row">
           <SkillSelect
-            label="New task skill"
+            label={tr('New task skill')}
             slot="tasks-default-skill"
             value={config.defaultSkill}
             names={skillNames}
@@ -130,7 +132,7 @@ export function TrunkBasedFields({ config }: { config: ConfigResponse }) {
             onChange={(value) => save.mutate({ defaultSkill: value })}
           />
           <SkillSelect
-            label="Ask skill"
+            label={tr('Ask skill')}
             slot="tasks-ask-skill"
             value={config.askSkill}
             names={skillNames}
@@ -141,12 +143,12 @@ export function TrunkBasedFields({ config }: { config: ConfigResponse }) {
       </SettingsField>
 
       <SettingsField
-        title="Team skill repositories"
-        hint="Skills from the shared team repositories. Turn off for a project whose skills live in the repo itself. Project-wide instructions for every task are under Instructions."
+        title={tr('Team skill repositories')}
+        hint={tr('Skills from the shared team repositories. Turn off for a project whose skills live in the repo itself. Project-wide instructions for every task are under Instructions.')}
       >
         <label className="flex w-fit items-center gap-3">
           <Switch
-            aria-label="Team skill repositories"
+            aria-label={tr('Team skill repositories')}
             data-slot="tasks-team-skills"
             checked={config.teamSkills}
             disabled={save.isPending}
@@ -174,6 +176,7 @@ function SkillSelect({
   disabled: boolean
   onChange: (value: string | null) => void
 }) {
+  const { tr } = useTranslations()
   const options = value && !names.includes(value) ? [value, ...names] : names
   return (
     <label className="flex flex-1 flex-col gap-1 text-label text-muted-foreground">
@@ -186,7 +189,7 @@ function SkillSelect({
         onChange={(event) => onChange(event.target.value || null)}
         className={selectClass}
       >
-        <option value="">None</option>
+        <option value="">{tr('None')}</option>
         {options.map((name) => (
           <option key={name} value={name}>
             {name}
@@ -198,6 +201,7 @@ function SkillSelect({
 }
 
 function RequiredChecksField({ config }: { config: ConfigResponse }) {
+  const { tr } = useTranslations()
   const save = useConfigSave()
   const saved = config.requiredChecks.join('\n')
   const [text, setText] = useState(saved)
@@ -205,15 +209,15 @@ function RequiredChecksField({ config }: { config: ConfigResponse }) {
   const commit = () => {
     const checks = text.split('\n').map((line) => line.trim()).filter(Boolean)
     if (checks.join('\n') === saved) return
-    save.mutate({ requiredChecks: checks.length ? checks : null }, { onSuccess: () => toast('Required checks saved') })
+    save.mutate({ requiredChecks: checks.length ? checks : null }, { onSuccess: () => toast(tr('Required checks saved')) })
   }
   return (
     <SettingsField
-      title="Required checks"
-      hint="Shell commands, one per line, run in the checkout before every auto-land (e.g. npm test). A failure goes back to the agent with its output."
+      title={tr('Required checks')}
+      hint={tr('Shell commands, one per line, run in the checkout before every auto-land (e.g. npm test). A failure goes back to the agent with its output.')}
     >
       <textarea
-        aria-label="Required checks"
+        aria-label={tr('Required checks')}
         data-slot="tasks-required-checks"
         value={text}
         rows={3}

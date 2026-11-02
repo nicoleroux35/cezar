@@ -10,6 +10,7 @@ import { toast } from '@/components/ui/toaster'
 import { PromptTemplatesSection } from './prompt-templates-section'
 import { SettingsField } from './settings-field'
 import { useConfigSave } from './use-config-save'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * Settings → Instructions: everything the user WRITES for a model, in one place — the system
@@ -28,6 +29,7 @@ const SYSTEM_PROMPT_MAX = 20_000
 const BRANCH_NAMING_MAX = 4_000
 
 export function InstructionsSection() {
+  const { tr } = useTranslations()
   const config = useConfig()
 
   if (config.isPending) {
@@ -42,7 +44,7 @@ export function InstructionsSection() {
       <CenteredState
         icon={<MessageSquareTextIcon />}
         tone="danger"
-        title="Instructions did not load"
+        title={tr('Instructions did not load')}
         subtitle={config.error.message}
         heading="h2"
       />
@@ -52,6 +54,7 @@ export function InstructionsSection() {
 }
 
 function InstructionsForm({ config }: { config: ConfigResponse }) {
+  const { tr } = useTranslations()
   const save = useConfigSave()
 
   const [prompt, setPrompt] = useState(config.systemPrompt ?? '')
@@ -61,7 +64,7 @@ function InstructionsForm({ config }: { config: ConfigResponse }) {
   const savePrompt = () =>
     save.mutate(
       { systemPrompt: trimmedPrompt === '' ? null : trimmedPrompt },
-      { onSuccess: () => toast(trimmedPrompt === '' ? 'System prompt cleared' : 'System prompt saved') },
+      { onSuccess: () => toast(trimmedPrompt === '' ? tr('System prompt cleared') : tr('System prompt saved')) },
     )
 
   const [branchNaming, setBranchNaming] = useState(config.branchNaming ?? '')
@@ -71,7 +74,7 @@ function InstructionsForm({ config }: { config: ConfigResponse }) {
   const saveBranchNaming = () =>
     save.mutate(
       { branchNaming: trimmedBranchNaming === '' ? null : trimmedBranchNaming },
-      { onSuccess: () => toast(trimmedBranchNaming === '' ? 'Branch naming cleared' : 'Branch naming saved') },
+      { onSuccess: () => toast(trimmedBranchNaming === '' ? tr('Branch naming cleared') : tr('Branch naming saved')) },
     )
 
   return (
@@ -80,15 +83,15 @@ function InstructionsForm({ config }: { config: ConfigResponse }) {
       className="mx-auto flex w-full max-w-2xl flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
       <SettingsField
-        title="System prompt"
-        hint="Read by every agent step of every new task in this project, whichever runner executes it. Added after the global instructions (General settings → Instructions) and takes precedence over them."
+        title={tr('System prompt')}
+        hint={tr('Read by every agent step of every new task, whichever runner executes it. This is the only place it is edited.')}
       >
         <Textarea
-          aria-label="System prompt"
+          aria-label={tr('System prompt')}
           data-slot="instructions-system-prompt"
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
-          placeholder="Extra rules for every agent run — conventions, tone, review requirements…"
+          placeholder={tr('Extra rules for every agent run — conventions, tone, review requirements…')}
           className="min-h-32 max-w-xl"
         />
         <div className="flex max-w-xl items-center gap-3">
@@ -100,7 +103,7 @@ function InstructionsForm({ config }: { config: ConfigResponse }) {
             disabled={promptSaved || promptOverLimit || save.isPending}
             onClick={savePrompt}
           >
-            Save
+            {tr('Save')}
           </Button>
           {promptOverLimit ? (
             <p data-slot="instructions-prompt-limit" className="text-meta text-danger">
@@ -113,15 +116,15 @@ function InstructionsForm({ config }: { config: ConfigResponse }) {
       </SettingsField>
 
       <SettingsField
-        title="Branch naming"
-        hint="How new task branches are named. Generated from the first prompt."
+        title={tr('Branch naming')}
+        hint={tr('How new task branches are named. Generated from the first prompt.')}
       >
         <Textarea
-          aria-label="Branch naming"
+          aria-label={tr('Branch naming')}
           data-slot="instructions-branch-naming"
           value={branchNaming}
           onChange={(event) => setBranchNaming(event.target.value)}
-          placeholder="Describe your branch naming convention…"
+          placeholder={tr('Describe your branch naming convention…')}
           className="min-h-24 max-w-xl"
         />
         <div className="flex max-w-xl items-center gap-3">
@@ -133,7 +136,7 @@ function InstructionsForm({ config }: { config: ConfigResponse }) {
             disabled={branchNamingSaved || branchNamingOverLimit || save.isPending}
             onClick={saveBranchNaming}
           >
-            Save
+            {tr('Save')}
           </Button>
           {branchNamingOverLimit ? (
             <p data-slot="instructions-branch-naming-limit" className="text-meta text-danger">

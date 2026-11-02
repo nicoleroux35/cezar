@@ -26,6 +26,8 @@ import { cn } from '@/lib/utils'
 
 import { DevelopmentPanel, pullOfVersion } from './self-update-development'
 import { offerWhenIdle, targetName, WhenIdleButton } from './self-update-when-idle'
+import { useTranslations } from '@/i18n/use-translations'
+import type { TranslationText } from '@/i18n/text'
 
 /**
  * The dialog behind the footer's version chip (self-update PoC): which channel cezar follows,
@@ -51,6 +53,7 @@ export function SelfUpdateDialog({
    *  the dialog opens to its warning and waits for "Update & restart" like every other entry. */
   autoApply?: string
 }) {
+  const { tr } = useTranslations()
   const status = useSelfUpdate(open)
   const refresh = useRefreshSelfUpdate()
   const setChannel = useSetSelfUpdateChannel()
@@ -150,8 +153,7 @@ export function SelfUpdateDialog({
                 className="flex items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 px-3 py-2 text-label"
               >
                 <p className="min-w-0">
-                  {brandName} switches to <span className="font-semibold">{targetName(data.scheduled.target)}</span> as soon
-                  as no task is running. You can close this window and keep working.
+                  {brandName} {tr('switches to')} <span className="font-semibold">{targetName(data.scheduled.target)}</span> {tr('as soon as no task is running. You can close this window and keep working.')}
                 </p>
                 <Button
                   variant="ghost"
@@ -159,14 +161,13 @@ export function SelfUpdateDialog({
                   onClick={() => cancelScheduled.mutate()}
                   disabled={cancelScheduled.isPending}
                 >
-                  Cancel
+                  {tr('Cancel')}
                 </Button>
               </div>
             ) : data.activeRuns > 0 && data.canSelfUpdate ? (
               <p className="rounded-md border border-pending/50 bg-pending/10 px-3 py-2 text-label text-foreground">
-                {data.activeRuns} task{data.activeRuns === 1 ? ' is' : 's are'} running. A restart interrupts
-                them; {brandName} re-queues or resumes them on the way back up.
-                {' '}The &ldquo;when idle&rdquo; buttons wait for them to finish instead.
+                {data.activeRuns} {data.activeRuns === 1 ? tr('task') : tr('tasks')} {data.activeRuns === 1 ? tr('is') : tr('are')} {tr('running. A restart interrupts them;')} {brandName} {tr('re-queues or resumes them on the way back up.')}
+                {' '}{tr('The “when idle” buttons wait for them to finish instead.')}
               </p>
             ) : null}
 
@@ -176,7 +177,7 @@ export function SelfUpdateDialog({
                 {/* The cockpit is read from disk on every request, the server only at boot: a rebuilt
                     worktree can show a channel its still-running server has never heard of. */}
                 {setChannel.variables === 'development'
-                  ? ` The running ${brandName} server predates the Development channel — restart ${brandName} to load it.`
+                  ? ` ${tr('The running')} ${brandName} ${tr('server predates the Development channel — restart')} ${brandName} ${tr('to load it.')}`
                   : null}
               </p>
             ) : null}
@@ -201,7 +202,7 @@ const CHANNELS: { value: UpdateChannel; label: string }[] = [
   { value: 'development', label: 'Development' },
 ]
 
-const CHANNEL_HINTS: Record<UpdateChannel, string> = {
+const CHANNEL_HINTS: Record<UpdateChannel, TranslationText> = {
   stable: 'Tagged releases.',
   nightly: 'A fresh build of main every night.',
   development: 'A cezar worktree or an open pull request. Never updates on its own.',
@@ -216,17 +217,18 @@ function ChannelToggle({
   busy: boolean
   onChange: (channel: UpdateChannel) => void
 }) {
+  const { tr } = useTranslations()
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <div className="text-ui font-semibold">Release channel</div>
+        <div className="text-ui font-semibold">{tr('Release channel')}</div>
         <div className="text-label text-muted-foreground">
-          {CHANNEL_HINTS[data.channel]}
+          {tr(CHANNEL_HINTS[data.channel])}
         </div>
       </div>
       <div
         role="radiogroup"
-        aria-label="Release channel"
+        aria-label={tr('Release channel')}
         data-slot="channel-toggle"
         className="flex shrink-0 rounded-md border border-border bg-muted/40 p-0.5"
       >
@@ -269,6 +271,7 @@ function LatestCard({
   onSchedule: (version: string) => void
   applying: boolean
 }) {
+  const { tr } = useTranslations()
   const jobBusy = data.job?.status === 'running' || data.job?.status === 'restarting'
   // A linked worktree or a local build shares its version number with a release but is not that
   // release: "newest version" would be a claim about code cezar did not ship. Offer the channel's
@@ -292,47 +295,47 @@ function LatestCard({
               a release.
             </>
           ) : dev?.source === 'local' ? (
-            <>Running a local build, not a release.</>
+            <>{tr('Running a local build, not a release.')}</>
           ) : pr !== null ? (
             <>
-              Running the preview build of <span className="font-semibold">PR #{pr}</span>, not a release.
+              {tr('Running the preview build of')} <span className="font-semibold">PR #{pr}</span>, {tr('not a release.')}
             </>
           ) : (
             <>
-              Running <span className="font-semibold">v{data.version}</span>. Pick a worktree or a pull request below.
+              {tr('Running')} <span className="font-semibold">v{data.version}</span>. {tr('Pick a worktree or a pull request below.')}
             </>
           )}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="min-w-0 text-meta break-words text-muted-foreground">
             {data.channel === 'development' ? (
-              'Switch the channel back to Stable or Nightly to follow releases again.'
+              tr('Switch the channel back to Stable or Nightly to follow releases again.')
             ) : !data.checkedAt ? (
-              'The npm registry has not answered yet.'
+              tr('The npm registry has not answered yet.')
             ) : (
               <>
                 {release ? (
                   <>
-                    Newest {data.channel}: <span className="font-mono text-foreground">v{release}</span> ·{' '}
+                    {tr('Newest')} {data.channel}: <span className="font-mono text-foreground">v{release}</span> ·{' '}
                   </>
                 ) : null}
-                checked {new Date(data.checkedAt).toLocaleTimeString()}
+                {tr('checked')} {new Date(data.checkedAt).toLocaleTimeString()}
               </>
             )}
           </div>
           {data.channel !== 'development' ? (
             <div className="ml-auto flex shrink-0 items-center gap-2">
               <Button variant="ghost" size="sm" onClick={onCheck} disabled={checking || jobBusy}>
-                {checking ? 'Checking…' : 'Check again'}
+                {checking ? tr('Checking…') : tr('Check again')}
               </Button>
               {release ? (
                 <Button
                   size="sm"
-                  aria-label={releaseInstalled ? `Back to v${release}` : `Install v${release} & restart`}
+                  aria-label={releaseInstalled ? `${tr('Back to')} v${release}` : `${tr('Install')} v${release} ${tr('& restart')}`}
                   onClick={() => onApply(release)}
                   disabled={!data.canSelfUpdate || applying || jobBusy}
                 >
-                  {releaseInstalled ? 'Switch back' : 'Install & restart'}
+                  {releaseInstalled ? tr('Switch back') : tr('Install & restart')}
                 </Button>
               ) : null}
             </div>
@@ -354,14 +357,14 @@ function LatestCard({
           version into a word-per-line column. */}
       <div className="min-w-[14rem] flex-1 text-ui break-words">
         {!data.checkedAt ? (
-          <span className="text-muted-foreground">The npm registry has not answered yet.</span>
+          <span className="text-muted-foreground">{tr('The npm registry has not answered yet.')}</span>
         ) : target ? (
           <>
-            <span className="font-semibold">v{target}</span> is available on {data.channel}.
+            <span className="font-semibold">v{target}</span> {tr('is available on')} {data.channel}.
           </>
         ) : (
           <>
-            You are on the newest {data.channel} version
+            {tr('You are on the newest')} {data.channel} {tr('version')}
             {data.channel === 'nightly' && data.latest.nightly ? ` (v${data.latest.nightly})` : ''}.
           </>
         )}
@@ -383,7 +386,7 @@ function LatestCard({
         ) : null}
         {target ? (
           <Button size="sm" onClick={() => onApply(target)} disabled={!data.canSelfUpdate || applying || jobBusy}>
-            Update &amp; restart
+            {tr('Update & restart')}
           </Button>
         ) : null}
       </div>
@@ -406,6 +409,7 @@ function VersionPicker({
   onSchedule: (version: string) => void
   applying: boolean
 }) {
+  const { tr } = useTranslations()
   const jobBusy = data.job?.status === 'running' || data.job?.status === 'restarting'
   // Local builds only exist in `installed`; registry versions come from `available`, with the
   // `installed` flag telling the two apart in the label.
@@ -414,7 +418,7 @@ function VersionPicker({
       data.channel === 'stable'
         ? data.installed
             .filter((entry) => entry.source === 'local')
-            .map((entry) => ({ value: entry.id, label: `v${entry.version} · local build`, installed: true, active: entry.active }))
+            .map((entry) => ({ value: entry.id, label: `v${entry.version} · ${tr('local build')}`, installed: true, active: entry.active }))
         : []
     const remote = data.available
       .filter((entry) => entry.channel === data.channel)
@@ -430,12 +434,12 @@ function VersionPicker({
   return (
     <div data-slot="self-update-picker" className="flex min-w-0 flex-col gap-2">
       <div className="text-ui font-semibold">
-        Pick a version <span className="font-normal text-muted-foreground">· {data.channel}</span>
+        {tr('Pick a version')} <span className="font-normal text-muted-foreground">· {data.channel}</span>
       </div>
       <div className="flex min-w-0 items-center gap-2">
         <Select value={picked} onValueChange={onPick} disabled={options.length === 0 || jobBusy}>
-          <SelectTrigger size="sm" aria-label="Version" className="w-0 min-w-0 flex-1 text-ui">
-            <SelectValue placeholder={options.length === 0 ? 'No versions known' : 'Choose a version to install'} />
+          <SelectTrigger size="sm" aria-label={tr('Version')} className="w-0 min-w-0 flex-1 text-ui">
+            <SelectValue placeholder={options.length === 0 ? tr('No versions known') : tr('Choose a version to install')} />
           </SelectTrigger>
           <SelectContent className="max-h-72">
             {options.map((option) => (
@@ -443,9 +447,9 @@ function VersionPicker({
                 <span className="flex items-center gap-2">
                   {option.label}
                   {option.active ? (
-                    <Badge variant="secondary">current</Badge>
+                    <Badge variant="secondary">{tr('current')}</Badge>
                   ) : option.installed ? (
-                    <Badge variant="outline">installed</Badge>
+                    <Badge variant="outline">{tr('installed')}</Badge>
                   ) : null}
                 </span>
               </SelectItem>
@@ -454,8 +458,8 @@ function VersionPicker({
         </Select>
         {selected && !selected.active && offerWhenIdle(data, selected.value) ? (
           <WhenIdleButton
-            label="When idle"
-            doing={`${selected.installed ? 'switches to' : 'installs'} ${targetName(selected.value)}`}
+            label={tr('When idle')}
+            doing={`${selected.installed ? tr('switches to') : tr('installs')} ${targetName(selected.value)}`}
             onClick={() => onSchedule(selected.value)}
             disabled={!data.canSelfUpdate || applying || jobBusy}
           />
@@ -466,7 +470,7 @@ function VersionPicker({
           onClick={() => selected && onApply(selected.value)}
           disabled={!selected || selected.active || !data.canSelfUpdate || applying || jobBusy}
         >
-          {selected?.installed ? 'Switch & restart' : 'Install & restart'}
+          {selected?.installed ? tr('Switch & restart') : tr('Install & restart')}
         </Button>
       </div>
       <p className="text-meta text-muted-foreground">
@@ -477,15 +481,17 @@ function VersionPicker({
 }
 
 function ActiveBadge({ data }: { data: SelfUpdateStatus | undefined }) {
+  const { tr } = useTranslations()
   const active = data?.installed.find((entry) => entry.active)
-  if (active?.source === 'local') return <Badge variant="outline">local build</Badge>
-  if (active?.source === 'link') return <Badge variant="outline">worktree · {active.branch ?? active.id}</Badge>
+  if (active?.source === 'local') return <Badge variant="outline">{tr('local build')}</Badge>
+  if (active?.source === 'link') return <Badge variant="outline">{tr('worktree')} · {active.branch ?? active.id}</Badge>
   const pr = active ? pullOfVersion(active.version) : null
-  if (pr !== null) return <Badge variant="outline">PR #{pr} build</Badge>
+  if (pr !== null) return <Badge variant="outline">PR #{pr} {tr('build')}</Badge>
   return null
 }
 
 function InstallHint({ data }: { data: SelfUpdateStatus }) {
+  const { tr } = useTranslations()
   const command =
     data.installKind === 'checkout'
       ? 'node packages/cezar/dist/index.js install'
@@ -504,6 +510,7 @@ function InstallHint({ data }: { data: SelfUpdateStatus }) {
 /** The install log while npm runs, then the restart wait: once the process is gone, poll until a
  *  fresh one (no job on its status) answers, and reload into it. */
 function JobPanel({ data }: { data: SelfUpdateStatus }) {
+  const { tr } = useTranslations()
   const job = data.job!
   const queryClient = useQueryClient()
   const logRef = useRef<HTMLPreElement>(null)
@@ -553,14 +560,14 @@ function JobPanel({ data }: { data: SelfUpdateStatus }) {
       <div className="flex items-center justify-between text-label">
         <span className="font-semibold">
           {job.status === 'running'
-            ? `Installing ${job.target}…`
+            ? `${tr('Installing')} ${job.target}…`
             : job.status === 'failed'
-              ? `Install of ${job.target} failed`
+              ? `${tr('Install of')} ${job.target} ${tr('failed')}`
               : comeback === 'back'
-                ? 'Back — reloading'
+                ? tr('Back — reloading')
                 : comeback === 'timeout'
-                  ? 'Restart took too long — reload the page by hand'
-                  : `Restarting into ${job.target}…`}
+                  ? tr('Restart took too long — reload the page by hand')
+                  : `${tr('Restarting into')} ${job.target}…`}
         </span>
       </div>
       <pre

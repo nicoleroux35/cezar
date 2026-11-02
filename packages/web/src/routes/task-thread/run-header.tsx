@@ -53,6 +53,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { OpenInMenu, type OpenInChoice } from '@/components/open-in-menu'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { DirectionalUsage } from '@/components/directional-usage'
 import { buildTaskCommands, type TaskCommand } from '@/components/task-palette/commands'
@@ -157,6 +158,7 @@ function RunHeaderView({
   headerActions,
   wide = false,
 }: RunHeaderProps) {
+  const { tr } = useTranslations()
   const attention = deriveAttention(run)
   const budget = budgetStop(run)
   const canTerminal = useCanOpenTerminal(run)
@@ -217,9 +219,9 @@ function RunHeaderView({
                 size="icon-sm"
                 data-action="collapse-header"
                 className="hidden text-muted-foreground md:inline-flex"
-                aria-label={collapsed ? 'Expand header' : 'Collapse header'}
+                aria-label={collapsed ? tr('Expand header') : tr('Collapse header')}
                 aria-expanded={!collapsed}
-                title={collapsed ? 'Expand header' : 'Collapse header'}
+                title={collapsed ? tr('Expand header') : tr('Collapse header')}
                 onClick={() => setCollapsed(!collapsed)}
               >
                 {collapsed ? <ChevronsUpDownIcon aria-hidden="true" /> : <ChevronsDownUpIcon aria-hidden="true" />}
@@ -230,7 +232,7 @@ function RunHeaderView({
                 variant="ghost"
                 size="icon-sm"
                 className="md:hidden"
-                aria-label={detailsOpen ? 'Hide run details' : 'Show run details'}
+                aria-label={detailsOpen ? tr('Hide run details') : tr('Show run details')}
                 aria-controls={detailsId}
                 aria-expanded={detailsOpen}
                 onClick={toggleDetails}
@@ -300,34 +302,34 @@ function RunHeaderView({
             {tabs ?? (
               <>
                 <TabLink to={`/tasks/${run.id}`} active={tab === 'session'}>
-                  Session
+                  {tr('Session')}
                 </TabLink>
                 <TabLink to={`/tasks/${run.id}/changes`} active={tab === 'changes'}>
-                  Changes
+                  {tr('Changes')}
                 </TabLink>
                 <TabLink to={`/tasks/${run.id}/commits`} active={tab === 'commits'}>
-                  Commits
+                  {tr('Commits')}
                 </TabLink>
                 <TabLink to={`/tasks/${run.id}/files`} active={tab === 'files'}>
-                  Files
+                  {tr('Files')}
                 </TabLink>
                 {/* The live workflow graph (#1322) — every run with a definition: a step list opens as
                     its graph. */}
                 {run.workflowDef ? (
                   <TabLink to={`/tasks/${run.id}/graph`} active={tab === 'graph'}>
-                    Graph
+                    {tr('Graph')}
                   </TabLink>
                 ) : null}
                 <TabLink to={`/tasks/${run.id}/notes`} active={tab === 'notes'}>
-                  Notes
+                  {tr('Notes')}
                 </TabLink>
                 {/* The task's app, with Design Mode (spec 2026-10-09-design-mode). */}
                 <TabLink to={`/tasks/${run.id}/preview`} active={tab === 'preview'}>
-                  Preview
+                  {tr('Preview')}
                 </TabLink>
                 {health.data?.capabilities?.terminal ? (
                   <TabLink to={`/tasks/${run.id}/terminal`} active={tab === 'terminal'}>
-                    Terminal
+                    {tr('Terminal')}
                   </TabLink>
                 ) : null}
               </>
@@ -426,13 +428,14 @@ function TaskItemActions({
   /** Offer Stop in the ⋯ menu — off on the Session tab, whose composer carries it. */
   showRunControls: boolean
 }) {
+  const { tr } = useTranslations()
   const flags = runActionFlags(run)
   const live = liveRunReason(run)
   const moreStop = showRunControls && flags.cancel
   // "End session" for a waiting run, on the tabs whose composer is not there to carry it.
   const moreEnd = showRunControls && run.status === 'waiting' && flags.finish
   // A worktree operation owns the task until it is resolved (#1358), live or not.
-  const gatedReason = run.worktreeLifecycle?.activeOperationId ? 'Resolve the worktree operation first' : undefined
+  const gatedReason = run.worktreeLifecycle?.activeOperationId ? tr('Resolve the worktree operation first') : undefined
   return (
     <span data-slot="task-item-actions" className="mx-1 flex items-center gap-0.5">
       {/* The three state toggles — read, pinned, archived — share ONE on-state (TOGGLE_ON_CLASS:
@@ -442,8 +445,8 @@ function TaskItemActions({
       {flags.markRead || flags.markUnread ? (
         <IconAction
           slot="unread-toggle"
-          label={flags.markRead ? 'Mark read' : 'Mark unread'}
-          title={flags.markRead ? 'Unread — mark it read' : 'Mark unread — put it back in your unread list'}
+          label={flags.markRead ? tr('Mark read') : tr('Mark unread')}
+          title={flags.markRead ? tr('Unread — mark it read') : tr('Mark unread — put it back in your unread list')}
           pressed={flags.markRead}
           pending={actions.markRead.isPending || actions.markUnread.isPending}
           onClick={() => (flags.markRead ? actions.markRead.mutate() : actions.markUnread.mutate())}
@@ -454,14 +457,14 @@ function TaskItemActions({
       ) : null}
       <IconAction
         slot="pin-run"
-        label={run.pinned ? 'Unpin' : 'Pin'}
+        label={run.pinned ? tr('Unpin') : tr('Pin')}
         title={
           run.pinned
-            ? 'Pinned — unpin from the top of this project’s task list'
-            : 'Pin to the top of this project’s task list'
+            ? tr('Pinned — unpin from the top of this project’s task list')
+            : tr('Pin to the top of this project’s task list')
         }
         pressed={Boolean(run.pinned)}
-        unavailable={flags.pin ? undefined : 'Archived tasks can’t be pinned'}
+        unavailable={flags.pin ? undefined : tr('Archived tasks can’t be pinned')}
         pending={actions.pin.isPending}
         onClick={() => actions.pin.mutate()}
         className={cn(run.pinned && TOGGLE_ON_CLASS)}
@@ -470,8 +473,8 @@ function TaskItemActions({
       </IconAction>
       <IconAction
         slot="archive-run"
-        label={run.archived ? 'Unarchive' : 'Archive'}
-        title={run.archived ? 'Archived — move it back to the active list' : 'Move to the archived list'}
+        label={run.archived ? tr('Unarchive') : tr('Archive')}
+        title={run.archived ? tr('Archived — move it back to the active list') : tr('Move to the archived list')}
         pressed={Boolean(run.archived)}
         unavailable={live}
         pending={actions.archive.isPending}
@@ -486,8 +489,8 @@ function TaskItemActions({
       {flags.pause || run.paused ? (
         <IconAction
           slot="pause-run"
-          label={run.paused ? 'Start' : 'Pause'}
-          title={run.paused ? 'Start this parked task' : 'Park this task — resume it with Start'}
+          label={run.paused ? tr('Start') : tr('Pause')}
+          title={run.paused ? tr('Start this parked task') : tr('Park this task — resume it with Start')}
           pressed={Boolean(run.paused)}
           pending={actions.pause.isPending}
           onClick={() => (run.paused ? actions.start.mutate() : actions.pause.mutate())}
@@ -500,8 +503,8 @@ function TaskItemActions({
           icon at rest would shout louder than everything the reader actually came here to do. */}
       <IconAction
         slot="delete-run"
-        label="Delete"
-        title="Delete the task, its worktree and its branch"
+        label={tr('Delete')}
+        title={tr('Delete the task, its worktree and its branch')}
         unavailable={live ?? gatedReason}
         danger
         onClick={() => actions.setConfirming('delete')}
@@ -511,9 +514,9 @@ function TaskItemActions({
       </IconAction>
       {moreStop || moreEnd ? (
         <DropdownMenu>
-          <IconTooltip label="More actions">
+          <IconTooltip label={tr('More actions')}>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="More actions">
+              <Button variant="ghost" size="icon-sm" aria-label={tr('More actions')}>
                 <EllipsisIcon aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
@@ -521,12 +524,12 @@ function TaskItemActions({
           <DropdownMenuContent align="end" data-slot="run-more-menu">
             {moreEnd ? (
               <DropdownMenuItem onSelect={() => actions.finish.mutate()}>
-                <CheckIcon aria-hidden="true" /> End session
+                <CheckIcon aria-hidden="true" /> {tr('End session')}
               </DropdownMenuItem>
             ) : null}
             {moreStop ? (
               <DropdownMenuItem variant="destructive" onSelect={() => actions.setConfirming('cancel')}>
-                <CircleStopIcon aria-hidden="true" /> Stop
+                <CircleStopIcon aria-hidden="true" /> {tr('Stop')}
               </DropdownMenuItem>
             ) : null}
           </DropdownMenuContent>
@@ -602,27 +605,29 @@ function OpenInMenuForRun({
   canResume: boolean
   onResume: () => void
 }) {
+  const { tr } = useTranslations()
   const { choices, canResumeHere, open } = useRunOpenChoices(run, canResume)
   if (!canResumeHere && choices.length === 0) return null
 
   const copyPath = () => {
     const path = run.worktreePath
     if (!path) return
-    void writeClipboard(path)
-      .then(() => toast('Worktree path copied'))
-      .catch(() => toast(`Path: ${path}`))
+    void navigator.clipboard
+      .writeText(path)
+      .then(() => toast(tr('Worktree path copied')))
+      .catch(() => toast(`${tr('Path:')} ${path}`))
   }
 
   return (
     <OpenInMenu
       choices={choices}
       onPick={open}
-      title="Resume in a terminal, or open the worktree locally"
+      title={tr('Resume in a terminal, or open the worktree locally')}
       leading={
         canResumeHere ? (
           <DropdownMenuItem data-target="terminal-resume" onSelect={onResume}>
             <SquareTerminalIcon aria-hidden="true" />
-            Terminal (resume session)
+            {tr('Terminal (resume session)')}
           </DropdownMenuItem>
         ) : null
       }
@@ -632,7 +637,7 @@ function OpenInMenuForRun({
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={copyPath}>
               <CopyIcon aria-hidden="true" />
-              Copy worktree path
+              {tr('Copy worktree path')}
             </DropdownMenuItem>
           </>
         ) : null
@@ -648,6 +653,7 @@ function OpenInMenuForRun({
  * The rename machine itself is shared with the Tasks table (`components/editable-title.tsx`).
  */
 function EditableTitle({ run }: { run: ApiRun }) {
+  const { tr } = useTranslations()
   const patch = usePatchRun(run.id)
   const title = runTitle(run)
   const draft = useDraft(run.id, 'title')
@@ -689,7 +695,7 @@ function EditableTitle({ run }: { run: ApiRun }) {
       </h1>
       <button
         type="button"
-        aria-label="Rename task"
+        aria-label={tr('Rename task')}
         onClick={editor.begin}
         className="shrink-0 rounded-sm p-1 text-soft-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
       >
@@ -701,6 +707,7 @@ function EditableTitle({ run }: { run: ApiRun }) {
 
 /** Copyable task branch with confirmation kept local so hovering it does not re-render MetaRow. */
 function CopyBranchChip({ branch }: { branch: string }) {
+  const { tr } = useTranslations()
   const [copied, setCopied] = useState(false)
   const [tooltipOpen, setTooltipOpen] = useState(false)
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -713,7 +720,12 @@ function CopyBranchChip({ branch }: { branch: string }) {
   )
 
   const copy = () => {
-    void writeClipboard(branch)
+    if (!navigator.clipboard) {
+      toast(`${tr('Branch:')} ${branch}`)
+      return
+    }
+    void navigator.clipboard
+      .writeText(branch)
       .then(() => {
         setCopied(true)
         setTooltipOpen(true)
@@ -723,7 +735,7 @@ function CopyBranchChip({ branch }: { branch: string }) {
           setTooltipOpen(false)
         }, 1_500)
       })
-      .catch(() => toast(`Branch: ${branch}`))
+      .catch(() => toast(`${tr('Branch:')} ${branch}`))
   }
 
   return (
@@ -740,16 +752,16 @@ function CopyBranchChip({ branch }: { branch: string }) {
               type="button"
               data-slot="branch-chip"
               className="cursor-copy rounded-sm border border-border bg-card px-1.5 py-px font-mono text-meta font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              aria-label={`Copy branch name ${branch}`}
+              aria-label={`${tr('Copy branch name')} ${branch}`}
               onClick={copy}
             >
               {branch}
               <span className="sr-only" role="status">
-                {copied ? 'Branch name copied' : ''}
+                {copied ? tr('Branch name copied') : ''}
               </span>
             </button>
           </TooltipTrigger>
-          <TooltipContent>{copied ? 'Copied' : 'Copy branch name'}</TooltipContent>
+          <TooltipContent>{copied ? tr('Copied') : tr('Copy branch name')}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )
@@ -999,6 +1011,7 @@ function RunUsage({
  * or pruned) still gets its link, labelled by its id.
  */
 function DispatchParentLine({ run }: { run: ApiRun }) {
+  const { tr } = useTranslations()
   const runs = useRuns()
   const parentRunId = run.dispatch?.parentRunId
   if (parentRunId === undefined) return null
@@ -1009,7 +1022,7 @@ function DispatchParentLine({ run }: { run: ApiRun }) {
       data-slot="dispatch-parent-line"
       className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-xs text-muted-foreground"
     >
-      <span className="shrink-0">Dispatched by</span>
+      <span className="shrink-0">{tr('Dispatched by')}</span>
       <Link
         to={`/tasks/${parentRunId}`}
         data-slot="dispatch-parent"
@@ -1051,6 +1064,7 @@ const subtasksOpenByRun = new Map<string, boolean>()
  *    meta disclosure above, no invisible-but-focusable links in the tab order.
  */
 function DispatchChildrenLine({ run }: { run: ApiRun }) {
+  const { tr } = useTranslations()
   const runs = useRuns()
   const [, bumpSubtasks] = useReducer((n: number) => n + 1, 0)
   const listId = useId()
@@ -1077,7 +1091,7 @@ function DispatchChildrenLine({ run }: { run: ApiRun }) {
           aria-hidden="true"
           className={cn('size-3 shrink-0 transition-transform', !open && '-rotate-90')}
         />
-        <span className="shrink-0">Subtasks</span>
+        <span className="shrink-0">{tr('Subtasks')}</span>
         <span data-slot="dispatch-children-count" className="shrink-0 tabular-nums">
           {children.length}
         </span>
@@ -1150,11 +1164,12 @@ function SubtaskTally({ subtasks }: { subtasks: ApiRun[] }) {
 }
 
 function MonitoringSchedule({ run }: { run: ApiRun }) {
+  const { tr } = useTranslations()
   if (run.status !== 'running' || run.activity !== 'monitoring') return null
   if (run.monitoringWakeCapReached) {
     return (
       <p data-slot="monitoring-schedule" role="status" className="mt-1 text-xs text-muted-foreground">
-        Automatic checks paused — 40/40 reached
+        {tr('Automatic checks paused — 40/40 reached')}
       </p>
     )
   }
@@ -1163,7 +1178,7 @@ function MonitoringSchedule({ run }: { run: ApiRun }) {
   if (!validWakeAt) {
     return (
       <p data-slot="monitoring-schedule" role="status" className="mt-1 text-xs text-muted-foreground">
-        Parked — no automatic check scheduled
+        {tr('Parked — no automatic check scheduled')}
       </p>
     )
   }
@@ -1173,7 +1188,7 @@ function MonitoringSchedule({ run }: { run: ApiRun }) {
   }).format(validWakeAt)
   return (
     <p data-slot="monitoring-schedule" role="status" className="mt-1 text-xs text-muted-foreground">
-      Next automatic check{' '}
+      {tr('Next automatic check')}{' '}
       <time dateTime={run.monitoringWakeAt} className="font-medium text-foreground">
         {label}
       </time>
@@ -1302,6 +1317,7 @@ function ActionsKebab({
   git: RunGitStep
   showRunControls: boolean
 }) {
+  const { tr } = useTranslations()
   const canTerminal = useCanOpenTerminal(run)
   const commands = buildTaskCommands(
     { run, canResume: canTerminal, git: git.action, gitPending: git.pending, workspace: null, terminalAvailable: false, openChoices: [], taskUrl: '' },
@@ -1346,7 +1362,7 @@ function ActionsKebab({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Run actions" className="md:hidden">
+        <Button variant="ghost" size="icon-sm" aria-label={tr('Run actions')} className="md:hidden">
           <EllipsisVerticalIcon aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
@@ -1379,14 +1395,14 @@ function ActionsKebab({
             onSelect={() => command.perform()}
           >
             {command.pressed ? onIcon(command.icon) : command.icon}
-            {KEBAB_LABELS[command.id] ?? command.label}
+            {KEBAB_LABELS[command.id] ? tr(KEBAB_LABELS[command.id] as 'Terminal') : command.label}
           </DropdownMenuItem>
         ))}
         {stop || remove ? <DropdownMenuSeparator /> : null}
         {[stop, remove].map((command) =>
           command ? (
             <DropdownMenuItem key={command.id} variant="destructive" onSelect={() => command.perform()}>
-              {command.icon} {KEBAB_LABELS[command.id] ?? command.label}
+              {command.icon} {KEBAB_LABELS[command.id] ? tr(KEBAB_LABELS[command.id] as 'Stop') : command.label}
             </DropdownMenuItem>
           ) : null,
         )}
@@ -1409,16 +1425,17 @@ function onIcon(icon: ReactNode): ReactNode {
  *  copyable. Local-machine phrasing; hosted mode (R5, `capabilities.localHandoff`) will swap the
  *  cd-prefix for a bare resume command. */
 function ResumeHintLine({ hint }: { hint: string }) {
+  const { tr } = useTranslations()
   return (
     <button
       type="button"
       data-slot="resume-hint"
-      title="Copy the command"
-      onClick={() => void copyToClipboard(hint, 'Command copied to clipboard.')}
+      title={tr('Copy the command')}
+      onClick={() => void copyToClipboard(hint, tr('Command copied to clipboard.'))}
       className="mb-2 flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-left font-mono text-meta text-soft-foreground hover:bg-muted hover:text-foreground"
     >
       <CopyIcon className="size-3 shrink-0" aria-hidden="true" />
-      <span className="truncate">take over interactively: {hint}</span>
+      <span className="truncate">{tr('take over interactively:')} {hint}</span>
     </button>
   )
 }

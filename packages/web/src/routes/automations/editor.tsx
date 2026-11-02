@@ -43,6 +43,7 @@ import { LastRunCard } from './last-run-card'
 import { NextRunsPreview } from './next-runs-preview'
 import { TemplatePalette } from './template-palette'
 import { automationsQueryKey, type AutomationActions } from './use-automations'
+import { useTranslations } from '@/i18n/use-translations'
 
 /** Where a save error is shown: under the section it names, or above everything. */
 type ErrorSection = 'top' | 'when' | 'what'
@@ -199,8 +200,9 @@ export function AutomationEditor({ data, automation, actions, initialKind, onBac
   }
 
   const reload = () => void queryClient.invalidateQueries({ queryKey: automationsQueryKey() })
-  const saveLabel = automation ? 'Save changes' : draft.enabled ? 'Save and enable' : 'Save paused'
-  const kindLocked = 'Change the kind by creating a new automation'
+  const { tr } = useTranslations()
+  const saveLabel = automation ? tr('Save changes') : draft.enabled ? tr('Save and enable') : tr('Save paused')
+  const kindLocked = tr('Change the kind by creating a new automation')
   const editing = !!automation
   const setKind = (kind: EditorDraft['kind']) => {
     if (kind !== draft.kind) patch({ kind, ...(kind === 'tracker' ? { intervalSeconds: 1800, enabled: false } : {}) })
@@ -211,21 +213,21 @@ export function AutomationEditor({ data, automation, actions, initialKind, onBac
       {/* The kit's 56px header. Below `md` it may wrap onto a second row: a phone cannot fit the
           title, the template toggle and both actions on one line, and Save must stay reachable. */}
       <header className="sticky top-0 z-10 flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-border bg-background px-5 max-md:py-2 md:h-14 md:flex-nowrap">
-        <Button variant="ghost" size="icon-sm" aria-label="Back" onClick={onBack}>
+        <Button variant="ghost" size="icon-sm" aria-label={tr('Back')} onClick={onBack}>
           <ArrowLeftIcon aria-hidden="true" className="size-[15px]" />
         </Button>
-        <h1 className="truncate text-base font-semibold">{automation ? 'Edit automation' : 'New automation'}</h1>
+        <h1 className="truncate text-base font-semibold">{automation ? tr('Edit automation') : tr('New automation')}</h1>
         {automation ? (
-          <Pill dot={automation.enabled ? 'success' : 'neutral'}>{automation.enabled ? 'enabled' : 'paused'}</Pill>
+          <Pill dot={automation.enabled ? 'success' : 'neutral'}>{automation.enabled ? tr('enabled') : tr('paused')}</Pill>
         ) : null}
         <span className="flex-1" />
         {!automation ? (
-          <Button variant="ghost" size="sm" aria-expanded={showTemplates} aria-label={showTemplates ? 'Hide templates' : 'Start from a template'} onClick={() => setShowTemplates((open) => !open)}>
+          <Button variant="ghost" size="sm" aria-expanded={showTemplates} aria-label={showTemplates ? tr('Hide templates') : tr('Start from a template')} onClick={() => setShowTemplates((open) => !open)}>
             <LayoutTemplateIcon aria-hidden="true" className="size-3.5" />
-            <span className="max-md:hidden">{showTemplates ? 'Hide templates' : 'Start from a template'}</span>
+            <span className="max-md:hidden">{showTemplates ? tr('Hide templates') : tr('Start from a template')}</span>
           </Button>
         ) : null}
-        <Button variant="outline" className="font-normal" onClick={onBack}>Cancel</Button>
+        <Button variant="outline" className="font-normal" onClick={onBack}>{tr('Cancel')}</Button>
         <Button className="font-normal" disabled={!canSave} onClick={() => void save()}>{saveLabel}</Button>
       </header>
 
@@ -257,8 +259,8 @@ export function AutomationEditor({ data, automation, actions, initialKind, onBac
           <div className="mt-6 flex w-full flex-col gap-4">
             {conflict ? (
               <div role="alert" data-slot="editor-conflict" className="flex flex-wrap items-center gap-3 rounded-lg border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-ui text-foreground">
-                Edited elsewhere — reload to see the latest version
-                <Button variant="outline" size="sm" className="ml-auto" onClick={reload}>Reload</Button>
+                {tr('Edited elsewhere — reload to see the latest version')}
+                <Button variant="outline" size="sm" className="ml-auto" onClick={reload}>{tr('Reload')}</Button>
               </div>
             ) : null}
             {error?.section === 'top' ? <InlineAlert>{error.message}</InlineAlert> : null}
@@ -283,8 +285,8 @@ export function AutomationEditor({ data, automation, actions, initialKind, onBac
 
           <Section
             slot="when"
-            title="When"
-            why={editing ? 'The trigger is fixed once saved; change it by creating a new automation.' : 'What starts a run. Pick one, then say how often or on which change.'}
+            title={tr('When')}
+            why={editing ? tr('The trigger is fixed once saved; change it by creating a new automation.') : tr('What starts a run. Pick one, then say how often or on which change.')}
           >
             <div data-slot="editor-kind" role="group" aria-label="Trigger" className="grid gap-3 sm:grid-cols-3">
               <SelectTile
@@ -411,7 +413,7 @@ export function AutomationEditor({ data, automation, actions, initialKind, onBac
               />
             </div>
             <p className="mt-3 mb-0 text-xs leading-[1.5] text-soft-foreground">
-              Each run is an ordinary cezar task in its own worktree — it queues behind the parallel cap like anything else and never auto-merges.
+              {tr('Each run is an ordinary cezar task in its own worktree — it queues behind the parallel cap like anything else and never auto-merges.')}
             </p>
             <div className="mt-3">
               <EditorDispatchRow
@@ -430,12 +432,12 @@ export function AutomationEditor({ data, automation, actions, initialKind, onBac
               {sentence}
             </p>
             <Label className="mt-4 flex items-start gap-3 text-ui font-normal">
-              <Switch aria-label="Enabled" checked={draft.enabled} onCheckedChange={(enabled) => patch({ enabled })} className="mt-0.5" />
+              <Switch aria-label={tr('Enabled')} checked={draft.enabled} onCheckedChange={(enabled) => patch({ enabled })} className="mt-0.5" />
               <span className="flex flex-col gap-0.5">
-                <span className="text-body text-foreground">Enabled</span>
+                <span className="text-body text-foreground">{tr('Enabled')}</span>
                 <span className="text-label text-muted-foreground">
                   {draft.kind !== 'schedule'
-                    ? 'Counts from a current-time baseline; existing matches will not launch.'
+                    ? tr('Counts from a current-time baseline; existing matches will not launch.')
                     : draft.enabled
                       ? 'Runs at the next time listed above.'
                       : 'Saved paused. Enable it from the list, or Run now to try it once.'}
@@ -446,7 +448,7 @@ export function AutomationEditor({ data, automation, actions, initialKind, onBac
               <CopyAsCliCard definition={cli} />
               {automation && automation.kind !== 'schedule' && actions ? (
                 <Button variant="outline" className="self-start font-normal" disabled={actions.busy} onClick={() => void actions.preview(automation)}>
-                  Preview saved matches
+                  {tr('Preview saved matches')}
                 </Button>
               ) : null}
               {automation?.lastRun ? (

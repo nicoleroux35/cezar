@@ -29,6 +29,7 @@ import {
   type BrowserState,
 } from '../task-workspace/layout-state'
 import { parseDesignPick, type NewDesignPick } from './design-picks'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * The task's Preview tab (spec `.ai/specs/2026-10-09-design-mode.md`): its own tabs,
@@ -106,6 +107,7 @@ export function BrowserView({
 
   // What the address bar shows. Separate from the loaded address because a failed attempt stays
   // in the bar for correction while the tab's saved address does not change.
+  const { tr } = useTranslations()
   const [draft, setDraft] = useState(current)
   const [status, setStatus] = useState<'idle' | 'loading' | 'failed'>(current === '' ? 'idle' : 'loading')
   /** Bumped to force the iframe to reload the same address. */
@@ -589,7 +591,7 @@ export function BrowserView({
         className="shrink-0 gap-0"
       >
       <TabsList
-        aria-label="Browser tabs"
+        aria-label={tr('Browser tabs')}
         className="flex w-full justify-start gap-0.5 overflow-x-auto rounded-none bg-transparent px-3 py-0"
       >
         {tabs.map((tab, index) => (
@@ -634,8 +636,8 @@ export function BrowserView({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="New tab"
-            title="New tab"
+            aria-label={tr('New tab')}
+            title={tr('New tab')}
             onClick={addTab}
             className="size-6 rounded"
           >
@@ -649,19 +651,19 @@ export function BrowserView({
         {/* Back and Forward walk this view's OWN per-tab stack — see `navByTab`. They can
             therefore be disabled truthfully, which reaching into the frame could never do. */}
         <ToolbarButton
-          label="Back"
+          label={tr('Back')}
           disabled={!canBack}
           onClick={() => go(-1)}
           icon={<ArrowLeftIcon aria-hidden="true" className="size-3.5" />}
         />
         <ToolbarButton
-          label="Forward"
+          label={tr('Forward')}
           disabled={!canForward}
           onClick={() => go(1)}
           icon={<ArrowRightIcon aria-hidden="true" className="size-3.5" />}
         />
         <ToolbarButton
-          label="Reload"
+          label={tr('Reload')}
           onClick={() => {
             if (target === '') return
             // The page as it is NOW — a hash or path it moved to on its own included.
@@ -685,8 +687,8 @@ export function BrowserView({
             ref={addressRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="Enter an address, e.g. http://localhost:3000"
-            aria-label="Address"
+            placeholder={tr('Enter an address, e.g. http://localhost:3000')}
+            aria-label={tr('Address')}
             spellCheck={false}
             className="h-8 text-ui focus-visible:ring-ring/30 md:text-ui"
           />
@@ -749,7 +751,7 @@ export function BrowserView({
             icon={<GlobeIcon />}
             tone="neutral"
             heading="h2"
-            title="Empty tab"
+            title={tr('Empty tab')}
             subtitle={
               canPreview
                 ? "Enter the address of the task's app, e.g. http://localhost:3000 — then switch on Design Mode to point at an element and tell the agent what to change."
@@ -806,7 +808,7 @@ export function BrowserView({
               // Mode swaps it for the mirror's.
               key={frameKey}
               src={frameSrc}
-              title="Preview"
+              title={tr('Preview')}
               onLoad={onLoaded}
               // Worktree-served content is untrusted. `allow-same-origin` keeps the page
               // in its OWN origin — which is not the cockpit's, so it still cannot touch the
@@ -1075,6 +1077,7 @@ export function tunnelCommand(url: string, sshHost: string): string | null {
 }
 
 function TunnelHint({ url, onTunneled }: { url: string; onTunneled: () => void }) {
+  const { tr } = useTranslations()
   const command = tunnelCommand(url, window.location.hostname)
   if (!command) return null
   return (

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * The two strips the terminal drawer wears above its tabs (spec
@@ -38,6 +39,7 @@ export function DetectedUrlsStrip({
    *  so the strip can say so instead of appearing to do nothing. */
   onOpen: (url: string) => boolean
 }) {
+  const { tr } = useTranslations()
   const [urls, setUrls] = useState<DetectedUrlEntry[]>([])
   const [noRoom, setNoRoom] = useState(false)
 
@@ -65,7 +67,7 @@ export function DetectedUrlsStrip({
       data-slot="detected-urls"
       className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/70 px-3 py-1.5"
     >
-      <span className="text-xs text-muted-foreground">Detected addresses</span>
+      <span className="text-xs text-muted-foreground">{tr('Detected addresses')}</span>
       {urls.map((entry) => (
         <span
           key={entry.url}
@@ -100,7 +102,7 @@ export function DetectedUrlsStrip({
           >
             <a href={entry.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${entry.url} in Browser`}>
               <ExternalLinkIcon aria-hidden="true" className="size-3" />
-              <span>Open in Browser</span>
+              <span>{tr('Open in Browser')}</span>
             </a>
           </Button>
           <Button
@@ -112,7 +114,7 @@ export function DetectedUrlsStrip({
             className="h-auto px-1.5 py-0.5 text-[length:inherit] hover:bg-background"
           >
             <PanelRightIcon aria-hidden="true" className="size-3" />
-            <span>Open Preview</span>
+            <span>{tr('Open Preview')}</span>
           </Button>
         </span>
       ))}
@@ -133,6 +135,7 @@ export function CommandPicker({
   /** Runs the command in a NEW terminal tab (spec §6) — never in the one you are looking at. */
   onRun: (command: string) => void
 }) {
+  const { tr } = useTranslations()
   const [commands, setCommands] = useState<DiscoveredCommandEntry[]>([])
   const [manual, setManual] = useState('')
 
@@ -147,15 +150,15 @@ export function CommandPicker({
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="h-6 shrink-0 px-2 text-xs text-muted-foreground">
           <PlayIcon aria-hidden="true" className="size-3" />
-          Run
+          {tr('Run')}
           <ChevronDownIcon aria-hidden="true" className="size-3" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-80 w-80 overflow-y-auto">
-        <DropdownMenuLabel>Project commands</DropdownMenuLabel>
+        <DropdownMenuLabel>{tr('Project commands')}</DropdownMenuLabel>
         {commands.length === 0 ? (
           <p className="px-2 py-1.5 text-xs text-soft-foreground">
-            No commands found in package.json or a Makefile. Type your own below.
+            {tr('No commands found in package.json or a Makefile. Type your own below.')}
           </p>
         ) : (
           commands.map((entry) => (
@@ -175,7 +178,7 @@ export function CommandPicker({
           ))
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuLabel className="font-normal text-soft-foreground">Custom command</DropdownMenuLabel>
+        <DropdownMenuLabel className="font-normal text-soft-foreground">{tr('Custom command')}</DropdownMenuLabel>
         <form
           className="px-2 pb-1"
           onSubmit={(event) => {
@@ -192,7 +195,7 @@ export function CommandPicker({
             // Radix would treat typing as menu type-ahead and steal the keystrokes.
             onKeyDown={(event) => event.stopPropagation()}
             placeholder="e.g. npm run dev"
-            aria-label="Custom command"
+            aria-label={tr('Custom command')}
             spellCheck={false}
             className="h-8 px-2 font-mono text-xs shadow-none focus-visible:ring-0 md:text-xs"
           />

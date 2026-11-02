@@ -29,6 +29,7 @@ import {
 import { stripTabs, type StripTab } from './strip'
 import { useDragHover } from './use-drag-hover'
 import { VIEW_ICONS } from './view-picker'
+import { useTranslations } from '@/i18n/use-translations'
 
 /** The row's `gap-0.5`, and the `…` button that folds the tabs that do not fit (28px + that gap). */
 const CARD_GAP = 2
@@ -113,6 +114,7 @@ export function LayoutCards({
   keyHints?: ReadonlyMap<string, string>
   showKeyHints?: boolean
 }) {
+  const { tr } = useTranslations()
   /*
    * The row never scrolls: the tabs that do not fit fold into a `…` menu. How many fit is MEASURED,
    * not counted: the room left depends on the window, the sidebar and the header's right side.
@@ -315,7 +317,7 @@ export function LayoutCards({
               size="icon-sm"
               data-action="more-views"
               aria-label={`${overflow.length} more views`}
-              title="More views"
+              title={tr('More views')}
               className="mb-1 size-7 shrink-0 text-muted-foreground"
             >
               <MoreHorizontalIcon aria-hidden="true" />
@@ -464,6 +466,7 @@ function LayoutMenu({
   onDeleteSaved?: (name: string) => void
   suggestedName: string
 }) {
+  const { tr } = useTranslations()
   const current = active === null ? undefined : layouts.find((layout) => layout.name === active)
   const savedNames = new Set(saved.map((layout) => layout.name))
   // This task's own layouts that are not a saved one under the same name.
@@ -484,12 +487,12 @@ function LayoutMenu({
             ref={triggerRef}
             data-action="layouts"
             data-active-layout={current ? current.name : undefined}
-            aria-label={current ? `Layout: ${layoutDisplayName(current.name)}` : 'Layouts'}
-            title="Layouts — open a saved one, or save what is on screen"
+            aria-label={current ? `${tr('Layout')}: ${layoutDisplayName(current.name)}` : tr('Layouts')}
+            title={tr('Layouts — open a saved one, or save what is on screen')}
             className={cn('h-7 max-w-48 shrink-0 gap-1.5 px-2 text-label', current ? 'text-foreground' : 'text-muted-foreground')}
           >
             <LayoutGlyph count={current?.columns.length ?? 2} />
-            <span className="truncate max-md:hidden">{current ? layoutDisplayName(current.name) : 'Layout'}</span>
+            <span className="truncate max-md:hidden">{current ? layoutDisplayName(current.name) : tr('Layout')}</span>
             <ChevronDownIcon aria-hidden="true" className="size-3.5 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
@@ -502,11 +505,10 @@ function LayoutMenu({
             event.preventDefault()
           }}
         >
-          <DropdownMenuLabel>Saved layouts</DropdownMenuLabel>
+          <DropdownMenuLabel>{tr('Saved layouts')}</DropdownMenuLabel>
           {saved.length === 0 ? (
             <p className="px-2 pb-1.5 text-xs text-muted-foreground">
-              None yet — arrange the view (drag a tab onto it), then save it here. Saved layouts are offered in every
-              task.
+              {tr('None yet — arrange the view (drag a tab onto it), then save it here. Saved layouts are offered in every task.')}
             </p>
           ) : null}
           {saved.map((layout) => (
@@ -527,7 +529,7 @@ function LayoutMenu({
           {local.length > 0 ? (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>This task</DropdownMenuLabel>
+              <DropdownMenuLabel>{tr('This task')}</DropdownMenuLabel>
               {local.map((layout) => (
                 <LayoutRow
                   key={`task:${layout.name}`}
@@ -647,6 +649,7 @@ function SaveLayoutDialog({
   onCommit: (name: string) => void
   onCancel: () => void
 }) {
+  const { tr } = useTranslations()
   const [value, setValue] = useState('')
   useEffect(() => {
     if (open) setValue(suggested)
@@ -671,13 +674,13 @@ function SaveLayoutDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Save layout</DialogTitle>
-            <DialogDescription>Saved layouts are offered in every task, in every project.</DialogDescription>
+            <DialogTitle>{tr('Save layout')}</DialogTitle>
+            <DialogDescription>{tr('Saved layouts are offered in every task, in every project.')}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
             <Input
               autoFocus
-              aria-label="Layout name"
+              aria-label={tr('Layout name')}
               maxLength={MAX_LAYOUT_NAME_LENGTH}
               value={value}
               onChange={(event) => setValue(event.target.value)}
@@ -690,15 +693,15 @@ function SaveLayoutDialog({
                   : 'That name belongs to a view tab — pick another.'}
               </p>
             ) : taken.has(name) ? (
-              <p className="text-xs text-muted-foreground">Replaces the saved layout “{name}”.</p>
+              <p className="text-xs text-muted-foreground">{tr('Replaces the saved layout')} “{name}”.</p>
             ) : null}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onCancel}>
-              Cancel
+              {tr('Cancel')}
             </Button>
             <Button type="submit" disabled={name === '' || reserved}>
-              Save
+              {tr('Save')}
             </Button>
           </DialogFooter>
         </form>

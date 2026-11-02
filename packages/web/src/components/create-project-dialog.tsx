@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { GithubTemplateInput } from '@/components/github-template-input'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 
 /** Typing a space gives a dash, the way GitHub's own new-repository form suggests it: the name is
  *  the folder AND the repository, so it follows GitHub's naming rules from the first keystroke. */
@@ -41,6 +42,7 @@ function toRepoName(input: string): string {
  * dialog's own id, and errors are the server's words, verbatim.
  */
 export function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { tr } = useTranslations()
   const [name, setName] = useState('')
   const [useGithub, setUseGithub] = useState(true)
   const [owner, setOwner] = useState('')
@@ -83,8 +85,8 @@ export function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onO
     trimmedName === '' || nameValid
       ? null
       : trimmedName.length > 100
-        ? 'At most 100 characters.'
-        : 'Use letters, digits, “.”, “-” and “_” only.'
+        ? tr('At most 100 characters.')
+        : tr('Use letters, digits, “.”, “-” and “_” only.')
   const projectsDir = projects.data?.projectsDir ?? ''
   const target = nameValid ? `${projectsDir.replace(/\/+$/, '')}/${trimmedName}` : ''
 
@@ -142,9 +144,9 @@ export function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onO
         )}
       >
         <DialogHeader>
-          <DialogTitle>New project</DialogTitle>
+          <DialogTitle>{tr('New project')}</DialogTitle>
           <DialogDescription>
-            cezar creates a new git repository in your checkout root and adds it as a project.
+            {tr('cezar creates a new git repository in your checkout root and adds it as a project.')}
           </DialogDescription>
         </DialogHeader>
 
@@ -181,12 +183,12 @@ export function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onO
             )}
           >
             <div className="grid gap-1.5">
-              <Label htmlFor="create-name">Name</Label>
+              <Label htmlFor="create-name">{tr('Name')}</Label>
               <Input
                 id="create-name"
                 data-slot="create-name"
                 autoFocus
-                placeholder="my-project"
+                placeholder={tr('my-project')}
                 value={name}
                 disabled={busy}
                 aria-invalid={nameError !== null}
@@ -216,7 +218,7 @@ export function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onO
               <div className="flex items-center justify-between gap-3">
                 <Label htmlFor="create-github" className="flex items-center gap-1.5">
                   <LockIcon className="size-3.5" aria-hidden="true" />
-                  Create a private GitHub repository
+                  {tr('Create a private GitHub repository')}
                 </Label>
                 <Switch
                   id="create-github"
@@ -233,7 +235,7 @@ export function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onO
                 <p data-slot="create-github-unavailable" className="text-label text-muted-foreground">
                   {ownersData && !ownersData.available
                     ? ownersData.reason
-                    : 'Could not read your GitHub accounts — the project will be created locally only.'}
+                    : tr('Could not read your GitHub accounts — the project will be created locally only.')}
                 </p>
               ) : null}
 
@@ -250,29 +252,29 @@ export function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onO
               className="grid gap-3 rounded-md border border-border p-3 md:flex md:min-h-0 md:flex-1 md:flex-col"
             >
               <span id="create-start-label" className="text-sm font-medium">
-                Start with
+                {tr('Start with')}
               </span>
               <div role="radiogroup" aria-labelledby="create-start-label" className="grid gap-2 sm:grid-cols-2">
                 <StartOption
                   slot="create-start-empty"
                   checked={!fromTemplate}
                   disabled={busy}
-                  title="Empty repository"
-                  hint="One empty commit, no files."
+                  title={tr('Empty repository')}
+                  hint={tr('One empty commit, no files.')}
                   onSelect={() => setStart('empty')}
                 />
                 <StartOption
                   slot="create-start-template"
                   checked={fromTemplate}
                   disabled={busy || !github}
-                  title="From a template"
-                  hint={github ? 'Copy a GitHub template.' : 'Needs a GitHub repository.'}
+                  title={tr('From a template')}
+                  hint={github ? tr('Copy a GitHub template.') : tr('Needs a GitHub repository.')}
                   onSelect={() => setStart('template')}
                 />
               </div>
               {fromTemplate ? (
                 <div className="grid gap-1.5 md:flex md:min-h-0 md:flex-1 md:flex-col">
-                  <Label htmlFor="create-template">Template</Label>
+                  <Label htmlFor="create-template">{tr('Template')}</Label>
                   <GithubTemplateInput id="create-template" value={template} disabled={busy} onChange={setTemplate} />
                 </div>
               ) : null}
@@ -280,13 +282,13 @@ export function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onO
 
             {busy ? (
               <p data-slot="create-progress" className="truncate font-mono text-meta text-muted-foreground">
-                {progress ?? 'Starting…'}
+                {progress ?? tr('Starting…')}
               </p>
             ) : null}
 
             {create.isError ? (
               <p data-slot="create-error" className="whitespace-pre-line text-ui text-danger">
-                {create.error instanceof Error ? create.error.message : 'could not create the project'}
+                {create.error instanceof Error ? create.error.message : tr('could not create the project')}
               </p>
             ) : null}
           </div>
@@ -294,14 +296,14 @@ export function CreateProjectDialog({ open, onOpenChange }: { open: boolean; onO
 
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
-            Cancel
+            {tr('Cancel')}
           </Button>
           <Button
             data-slot="create-confirm"
             disabled={!nameValid || busy || templateMissing || (useGithub && owners.isPending)}
             onClick={submit}
           >
-            {busy ? 'Creating…' : 'Create'}
+            {busy ? tr('Creating…') : tr('Create')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -325,6 +327,7 @@ function OwnerPicker({
   disabled: boolean
   onChange: (login: string) => void
 }) {
+  const { tr } = useTranslations()
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const move = (from: number, delta: number) => {
     if (owners.length === 0) return
@@ -340,7 +343,7 @@ function OwnerPicker({
         id="create-owner-label"
         className="eyebrow text-muted-foreground"
       >
-        Select organization
+        {tr('Select organization')}
       </span>
       <div
         role="radiogroup"
@@ -437,11 +440,10 @@ function StartOption({
 
 /** Placeholder cards while `gh` is asked for the accounts, so the column does not pop in. */
 function OwnerPickerLoading() {
+  const { tr } = useTranslations()
   return (
     <div className="grid gap-3" data-slot="create-owners-loading" aria-hidden="true">
-      <span className="eyebrow text-muted-foreground">
-        Select organization
-      </span>
+      <span className="eyebrow text-muted-foreground">{tr('Select organization')}</span>
       {[0, 1].map((i) => (
         <div key={i} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
           <span className="size-9 shrink-0 animate-pulse rounded-full bg-muted" />

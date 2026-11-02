@@ -12,6 +12,7 @@ import { Diff, type DiffMode } from '@/components/diff'
 import { DiffStatLabel } from '@/components/diff-stat'
 import { Button } from '@/components/ui/button'
 import { useIsDesktop } from '@/lib/use-desktop'
+import { useTranslations } from '@/i18n/use-translations'
 
 import { CommitList } from '../task-git/commit-list'
 import { DiffViewToggles } from '../task-git/diff-controls'
@@ -23,6 +24,7 @@ import { DiffViewToggles } from '../task-git/diff-controls'
  * same `<Diff>` facade as everything else. Same mobile rule: unified+wrap forced below `md`.
  */
 export function RepoCommitsSection({ log }: { log: LogEntry[] }) {
+  const { tr } = useTranslations()
   const { sha } = useParams<{ sha: string }>()
   const sync = useRepoSync().data
   if (sha) return <CommitDiffView sha={sha} />
@@ -55,8 +57,8 @@ export function RepoCommitsSection({ log }: { log: LogEntry[] }) {
         icon={<GitCommitHorizontalIcon />}
         tone="neutral"
         heading="h2"
-        title="No commits yet"
-        subtitle="The log is empty — this repository has no commits to show."
+        title={tr('No commits yet')}
+        subtitle={tr('The log is empty — this repository has no commits to show.')}
       />
     )
   }
@@ -72,6 +74,7 @@ export function RepoCommitsSection({ log }: { log: LogEntry[] }) {
 }
 
 function CommitDiffView({ sha }: { sha: string }) {
+  const { tr } = useTranslations()
   const commit = useRepoCommit(sha)
   const desktop = useIsDesktop()
   const [mode, setMode] = useState<DiffMode>('unified')
@@ -89,7 +92,7 @@ function CommitDiffView({ sha }: { sha: string }) {
         <Button asChild variant="ghost" size="sm" data-slot="commit-back">
           <Link to="/git/commits">
             <ArrowLeftIcon aria-hidden="true" />
-            All commits
+            {tr('All commits')}
           </Link>
         </Button>
         {commit.data ? <DiffStatLabel stat={commit.data.stat} /> : null}
@@ -124,8 +127,8 @@ function CommitDiffView({ sha }: { sha: string }) {
               icon={<GitCommitHorizontalIcon />}
               tone="neutral"
               heading="h2"
-              title="No file changes"
-              subtitle="This commit carries no diff of its own — a merge commit's changes live on the commits it merged."
+              title={tr('No file changes')}
+              subtitle={tr("This commit carries no diff of its own — a merge commit's changes live on the commits it merged.")}
             />
           ) : (
             <div className="px-4 py-4 [--diff-sticky-top:7rem] md:px-6">

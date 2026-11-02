@@ -63,6 +63,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
 import { useNavigate } from '@/lib/project-router'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 import {
   advance,
   autoLayout,
@@ -240,6 +241,7 @@ export function FloatingPanel({
 }
 
 function WorkflowGraphEditor() {
+  const { tr } = useTranslations()
   const { name: routeName } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -569,7 +571,7 @@ function WorkflowGraphEditor() {
     },
     onSuccess: (res) => {
       setDirty(false)
-      toast(`Saved ${res.path.split('/').pop() ?? res.path}`)
+      toast(`${tr('Saved')} ${res.path.split('/').pop() ?? res.path}`)
       void queryClient.invalidateQueries({ queryKey: queryKeys.workflows })
       if (res.name !== routeName) {
         loadedFor.current = res.name
@@ -607,7 +609,7 @@ function WorkflowGraphEditor() {
       setPlanText('')
       pendingFit.current = true
       toast(
-        plan.fallback ? 'Planner unavailable — added a single step. Edit, then Save.' : 'Built a workflow — review, tweak, then Save.',
+        plan.fallback ? tr('Planner unavailable — added a single step. Edit, then Save.') : tr('Built a workflow — review, tweak, then Save.'),
         plan.fallback ? { tone: 'danger' } : undefined,
       )
     },
@@ -617,7 +619,7 @@ function WorkflowGraphEditor() {
   const del = useMutation({
     mutationFn: (workflowName: string) => deleteWorkflow(workflowName),
     onSuccess: (_, workflowName) => {
-      toast(`Deleted “${workflowName}”.`)
+      toast(`${tr('Deleted')} “${workflowName}”.`)
       setDirty(false)
       void queryClient.invalidateQueries({ queryKey: queryKeys.workflows })
       void navigate('/workflows')
@@ -643,8 +645,8 @@ function WorkflowGraphEditor() {
       <CenteredState
         icon={<AlertTriangleIcon />}
         tone="neutral"
-        title="The node catalog did not load"
-        subtitle={catalog.error instanceof Error ? catalog.error.message : 'Try again in a moment.'}
+        title={tr('The node catalog did not load')}
+        subtitle={catalog.error instanceof Error ? catalog.error.message : tr('Try again in a moment.')}
       />
     )
   }
@@ -664,7 +666,7 @@ function WorkflowGraphEditor() {
     <div data-route="workflows" className="flex h-full min-h-0 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
         <select
-          aria-label="Open workflow"
+          aria-label={tr('Open workflow')}
           className="h-8 max-w-44 rounded-md border border-transparent bg-transparent px-1.5 text-ui font-medium outline-none hover:border-border focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
           value={routeName ?? ''}
           onChange={(e) => {
@@ -673,8 +675,8 @@ function WorkflowGraphEditor() {
             else void navigate(to)
           }}
         >
-          <option value="">New workflow</option>
-          <optgroup label="This repo">
+          <option value="">{tr('New workflow')}</option>
+          <optgroup label={tr('This repo')}>
             {workflows.data?.workflows
               .filter((w) => w.source === 'file')
               .map((w) => (
@@ -684,7 +686,7 @@ function WorkflowGraphEditor() {
                 </option>
               ))}
           </optgroup>
-          <optgroup label="Built-in templates">
+          <optgroup label={tr('Built-in templates')}>
             {workflows.data?.workflows
               .filter((w) => w.source === 'built-in')
               .map((w) => (
@@ -696,8 +698,8 @@ function WorkflowGraphEditor() {
         </select>
         <span className="text-muted-foreground/60">/</span>
         <Input
-          aria-label="Workflow name"
-          placeholder="name this workflow"
+          aria-label={tr('Workflow name')}
+          placeholder={tr('name this workflow')}
           value={name}
           onChange={(e) => {
             setName(e.target.value)
@@ -705,19 +707,19 @@ function WorkflowGraphEditor() {
           }}
           className="h-8 w-52 border-transparent bg-transparent text-ui shadow-none hover:border-border"
         />
-        {dirty && <span className="size-1.5 rounded-full bg-primary" title="Unsaved changes" aria-label="Unsaved changes" />}
+        {dirty && <span className="size-1.5 rounded-full bg-primary" title={tr('Unsaved changes')} aria-label={tr('Unsaved changes')} />}
         <button
           type="button"
           className="flex items-center gap-1 rounded-md px-1.5 py-1 text-label hover:bg-accent"
           style={{ color: issues.length ? TONE.failure : 'var(--muted-foreground)' }}
-          title={issues.join('\n') || 'The server validated this workflow'}
+          title={issues.join('\n') || tr('The server validated this workflow')}
           onClick={() => {
             setSelectedId(null)
             setWorkflowPanel(true)
           }}
         >
           {issues.length ? <AlertTriangleIcon className="size-3.5" /> : <CheckCircle2Icon className="size-3.5" />}
-          {issues.length ? `${issues.length} issue${issues.length > 1 ? 's' : ''}` : 'valid'}
+          {issues.length ? `${issues.length} ${issues.length > 1 ? tr('issues') : tr('issue')}` : tr('valid')}
         </button>
         <div className="ml-auto flex items-center gap-1">
           <Button
@@ -728,13 +730,13 @@ function WorkflowGraphEditor() {
               setPaletteOpen((o) => !o)
             }}
           >
-            <PlusIcon /> Add node
+            <PlusIcon /> {tr('Add node')}
           </Button>
           <Button
             size="sm"
             variant="ghost"
-            title="Tidy up the layout"
-            aria-label="Tidy up"
+            title={tr('Tidy up the layout')}
+            aria-label={tr('Tidy up')}
             onClick={() => {
               edit((g) => ({ ...g, layout: autoLayout(g) }))
               pendingFit.current = true
@@ -743,13 +745,13 @@ function WorkflowGraphEditor() {
             <LayoutGridIcon />
           </Button>
           <Button size="sm" variant={sim ? 'primary' : 'ghost'} onClick={() => setSim((s) => (s ? null : startSim(graph)))}>
-            {sim ? <SquareIcon /> : <PlayIcon />} {sim ? 'Stop' : 'Simulate'}
+            {sim ? <SquareIcon /> : <PlayIcon />} {sim ? tr('Stop') : tr('Simulate')}
           </Button>
           <Button
             size="sm"
             variant={workflowPanel ? 'primary' : 'ghost'}
-            title="Workflow settings, YAML and import"
-            aria-label="Workflow settings"
+            title={tr('Workflow settings, YAML and import')}
+            aria-label={tr('Workflow settings')}
             onClick={() => {
               setSelectedId(null)
               setWorkflowPanel((o) => !o)
@@ -757,7 +759,7 @@ function WorkflowGraphEditor() {
           >
             <Settings2Icon />
           </Button>
-          <Button size="sm" variant="ghost" title="Export as a .yaml file" aria-label="Export YAML" onClick={exportYaml}>
+          <Button size="sm" variant="ghost" title={tr('Export as a .yaml file')} aria-label={tr('Export YAML')} onClick={exportYaml}>
             <DownloadIcon />
           </Button>
           <Button
@@ -766,7 +768,7 @@ function WorkflowGraphEditor() {
             disabled={!canSave}
             onClick={() => (shadowsBuiltIn ? setConfirm({ kind: 'shadow' }) : save.mutate(savingOwnFile))}
           >
-            <SaveIcon /> Save
+            <SaveIcon /> {tr('Save')}
           </Button>
         </div>
       </header>
@@ -957,20 +959,20 @@ function WorkflowGraphEditor() {
                       )
                     }
                   >
-                    Copy
+                    {tr('Copy')}
                   </button>
                 </div>
                 <pre className="max-h-64 overflow-auto rounded-md bg-muted/40 p-2 text-micro leading-relaxed">
                   {graphYaml(name, description, graph)}
                 </pre>
               </div>
-              <Field label="import YAML (v1 or v2)">
+              <Field label={tr('import YAML (v1 or v2)')}>
                 <Textarea
                   value={importText}
                   onChange={(e) => setImportText(e.target.value)}
                   rows={4}
                   className="font-mono text-meta"
-                  placeholder="paste a workflow file…"
+                  placeholder={tr('paste a workflow file…')}
                 />
               </Field>
               <Button
@@ -979,18 +981,18 @@ function WorkflowGraphEditor() {
                 disabled={!importText.trim() || importYaml.isPending}
                 onClick={() => importYaml.mutate()}
               >
-                Import
+                {tr('Import')}
               </Button>
-              <Field label="build from a description — replaces the canvas">
+              <Field label={tr('build from a description — replaces the canvas')}>
                 <Textarea
                   value={planText}
                   onChange={(e) => setPlanText(e.target.value)}
                   rows={3}
-                  placeholder="implement, run the tests, then review…"
+                  placeholder={tr('implement, run the tests, then review…')}
                 />
               </Field>
               <Button size="sm" variant="outline" disabled={!planText.trim() || autoPlan.isPending} onClick={() => autoPlan.mutate()}>
-                {autoPlan.isPending ? 'Building…' : 'Build workflow'}
+                {autoPlan.isPending ? tr('Building…') : tr('Build workflow')}
               </Button>
               {opened?.source === 'file' && (
                 <div className="border-t border-border pt-3">
@@ -1000,7 +1002,7 @@ function WorkflowGraphEditor() {
                     disabled={del.isPending}
                     onClick={() => setConfirm({ kind: 'delete', name: opened.name })}
                   >
-                    <Trash2Icon /> Delete workflow
+                    <Trash2Icon /> {tr('Delete workflow')}
                   </Button>
                 </div>
               )}
@@ -1013,9 +1015,9 @@ function WorkflowGraphEditor() {
             {sim.finished || !cursorNode ? (
               <div className="flex items-center gap-2 text-ui">
                 <CheckCircle2Icon className="size-4" style={{ color: sim.finished === 'failed' ? TONE.failure : TONE.success }} />
-                Run ends <b>{sim.finished}</b> after {sim.taken.length} steps.
+                Run ends <b>{sim.finished}</b> {tr('after')} {sim.taken.length} {tr('steps.')}
                 <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSim(startSim(graph))}>
-                  <RotateCcwIcon /> Restart
+                  <RotateCcwIcon /> {tr('Restart')}
                 </Button>
               </div>
             ) : (
@@ -1031,7 +1033,7 @@ function WorkflowGraphEditor() {
                     style={{ color: TONE[cursorNode.type === 'fork' ? (p === 'failed' ? 'failure' : 'success') : portTone(cursorNode, p)] }}
                     onClick={() => setSim((s) => (s ? simStep(graph, s, cursorNode.id, p) : s))}
                   >
-                    {cursorNode.type === 'fork' ? (p === 'done' ? 'all branches done' : 'a branch failed') : p}
+                    {cursorNode.type === 'fork' ? (p === 'done' ? tr('all branches done') : tr('a branch failed')) : p}
                   </Button>
                 ))}
               </div>
@@ -1045,25 +1047,25 @@ function WorkflowGraphEditor() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirm?.kind === 'overwrite'
-                ? `“${name.trim()}” already exists`
+                ? `${tr('Already exists')} “${name.trim()}”`
                 : confirm?.kind === 'shadow'
-                  ? `Replace the built-in “${name.trim()}”?`
+                  ? `${tr('Replace the built-in')} “${name.trim()}”?`
                   : confirm?.kind === 'delete'
-                    ? `Delete “${confirm.name}”?`
-                    : 'Discard unsaved changes?'}
+                    ? `${tr('Delete')} “${confirm.name}”?`
+                    : tr('Discard unsaved changes?')}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirm?.kind === 'overwrite'
-                ? 'Saving replaces the existing workflow file — including a v1 file of the same name. There is no undo.'
+                ? tr('Saving replaces the existing workflow file — including a v1 file of the same name. There is no undo.')
                 : confirm?.kind === 'shadow'
-                  ? 'A saved file with a built-in name takes its place for every task in this repository, including tasks that use the default. Rename it to keep the built-in; delete the file to bring it back.'
+                  ? tr('A saved file with a built-in name takes its place for every task in this repository, including tasks that use the default. Rename it to keep the built-in; delete the file to bring it back.')
                   : confirm?.kind === 'delete'
-                    ? 'This removes the workflow file from the repository. Tasks already started with it keep running; there is no undo.'
-                    : 'The edits on this canvas have not been saved.'}
+                    ? tr('This removes the workflow file from the repository. Tasks already started with it keep running; there is no undo.')
+                    : tr('The edits on this canvas have not been saved.')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogCancel>{tr('Keep editing')}</AlertDialogCancel>
             <AlertDialogAction
               data-slot="wg-confirm-action"
               onClick={() => {
@@ -1078,12 +1080,12 @@ function WorkflowGraphEditor() {
               }}
             >
               {confirm?.kind === 'overwrite'
-                ? 'Overwrite'
+                ? tr('Overwrite')
                 : confirm?.kind === 'shadow'
-                  ? 'Replace built-in'
+                  ? tr('Replace built-in')
                   : confirm?.kind === 'delete'
-                    ? 'Delete'
-                    : 'Discard'}
+                    ? tr('Delete')
+                    : tr('Discard')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

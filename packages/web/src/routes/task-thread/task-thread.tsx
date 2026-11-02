@@ -22,6 +22,7 @@ import { TaskLifecycleCard } from '@/components/worktree-lifecycle-operation'
 import { StatusDot } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
 import { useKeyboardInsetVar } from '@/lib/keyboard-inset'
 import { budgetStop, isAwaitingAnswer } from '@/lib/attention'
 import { isUnread } from '@/lib/read-state'
@@ -79,6 +80,7 @@ import {
  * below ~300 rows; virtua above).
  */
 export function TaskThreadRoute() {
+  const { tr } = useTranslations()
   const { id } = useParams<{ id: string }>()
   const run = useRun(id)
   const history = useRunHistory(id)
@@ -148,15 +150,15 @@ export function TaskThreadRoute() {
         <CenteredState
           icon={notFound ? <SearchXIcon /> : <MessageSquareTextIcon />}
           tone={notFound ? 'neutral' : 'danger'}
-          title={notFound ? 'Task not found' : 'Could not load this task'}
+          title={notFound ? tr('Task not found') : tr('Could not load this task')}
           subtitle={
             notFound
-              ? 'No run has this id. It may have been deleted, or the link is from another machine.'
+              ? tr('No run has this id. It may have been deleted, or the link is from another machine.')
               : run.error.message
           }
           actions={
             <Button asChild variant="outline">
-              <Link to="/">Back to tasks</Link>
+              <Link to="/">{tr('Back to tasks')}</Link>
             </Button>
           }
         />
@@ -198,6 +200,7 @@ export function ThreadView({
   /** A task-workspace column: the workspace draws the one run header above every column. */
   embedded?: boolean
 }) {
+  const { tr } = useTranslations()
   const footer = threadFooter(run.status, run.error, isAwaitingAnswer(run))
   const markedUnread = useCallback(() => onMarkedUnread?.(run.id), [onMarkedUnread, run.id])
   // The dock's data: the latest plan snapshot across turns (full replacement — an emptied
@@ -375,7 +378,7 @@ export function ThreadView({
             <QueuedPlaceholder run={run} />
           ) : (
             <p data-slot="thread-empty" className="py-6 text-center text-xs text-soft-foreground">
-              No session events yet.
+              {tr('No session events yet.')}
             </p>
           )
         ) : null}
@@ -597,13 +600,14 @@ function FooterContinueButton({
   onContinue: () => Promise<unknown>
   blockedReason?: string
 }) {
+  const { tr } = useTranslations()
   const [pending, setPending] = useState(false)
   return (
     <button
       type="button"
       data-slot="footer-continue"
       disabled={pending || blockedReason !== undefined}
-      title={blockedReason ?? 'Reopen the session and pick up where it stopped'}
+      title={blockedReason ?? tr('Reopen the session and pick up where it stopped')}
       onClick={() => {
         setPending(true)
         onContinue()
@@ -616,7 +620,7 @@ function FooterContinueButton({
       // keeps that sentence's colour; the weight and underline are what mark it as the action.
       className="rounded-sm font-semibold underline underline-offset-2 hover:brightness-125 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:no-underline disabled:opacity-60"
     >
-      Continue
+      {tr('Continue')}
     </button>
   )
 }
@@ -625,17 +629,18 @@ function FooterContinueButton({
  *  the worktree holds changes. A text button, like the footer's Continue — part of the hint line
  *  it answers, not a toolbar control. */
 function EndSessionButton({ runId }: { runId: string }) {
+  const { tr } = useTranslations()
   const finish = useFinishRun(runId)
   return (
     <button
       type="button"
       data-slot="end-session"
-      title="Close the session — the task finishes (or goes to review if it changed files)"
+      title={tr('Close the session — the task finishes (or goes to review if it changed files)')}
       disabled={finish.isPending}
       onClick={() => finish.mutate()}
       className="rounded-sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
     >
-      End session
+      {tr('End session')}
     </button>
   )
 }
@@ -655,10 +660,11 @@ function HistoryBoundary({
   retainedPages: number
   onLoad: () => void
 }) {
+  const { tr } = useTranslations()
   if (fallback) {
     return (
       <p data-slot="history-fallback" className="text-center text-xs text-soft-foreground" role="status">
-        Progressive history is unavailable; showing the complete session.
+        {tr('Progressive history is unavailable; showing the complete session.')}
       </p>
     )
   }
@@ -666,7 +672,7 @@ function HistoryBoundary({
     return (
       <div data-slot="history-start" className="flex items-center gap-3 text-meta text-soft-foreground">
         <span aria-hidden className="h-px flex-1 bg-border" />
-        Start of session
+        {tr('Start of session')}
         <span aria-hidden className="h-px flex-1 bg-border" />
       </div>
     )
@@ -711,6 +717,7 @@ export function liveTurnStart(run: ApiRun, thread: ThreadState): string | undefi
  *  instead of a blank thread the placeholder names the parked state and its live position in
  *  the FIFO queue (from the runs list — the same feed the sidebar uses). */
 function QueuedPlaceholder({ run }: { run: ApiRun }) {
+  const { tr } = useTranslations()
   const runs = useRuns()
   const position = queuePosition(runs.data ?? [], run.id)
   const startNow = useStartRunNow(run.id)
@@ -718,10 +725,10 @@ function QueuedPlaceholder({ run }: { run: ApiRun }) {
     <div data-slot="queued-state" className="flex flex-col items-center gap-1.5 py-10 text-center">
       <StatusDot tone="pending" pulse />
       <p className="text-ui font-medium">
-        {queueWaitLabel(run.queueWaitReason) ?? `Waiting for a free agent slot${position !== undefined ? ` — #${position} in queue` : ''}`}
+        {queueWaitLabel(run.queueWaitReason) ?? `${tr('Waiting for a free agent slot')}${position !== undefined ? ` — #${position} ${tr('in queue')}` : ''}`}
       </p>
       <p className="text-xs text-soft-foreground">
-        {run.workflow} · {run.queueWaitReason ? 'starts automatically when the account and a slot are available' : 'starts automatically when a slot frees up'}
+        {run.workflow} · {run.queueWaitReason ? tr('starts automatically when the account and a slot are available') : tr('starts automatically when a slot frees up')}
       </p>
       {/* A usage-limit hold still applies to a forced start, so the button would do nothing there. */}
       {!run.queueWaitReason && (

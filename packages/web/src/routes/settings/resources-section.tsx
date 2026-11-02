@@ -10,6 +10,7 @@ import { CenteredState } from '@/components/centered-state'
 import { IntegerStepper } from '@/components/integer-stepper'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
 import { MachineCard } from './machine-card'
 import { SettingsField } from './settings-field'
 
@@ -41,6 +42,7 @@ const WAKE_INTERVAL_MAX = 60
 const MEMORY_MIN_MB = 256
 
 export function ResourcesSection() {
+  const { tr } = useTranslations()
   const config = useWorkspaceConfig()
 
   if (config.isPending) {
@@ -55,7 +57,7 @@ export function ResourcesSection() {
       <CenteredState
         icon={<GaugeIcon />}
         tone="danger"
-        title="Resource settings did not load"
+        title={tr('Resource settings did not load')}
         subtitle={config.error.message}
         heading="h2"
       />
@@ -65,6 +67,7 @@ export function ResourcesSection() {
 }
 
 function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
+  const { tr } = useTranslations()
   const queryClient = useQueryClient()
 
   const save = useMutation({
@@ -141,11 +144,11 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
       <MachineCard />
 
       <SettingsField
-        title="Max parallel tasks"
-        hint="How many tasks each project runs at once. The rest wait in the queue. A non-git directory always runs one at a time."
+        title={tr('Max parallel tasks')}
+        hint={tr('How many tasks each project runs at once. The rest wait in the queue. A non-git directory always runs one at a time.')}
       >
         <IntegerStepper
-          aria-label="Max parallel tasks"
+          aria-label={tr('Max parallel tasks')}
           data-slot="resources-max-parallel"
           value={config.resources.maxParallel}
           min={MAX_PARALLEL_MIN}
@@ -159,18 +162,18 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             data-slot="resources-project-limits-link"
             className="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
           >
-            Configure per-project limits
+            {tr('Configure per-project limits')}
           </Link>
           .
         </p>
       </SettingsField>
 
       <SettingsField
-        title="Waiting-session idle timeout"
-        hint="How long a plain waiting session may stay open without activity before its live backend session ends. Continue resumes it; set 0 to keep it open indefinitely."
+        title={tr('Waiting-session idle timeout')}
+        hint={tr('How long a plain waiting session may stay open without activity before its live backend session ends. Continue resumes it; set 0 to keep it open indefinitely.')}
       >
         <IntegerStepper
-          aria-label="Waiting-session idle timeout"
+          aria-label={tr('Waiting-session idle timeout')}
           data-slot="resources-idle-timeout"
           value={config.resources.idleTimeoutMinutes ?? 0}
           min={0}
@@ -183,11 +186,11 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
       </SettingsField>
 
       <SettingsField
-        title="Extra monitoring sessions"
-        hint="How many agent sessions may wait on CI, sub-agents, or monitored commands without using an active task slot. Extra sessions stay alive but pause the queue."
+        title={tr('Extra monitoring sessions')}
+        hint={tr('How many agent sessions may wait on CI, sub-agents, or monitored commands without using an active task slot. Extra sessions stay alive but pause the queue.')}
       >
         <IntegerStepper
-          aria-label="Extra monitoring sessions"
+          aria-label={tr('Extra monitoring sessions')}
           data-slot="resources-max-monitoring"
           value={config.resources.maxMonitoringSessions ?? 2}
           min={0}
@@ -200,20 +203,20 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
       </SettingsField>
 
       <SettingsField
-        title="Monitoring wake-up"
-        hint="Park uses no model turns. Re-check sends the same agent a follow-up on this cadence until work completes or the 40-wakeup safety cap is reached."
+        title={tr('Monitoring wake-up')}
+        hint={tr('Park uses no model turns. Re-check sends the same agent a follow-up on this cadence until work completes or the 40-wakeup safety cap is reached.')}
       >
         <div className="flex flex-wrap items-center gap-2">
           <select
-            aria-label="Monitoring wake-up"
+            aria-label={tr('Monitoring wake-up')}
             data-slot="resources-monitoring-wake-mode"
             value={wakeMode}
             disabled={save.isPending}
             onChange={(event) => setWakeMode(event.target.value as 'park' | 'interval')}
             className="rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
           >
-            <option value="park">Park until resumed</option>
-            <option value="interval">Re-check on an interval</option>
+            <option value="park">{tr('Park until resumed')}</option>
+            <option value="interval">{tr('Re-check on an interval')}</option>
           </select>
           {wakeMode === 'interval' ? (
             <>
@@ -221,17 +224,17 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
                 type="number"
                 min={WAKE_INTERVAL_MIN}
                 max={WAKE_INTERVAL_MAX}
-                aria-label="Wake interval in minutes"
+                aria-label={tr('Wake interval in minutes')}
                 data-slot="resources-monitoring-wake-interval"
                 value={wakeInterval}
                 disabled={save.isPending}
                 onChange={(event) => setWakeInterval(event.target.value)}
                 className="block w-24 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
               />
-              <span className="text-xs text-soft-foreground">minutes</span>
+              <span className="text-xs text-soft-foreground">{tr('minutes')}</span>
             </>
           ) : null}
-          <Button type="button" variant="outline" size="sm" data-action="resources-save-monitoring-wake" disabled={wakeSaved || (wakeMode === 'interval' && wakeInvalid) || save.isPending} onClick={saveWake}>Save</Button>
+          <Button type="button" variant="outline" size="sm" data-action="resources-save-monitoring-wake" disabled={wakeSaved || (wakeMode === 'interval' && wakeInvalid) || save.isPending} onClick={saveWake}>{tr('Save')}</Button>
         </div>
         {wakeMode === 'interval' && wakeInvalid ? (
           <p data-slot="resources-monitoring-wake-invalid" className="text-meta text-danger">Enter a whole number from 1 to 60 minutes.</p>
@@ -241,19 +244,19 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
       </SettingsField>
 
       <SettingsField
-        title="Auto-resume after a usage limit"
-        hint="When an agent stops because its provider usage limit is reached, cezar waits for the reset the provider named and continues the task 30 seconds later — up to 12 times in a row without you. Off leaves the task failed with its Continue button."
+        title={tr('Auto-resume after a usage limit')}
+        hint={tr('When an agent stops because its provider usage limit is reached, cezar waits for the reset the provider named and continues the task 30 seconds later — up to 12 times in a row without you. Off leaves the task failed with its Continue button.')}
       >
         <select
-          aria-label="Auto-resume after a usage limit"
+          aria-label={tr('Auto-resume after a usage limit')}
           data-slot="resources-auto-resume"
           value={autoResume ? 'on' : 'off'}
           disabled={save.isPending}
           onChange={(event) => saveAutoResume(event.target.value === 'on')}
           className="block w-28 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
         >
-          <option value="on">On</option>
-          <option value="off">Off</option>
+          <option value="on">{tr('On')}</option>
+          <option value="off">{tr('Off')}</option>
         </select>
         <p className="text-meta text-soft-foreground">
           Applies to Claude, Codex and OpenCode — whenever the provider says when the limit lifts.
@@ -261,8 +264,8 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
       </SettingsField>
 
       <SettingsField
-        title="Per-task memory limit"
-        hint="When a task's whole process tree crosses this, the engine pauses it with a warning and starts the next queued task. Leave empty for no limit."
+        title={tr('Per-task memory limit')}
+        hint={tr("When a task's whole process tree crosses this, the engine pauses it with a warning and starts the next queued task. Leave empty for no limit.")}
       >
         <div className="flex items-center gap-2">
           <input
@@ -270,15 +273,15 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             inputMode="numeric"
             min={MEMORY_MIN_MB}
             step={256}
-            aria-label="Per-task memory limit in MiB"
+            aria-label={tr('Per-task memory limit in MiB')}
             data-slot="resources-memory-limit"
             value={memory}
             disabled={save.isPending}
-            placeholder="no limit"
+            placeholder={tr('no limit')}
             onChange={(event) => setMemory(event.target.value)}
             className="block w-32 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
           />
-          <span className="text-xs text-soft-foreground">MiB</span>
+          <span className="text-xs text-soft-foreground">{tr('MiB')}</span>
           <Button
             type="button"
             variant="outline"
@@ -287,7 +290,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             disabled={memorySaved || memoryInvalid || save.isPending}
             onClick={saveMemory}
           >
-            Save
+            {tr('Save')}
           </Button>
         </div>
         {memoryInvalid ? (
@@ -300,44 +303,44 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
       </SettingsField>
 
       <SettingsField
-        title="New task defaults"
-        hint="Set stable composer defaults across projects. Explicit choices and run-shape constraints still win."
+        title={tr('New task defaults')}
+        hint={tr('Set stable composer defaults across projects. Explicit choices and run-shape constraints still win.')}
       >
         <div className="grid gap-4 sm:grid-cols-2" data-slot="resources-composer-defaults">
           <label className="grid gap-1.5 text-sm">
-            <span className="font-medium">Autonomous by default</span>
+            <span className="font-medium">{tr('Autonomous by default')}</span>
             <select
-              aria-label="Autonomous by default"
+              aria-label={tr('Autonomous by default')}
               value={composerDefaults.autonomous === null ? 'inherit' : composerDefaults.autonomous ? 'on' : 'off'}
               disabled={save.isPending}
               onChange={(event) => saveComposerDefault('autonomous', event.target.value)}
               className="rounded-md border border-input bg-card px-3 py-1.5 shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
-              <option value="inherit">Inherit environment</option>
-              <option value="on">On</option>
-              <option value="off">Off</option>
+              <option value="inherit">{tr('Inherit environment')}</option>
+              <option value="on">{tr('On')}</option>
+              <option value="off">{tr('Off')}</option>
             </select>
             <span className="text-meta text-soft-foreground">
               Inherited: {composerDefaults.inheritedAutonomous === 'source-dependent'
-                ? 'Source-dependent — skills on, workflows off'
-                : composerDefaults.inheritedAutonomous ? 'On' : 'Off'}
+                ? tr('Source-dependent — skills on, workflows off')
+                : composerDefaults.inheritedAutonomous ? tr('On') : tr('Off')}
             </span>
           </label>
           <label className="grid gap-1.5 text-sm">
-            <span className="font-medium">Use a worktree by default</span>
+            <span className="font-medium">{tr('Use a worktree by default')}</span>
             <select
-              aria-label="Use a worktree by default"
+              aria-label={tr('Use a worktree by default')}
               value={composerDefaults.worktree === null ? 'inherit' : composerDefaults.worktree ? 'on' : 'off'}
               disabled={save.isPending}
               onChange={(event) => saveComposerDefault('worktree', event.target.value)}
               className="rounded-md border border-input bg-card px-3 py-1.5 shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
-              <option value="inherit">Inherit environment</option>
-              <option value="on">On</option>
-              <option value="off">Off</option>
+              <option value="inherit">{tr('Inherit environment')}</option>
+              <option value="on">{tr('On')}</option>
+              <option value="off">{tr('Off')}</option>
             </select>
             <span className="text-meta text-soft-foreground">
-              Inherited: {composerDefaults.inheritedWorktree ? 'On' : 'Off'}
+              Inherited: {composerDefaults.inheritedWorktree ? tr('On') : tr('Off')}
             </span>
           </label>
         </div>

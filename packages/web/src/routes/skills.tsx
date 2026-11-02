@@ -77,7 +77,7 @@ function skillActivation(
  */
 
 export function SkillsRoute() {
-  const { t } = useTranslations()
+  const { t, tr } = useTranslations()
   return (
     <div data-route="skills" className="flex min-h-full flex-col">
       {/* Desktop header — below `md` the shell's top bar already says "Skills". */}
@@ -91,7 +91,7 @@ export function SkillsRoute() {
 }
 
 function SkillsCatalog() {
-  const { t } = useTranslations()
+  const { t, tr } = useTranslations()
   const projectId = useActiveProjectId() ?? ''
   const updateQuery = useSkillsUpdate(projectId, Boolean(projectId))
   const skillsQuery = useSkills()
@@ -139,7 +139,7 @@ function SkillsCatalog() {
     onSuccess: (catalog) => {
       // The POST answers the merged catalog — seed the shared query instead of refetching.
       queryClient.setQueryData(queryKeys.skills, catalog)
-      toast('Team skills refreshed.')
+      toast(tr('Team skills refreshed.'))
     },
     onError: (error) => toast(error.message, { tone: 'danger' }),
   })
@@ -211,7 +211,7 @@ function SkillsCatalog() {
           <button
             type="button"
             data-slot="skills-refresh"
-            title="git fetch the team skills repos"
+            title={tr('git fetch the team skills repos')}
             disabled={refresh.isPending}
             onClick={() => refresh.mutate()}
             className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-55"
@@ -264,7 +264,7 @@ function SkillsCatalog() {
               disabled={importableQuery.isFetching}
               onClick={() => void importableQuery.refetch()}
             >
-              Retry
+              {tr('Retry')}
             </Button>
           </div>
         ) : null}
@@ -300,7 +300,7 @@ function SkillsCatalog() {
             ))
           ) : (
             <li className="px-2.5 py-2 text-xs leading-relaxed text-soft-foreground">
-              {catalog.length > 0 ? '(no skills match)' : <SkillEmptyHint />}
+              {catalog.length > 0 ? tr('(no skills match)') : <SkillEmptyHint />}
             </li>
           )}
         </ul>
@@ -321,7 +321,7 @@ function SkillsCatalog() {
                   className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
                 >
                   <ArrowLeftIcon aria-hidden="true" className="size-3.5" />
-                  Back to skills
+                  {tr('Back to skills')}
                 </Link>
               ) : null}
               <SkillDetailBody
@@ -336,8 +336,8 @@ function SkillsCatalog() {
               icon={<SparklesIcon />}
               tone="neutral"
               heading="h2"
-              title="No skill selected"
-              subtitle="Pick a skill from the catalog."
+              title={tr('No skill selected')}
+              subtitle={tr('Pick a skill from the catalog.')}
             />
           )}
         </div>

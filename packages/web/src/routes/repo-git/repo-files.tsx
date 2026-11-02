@@ -5,6 +5,7 @@ import { ApiError } from '@/api/client'
 import { useRepoTree } from '@/api/queries'
 import { CenteredState } from '@/components/centered-state'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 
 import { FilePreview } from '../task-git/file-preview'
 import { buildPathTree, type PathTreeDir } from '../task-git/file-tree'
@@ -39,6 +40,7 @@ export function RepoFilesSection({
   selected: string | null
   onSelect: (path: string | null) => void
 }) {
+  const { tr } = useTranslations()
   const tree = useRepoTree()
 
   // A 409 is the server's answer ("not a git repository"), not an outage.
@@ -61,7 +63,7 @@ export function RepoFilesSection({
           icon={refused ? <FolderTreeIcon /> : <TriangleAlertIcon />}
           tone={refused ? 'neutral' : 'danger'}
           heading="h2"
-          title={refused ? 'No files to browse' : 'Could not load the files'}
+          title={refused ? tr('No files to browse') : tr('Could not load the files')}
           subtitle={tree.error.message}
         />
       </Section>
@@ -74,8 +76,8 @@ export function RepoFilesSection({
           icon={<FolderTreeIcon />}
           tone="neutral"
           heading="h2"
-          title="No files yet"
-          subtitle="Nothing is tracked in this repository. Files show up here once git knows about them."
+          title={tr('No files yet')}
+          subtitle={tr('Nothing is tracked in this repository. Files show up here once git knows about them.')}
         />
       </Section>
     )
@@ -117,7 +119,7 @@ export function RepoFilesSection({
               className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground md:hidden"
             >
               <ArrowLeftIcon aria-hidden="true" className="size-3.5" />
-              Back to the file tree
+              {tr('Back to the file tree')}
             </button>
           ) : null}
           <FilePreview source={{ kind: 'repo' }} path={selected} />
@@ -173,6 +175,7 @@ function RepoFileBrowser({
   selected: string | null
   onSelect: (path: string) => void
 }) {
+  const { tr } = useTranslations()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(ancestorsOf(selected)))
   const [active, setActive] = useState<string | null>(selected)
@@ -283,7 +286,7 @@ function RepoFileBrowser({
           data-slot="repo-files-filter"
           type="search"
           value={query}
-          placeholder="Filter files…  (/)"
+          placeholder={tr('Filter files…  (/)')}
           aria-controls="repo-files-tree"
           autoComplete="off"
           spellCheck={false}
@@ -297,13 +300,13 @@ function RepoFileBrowser({
         />
         {/* Polite, so the count lands after the typing rather than interrupting it. */}
         <p data-slot="repo-files-count" role="status" aria-live="polite" className="sr-only">
-          {filtering ? `${matches.total} files match ${query.trim()}` : `${paths.length} files`}
+          {filtering ? `${matches.total} ${tr('files match')} ${query.trim()}` : `${paths.length} ${tr('files')}`}
         </p>
       </div>
 
       {filtering && matches.total === 0 ? (
         <p data-slot="repo-files-no-match" className="px-1.5 py-1 text-xs text-soft-foreground">
-          No file matches <span className="font-mono">{query.trim()}</span>.
+          {tr('No file matches')} <span className="font-mono">{query.trim()}</span>.
         </p>
       ) : (
         <div
@@ -311,7 +314,7 @@ function RepoFileBrowser({
           data-slot="repo-files-tree"
           data-filtering={filtering ? 'true' : undefined}
           role="tree"
-          aria-label="Repository files"
+          aria-label={tr('Repository files')}
           aria-activedescendant={activeRow ? rowId(activeRow.path) : undefined}
           onKeyDown={onKeyDown}
           className="min-w-0 text-ui"

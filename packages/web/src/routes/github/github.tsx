@@ -180,7 +180,7 @@ export function GithubRoute({
   /** This is the bare `/github` index (#417): restore the remembered sub-tab before rendering. */
   index?: boolean
 }) {
-  const { t } = useTranslations()
+  const { t, tr } = useTranslations()
   const { n } = useParams()
   // One fast page now that the list is cursor-backed; later pages append without replacing this
   // first-paint result or refetching rows already shown.
@@ -429,7 +429,7 @@ export function GithubRoute({
           <CenteredState
             icon={<TriangleAlertIcon />}
             tone="danger"
-            title="Could not load GitHub"
+            title={tr('Could not load GitHub')}
             subtitle={list.error.message}
           />
         </div>
@@ -447,8 +447,8 @@ export function GithubRoute({
         <CenteredState
           icon={<GithubIcon />}
           tone="neutral"
-          title="GitHub is unavailable here"
-          subtitle={gh.reason ?? 'unknown reason'}
+          title={tr('GitHub is unavailable here')}
+          subtitle={gh.reason ?? tr('unknown reason')}
           actions={
             <Button
               variant="outline"
@@ -456,7 +456,7 @@ export function GithubRoute({
               disabled={refresh.isPending}
               onClick={() => refresh.mutate()}
             >
-              Try again
+              {tr('Try again')}
             </Button>
           }
         >
@@ -577,13 +577,13 @@ export function GithubRoute({
                 to="/automations/new"
                 className="ml-auto shrink-0 text-micro font-medium text-primary hover:underline"
               >
-                Set up automations
+                {tr('Set up automations')}
               </Link>
             ) : null}
             <button
               type="button"
               data-slot="gh-refresh"
-              title="Refresh from GitHub"
+              title={tr('Refresh from GitHub')}
               disabled={refresh.isPending}
               onClick={() => refresh.mutate()}
               // The automations link owns the `ml-auto` that pushes this cluster right; with the
@@ -597,7 +597,7 @@ export function GithubRoute({
                 aria-hidden="true"
                 className={cn('size-[9px]', refresh.isPending && 'motion-safe:animate-spin')}
               />
-              {gh.syncedAt ? `synced ${shortAge(gh.syncedAt)} ago` : 'refresh'}
+              {gh.syncedAt ? `${tr('synced')} ${shortAge(gh.syncedAt)} ${tr('ago')}` : tr('refresh')}
             </button>
           </div>
           <div data-slot="gh-tabs" className="mt-2.5 flex items-end gap-1">
@@ -621,8 +621,8 @@ export function GithubRoute({
               <input
                 type="search"
                 data-slot="gh-search"
-                aria-label={`Search ${view}`}
-                placeholder="Search #id, title, author…"
+                aria-label={`${tr('Search')} ${view}`}
+                placeholder={tr('Search #id, title, author…')}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="w-full rounded-md border border-input bg-card py-1 pr-2 pl-7 text-ui outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -716,11 +716,11 @@ export function GithubRoute({
             {list.isFetchingNextPage ? (
               <>
                 <LoaderCircleIcon aria-hidden="true" className="size-3.5 motion-safe:animate-spin" />
-                Loading more…
+                {tr('Loading more…')}
               </>
             ) : list.isFetchNextPageError ? (
               <>
-                Could not load more.
+                {tr('Could not load more.')}
                 <button
                   type="button"
                   data-slot="gh-load-more-retry"
@@ -946,6 +946,7 @@ function LabelFilter({
   selected: readonly string[]
   onChange: (labels: string[]) => void
 }) {
+  const { tr } = useTranslations()
   const [open, setOpen] = useState(false)
   const toggle = (label: string) =>
     onChange(selected.includes(label) ? selected.filter((l) => l !== label) : [...selected, label])
@@ -969,7 +970,7 @@ function LabelFilter({
         <Command>
           <CommandInput placeholder="Filter labels…" />
           <CommandList className="max-h-[min(16rem,calc(var(--radix-popover-content-available-height)-3rem))]">
-            <CommandEmpty>No labels.</CommandEmpty>
+            <CommandEmpty>{tr('No labels.')}</CommandEmpty>
             {selected.length > 0 ? (
               <CommandItem value="__clear__" onSelect={() => onChange([])} className="text-soft-foreground">
                 Clear {selected.length} filter{selected.length > 1 ? 's' : ''}
@@ -1026,7 +1027,8 @@ function GithubDetail({
   /** Resolved checks glyph — the lazily-hydrated value overrides the list's `null` (#664). */
   checks?: GithubItem['checks']
 }) {
-  const kindWord = item.kind === 'pr' ? 'pull request' : 'issue'
+  const { tr } = useTranslations()
+  const kindWord = item.kind === 'pr' ? tr('pull request') : tr('issue')
   const detailQuery = useGithubComments(item.kind, item.number)
   const detailBody = detailQuery.data?.detail?.body ?? item.body
   const detailAdditions = detailQuery.data?.detail?.additions ?? item.additions
@@ -1084,8 +1086,8 @@ function GithubDetail({
 
       {item.kind === 'pr' ? (
         <nav aria-label="Pull request detail" className="mt-4 flex border-b border-border">
-          <TabLink to={`/github/prs/${item.number}`} active={!changes}>Conversation</TabLink>
-          <TabLink to={`/github/prs/${item.number}/changes`} active={changes}>Changes</TabLink>
+          <TabLink to={`/github/prs/${item.number}`} active={!changes}>{tr('Conversation')}</TabLink>
+          <TabLink to={`/github/prs/${item.number}/changes`} active={changes}>{tr('Changes')}</TabLink>
         </nav>
       ) : null}
 
@@ -1134,7 +1136,7 @@ function MergeRequirementIcon({ state }: { state: MergeRequirementState }) {
 }
 
 function GithubMergeBox({ number }: { number: number }) {
-  const { t } = useTranslations()
+  const { t, tr } = useTranslations()
   const queryClient = useQueryClient()
   const mergeState = useQuery({
     queryKey: queryKeys.githubMergeState(number),
@@ -1226,7 +1228,7 @@ function GithubMergeBox({ number }: { number: number }) {
               onClick={() => refreshMergeState.mutate()}
             >
               <RefreshCwIcon aria-hidden="true" className={cn('size-3.5', refreshMergeState.isPending && 'animate-spin')} />
-              Refresh
+              {tr('Refresh')}
             </Button>
           </div>
           <p className="mt-1 font-mono text-meta text-soft-foreground">
@@ -1241,7 +1243,7 @@ function GithubMergeBox({ number }: { number: number }) {
               <MergeRequirementIcon state={conflictState} />
               <span>Conflicts: {state.mergeable === 'conflicting' ? 'present' : state.mergeable === 'mergeable' ? 'none' : 'unknown'}</span>
             </li>
-            {state.checks.length === 0 && state.checksTier !== 'none' ? <li>No checks configured</li> : state.checks.map((check) => (
+            {state.checks.length === 0 && state.checksTier !== 'none' ? <li>{tr('No checks configured')}</li> : state.checks.map((check) => (
               <li key={check.name} className="flex items-center justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-2">
                   <MergeRequirementIcon state={check.state} />
@@ -1279,15 +1281,15 @@ function GithubMergeBox({ number }: { number: number }) {
                 className="mt-0.5 size-4 accent-primary"
               />
               <span>
-                <span className="block font-medium">Merge without waiting for requirements</span>
-                <span className="mt-0.5 block text-soft-foreground">GitHub will allow this only if your permissions can bypass the repository rules.</span>
+                <span className="block font-medium">{tr('Merge without waiting for requirements')}</span>
+                <span className="mt-0.5 block text-soft-foreground">{tr('GitHub will allow this only if your permissions can bypass the repository rules.')}</span>
               </span>
             </label>
           ) : null}
           {state.state === 'open' && state.methods.length > 0 ? (
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <select
-                aria-label="Merge method"
+                aria-label={tr('Merge method')}
                 value={selectedMethod ?? ''}
                 onChange={(event) => setMethod(event.target.value as GithubMergeMethod)}
                 className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -1324,6 +1326,7 @@ function GithubMergeBox({ number }: { number: number }) {
 }
 
 function GithubPrChanges({ item }: { item: GithubItem }) {
+  const { tr } = useTranslations()
   const queryClient = useQueryClient()
   const query = useGithubPrChanges(item.number)
   const [filter, setFilter] = useState('')
@@ -1342,11 +1345,11 @@ function GithubPrChanges({ item }: { item: GithubItem }) {
     queryClient.setQueryData(['github', 'pr-changes', item.number], next)
     if (next.available && oldHead && oldHead !== next.headSha) {
       setSelected(next.files[0]?.path ?? null)
-      toast('The reviewed revision changed.')
+      toast(tr('The reviewed revision changed.'))
     }
   }
-  if (query.isPending) return <p aria-live="polite" className="mt-6 text-sm text-muted-foreground">Loading changed files…</p>
-  if (query.isError || !data) return <p className="mt-6 text-sm text-danger">Changed files could not be loaded.</p>
+  if (query.isPending) return <p aria-live="polite" className="mt-6 text-sm text-muted-foreground">{tr('Loading changed files…')}</p>
+  if (query.isError || !data) return <p className="mt-6 text-sm text-danger">{tr('Changed files could not be loaded.')}</p>
   if (!data.available) return <p className="mt-6 text-sm text-muted-foreground">{data.reason}</p>
   const diffFiles: DiffFileChange[] = files.map((file) => ({
     path: file.path,
@@ -1362,13 +1365,13 @@ function GithubPrChanges({ item }: { item: GithubItem }) {
   return (
     <section data-slot="gh-pr-changes" className="mt-5 min-w-0">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <strong>{data.files.length} changed files</strong>
+        <strong>{data.files.length} {tr('changed files')}</strong>
         <span className="text-success">+{data.additions}</span>
         <span className="text-danger">−{data.deletions}</span>
         <span className="font-mono text-muted-foreground" title={data.headSha}>head {data.headSha.slice(0, 8)}</span>
-        <Button type="button" variant="outline" size="sm" className="ml-auto min-h-11" onClick={() => void refresh()}>Refresh</Button>
+        <Button type="button" variant="outline" size="sm" className="ml-auto min-h-11" onClick={() => void refresh()}>{tr('Refresh')}</Button>
       </div>
-      {data.truncated ? <p role="status" className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs">{data.reason ?? 'This response is incomplete.'} {fallback ? <a href={fallback} target="_blank" rel="noopener noreferrer" className="underline">Open all files on GitHub</a> : null}</p> : null}
+      {data.truncated ? <p role="status" className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs">{data.reason ?? tr('This response is incomplete.')} {fallback ? <a href={fallback} target="_blank" rel="noopener noreferrer" className="underline">{tr('Open all files on GitHub')}</a> : null}</p> : null}
       <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="min-w-0">
           <input aria-label="Filter changed files" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter files…" className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm" />

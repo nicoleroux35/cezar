@@ -18,6 +18,7 @@ import { RunDiff } from '@/components/run-diff'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
 import { Link } from '@/lib/project-router'
 import { isSubmitShortcut } from '@/lib/use-submit-shortcut'
 import { isHttpUrl } from '@/lib/utils'
@@ -46,8 +47,9 @@ import { writeClipboard } from '@/lib/clipboard'
  * leave them pending for some later message.
  */
 export function ReviewPanel({ run, diffComments }: { run: ApiRun; diffComments?: DiffComments }) {
+  const { tr } = useTranslations()
   return (
-    <section data-slot="review-panel" aria-label="Review the changes" className="flex flex-col gap-3">
+    <section data-slot="review-panel" aria-label={tr('Review the changes')} className="flex flex-col gap-3">
       <div
         data-slot="review-banner"
         className="flex items-center gap-2.5 rounded-md border border-violet/30 bg-violet/10 px-3.5 py-2.5"
@@ -56,7 +58,7 @@ export function ReviewPanel({ run, diffComments }: { run: ApiRun; diffComments?:
         <p className="min-w-0 text-ui">
           <span className="font-semibold">Review the changes before anything lands.</span>{' '}
           <span className="text-muted-foreground">
-            Read the diff, send notes back, draft a PR — or accept. Nothing merges on its own.
+            {tr('Read the diff, send notes back, draft a PR — or accept. Nothing merges on its own.')}
           </span>
         </p>
       </div>
@@ -70,6 +72,7 @@ export function ReviewPanel({ run, diffComments }: { run: ApiRun; diffComments?:
 // ---- notes + exits --------------------------------------------------------------------------
 
 function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: DiffComments }) {
+  const { tr } = useTranslations()
   const queryClient = useQueryClient()
   const notesRef = useRef<HTMLTextAreaElement>(null)
   // Review notes are the second-longest thing anyone types into a task, and they are typed while
@@ -107,7 +110,7 @@ function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: Diff
         // Checked against the cap with the prefix it actually goes out with.
         const message = `Review feedback:\n${messageWithReview(text, held)}`
         if (message.length > MESSAGE_TEXT_MAX) {
-          throw new Error('Too long with the diff comments attached — shorten the notes or remove some comments.')
+          throw new Error(tr('Too long with the diff comments attached — shorten the notes or remove some comments.'))
         }
         return deliverPrompt(message, [])
       }
@@ -144,7 +147,7 @@ function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: Diff
     // Drafted line comments are feedback on their own.
     if (text.length === 0 && commentCount === 0) {
       // Legacy `alertBar('Write what to change first.')` + focus.
-      toast('Write what to change first.')
+      toast(tr('Write what to change first.'))
       notesRef.current?.focus()
       return
     }
@@ -156,8 +159,8 @@ function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: Diff
       <Textarea
         ref={notesRef}
         data-slot="review-notes"
-        aria-label="Notes for the agent"
-        placeholder="Notes for the agent — what should change?"
+        aria-label={tr('Notes for the agent')}
+        placeholder={tr('Notes for the agent — what should change?')}
         rows={2}
         value={notes}
         onChange={(event) => setNotes(event.target.value)}
@@ -207,13 +210,13 @@ function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: Diff
           data-slot="review-send-back"
           variant="outline"
           size="sm"
-          title={continuation.reason ?? "Send the notes back into the agent's session"}
+          title={continuation.reason ?? tr("Send the notes back into the agent's session")}
           aria-describedby={!continuation.canContinue ? 'review-provider-guidance' : undefined}
           disabled={sendBack.isPending || !continuation.canContinue}
           onClick={submitNotes}
         >
           <CornerUpLeftIcon aria-hidden="true" />
-          Send back
+          {tr('Send back')}
         </Button>
         {isHttpUrl(run.pullRequestUrl) ? (
           // A PR already exists (agent-opened, spotted in the transcript) — a second Draft PR
@@ -226,7 +229,7 @@ function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: Diff
               href={run.pullRequestUrl}
               target="_blank"
               rel="noopener noreferrer"
-              title="The PR for this task is already open"
+              title={tr('The PR for this task is already open')}
             >
               <ExternalLinkIcon aria-hidden="true" />
               PR ↗
@@ -237,7 +240,7 @@ function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: Diff
             data-slot="review-draft-pr"
             variant="outline"
             size="sm"
-            title={git.byAgent ? 'Ask the agent to push the branch and open a draft PR' : 'Push the branch and open a draft PR'}
+            title={git.byAgent ? tr('Ask the agent to push the branch and open a draft PR') : tr('Push the branch and open a draft PR')}
             disabled={draftPrBusy}
             aria-busy={draftPrBusy || undefined}
             onClick={openDraftPr}
@@ -260,7 +263,7 @@ function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: Diff
           onClick={() => finish.mutate()}
         >
           <CheckIcon aria-hidden="true" />
-          Accept
+          {tr('Accept')}
         </Button>
       </div>
       {manual !== null ? <ManualMergeLine command={manual} /> : null}
@@ -271,20 +274,22 @@ function ReviewActions({ run, diffComments }: { run: ApiRun; diffComments?: Diff
 /** The 409 fallback: the PR could not be opened, but the branch is real — show the merge
  *  command copyable, like the header's resume hint. */
 function ManualMergeLine({ command }: { command: string }) {
+  const { tr } = useTranslations()
   return (
     <button
       type="button"
       data-slot="review-manual"
-      title="Copy the command"
+      title={tr('Copy the command')}
       onClick={() => {
-        void writeClipboard(command)
-          .then(() => toast('Command copied to clipboard.'))
-          .catch(() => toast(`Run manually: ${command}`))
+        void navigator.clipboard
+          .writeText(command)
+          .then(() => toast(tr('Command copied to clipboard.')))
+          .catch(() => toast(`${tr('Run manually:')} ${command}`))
       }}
       className="flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-left font-mono text-meta text-soft-foreground hover:bg-muted hover:text-foreground"
     >
       <CopyIcon className="size-3 shrink-0" aria-hidden="true" />
-      <span className="truncate">manual path: {command}</span>
+      <span className="truncate">{tr('manual path:')} {command}</span>
     </button>
   )
 }

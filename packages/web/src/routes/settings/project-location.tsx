@@ -7,6 +7,7 @@ import { toast } from '@/components/ui/toaster'
 import { useActiveProjectId } from '@/lib/project-router'
 import { withServedBootProject } from '@/lib/served-boot-project'
 import { SettingsField } from './settings-field'
+import { useTranslations } from '@/i18n/use-translations'
 import { writeClipboard } from '@/lib/clipboard'
 
 /**
@@ -39,19 +40,20 @@ export function useActiveProjectRoot(): string | null {
 
 /** Copy that survives a denied/absent clipboard: the fallback toast still shows the full path,
  *  so the user can select it by hand instead of being told nothing happened. */
-function copyPath(root: string) {
+function copyPath(root: string, copiedMessage: string) {
   void writeClipboard(root)
-    .then(() => toast('Project folder copied'))
+    .then(() => toast(copiedMessage))
     .catch(() => toast(root))
 }
 
 export function ProjectFolderField() {
   const root = useActiveProjectRoot()
+  const { tr } = useTranslations()
   if (root === null) return null
   return (
     <SettingsField
-      title="Project folder"
-      hint="Where this project lives on disk. Every task worktree, git command and agent run resolves against it."
+      title={tr('Project folder')}
+      hint={tr('Where this project lives on disk. Every task worktree, git command and agent run resolves against it.')}
     >
       <div
         data-slot="project-location"
@@ -70,11 +72,11 @@ export function ProjectFolderField() {
           <button
             type="button"
             data-action="project-location-copy"
-            title="Copy the project folder path"
-            onClick={() => copyPath(root)}
+            title={tr('Copy the project folder path')}
+            onClick={() => copyPath(root, tr('Project folder copied'))}
             className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            Copy
+            {tr('Copy')}
           </button>
           <OpenWithMenu root={root} />
         </div>
@@ -85,15 +87,16 @@ export function ProjectFolderField() {
 
 export function ProjectLocationNav() {
   const root = useActiveProjectRoot()
+  const { tr } = useTranslations()
   if (root === null) return null
   return (
     <div data-slot="project-location" data-variant="nav" className="mt-auto px-2.5 pt-3">
-      <p className="text-meta text-soft-foreground">Project folder</p>
+      <p className="text-meta text-soft-foreground">{tr('Project folder')}</p>
       <button
         type="button"
         data-action="project-location-copy"
-        title={`${root} — click to copy`}
-        onClick={() => copyPath(root)}
+        title={`${root} — ${tr('click to copy')}`}
+        onClick={() => copyPath(root, tr('Project folder copied'))}
         className="block w-full truncate text-left font-mono text-meta text-muted-foreground transition-colors hover:text-foreground"
       >
         {root}
@@ -114,6 +117,7 @@ export function ProjectLocationNav() {
  * empty target list, and a menu whose every item is missing is worse than no menu.
  */
 function OpenWithMenu({ root }: { root: string }) {
+  const { tr } = useTranslations()
   const targets = useOpenTargets()
   const open = useMutation({
     mutationFn: (target: string) => openProjectIn(target),
@@ -127,7 +131,7 @@ function OpenWithMenu({ root }: { root: string }) {
   return (
     <OpenInMenu
       slot="project-location-open"
-      label="Open with"
+      label={tr('Open with')}
       triggerVariant="outline"
       title={root}
       disabled={open.isPending}
@@ -137,7 +141,7 @@ function OpenWithMenu({ root }: { root: string }) {
       onPick={(target) =>
         open.mutate(target, {
           onSuccess: () =>
-            toast(`Opening the project folder in ${choices.find((c) => c.target.id === target)?.target.label ?? target}`),
+            toast(`${tr('Opening the project folder in')} ${choices.find((c) => c.target.id === target)?.target.label ?? target}`),
         })
       }
     />

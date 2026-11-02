@@ -13,6 +13,7 @@ import { availableRunners } from '@/routes/new-task-form'
 import { formatJson } from '@/lib/format-json'
 import { cn } from '@/lib/utils'
 import { AGENT_DESCRIPTORS, descriptorFor, type AgentDescriptor } from './agent-descriptors'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * Settings → Agent config (spec #404, regrouped per
@@ -57,6 +58,7 @@ function effectLabel(file: AgentConfigFile): string {
 }
 
 export function AgentConfigSection() {
+  const { tr } = useTranslations()
   const listing = useAgentConfig()
   const health = useHealth()
   const installed = useMemo<Runner[]>(
@@ -76,7 +78,7 @@ export function AgentConfigSection() {
       <CenteredState
         icon={<FileCogIcon />}
         tone="danger"
-        title="Agent config did not load"
+        title={tr('Agent config did not load')}
         subtitle={listing.error.message}
         heading="h2"
       />
@@ -86,6 +88,7 @@ export function AgentConfigSection() {
 }
 
 function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; installed: Runner[] }) {
+  const { tr } = useTranslations()
   const [agentId, setAgentId] = useState<Runner>('claude')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const agent = descriptorFor(agentId)
@@ -103,8 +106,7 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
           data-slot="agent-config-readonly"
           className="rounded-md border border-border bg-muted/40 px-3 py-2 text-ui text-soft-foreground"
         >
-          Read-only: agent config is edited from the machine that owns the checkout (this cockpit runs in hosted
-          mode). You can still see every file and which one wins.
+          {tr('Read-only: agent config is edited from the machine that owns the checkout (this cockpit runs in hosted mode). You can still see every file and which one wins.')}
         </div>
       )}
 
@@ -227,6 +229,7 @@ function AgentPane({
 /** Claude's user/local MCP scopes live in ~/.claude.json (Claude's own state
  *  file) — listed read-only; cezar never edits it. */
 function UserMcpBlock({ userMcp }: { userMcp: NonNullable<AgentConfigListing['userMcp']> }) {
+  const { tr } = useTranslations()
   return (
     <div data-slot="agent-config-user-mcp" className="mt-3">
       <h4 className="mb-1 text-label font-semibold">User &amp; local scopes</h4>
@@ -256,6 +259,7 @@ function UserMcpBlock({ userMcp }: { userMcp: NonNullable<AgentConfigListing['us
 }
 
 export function FileEditor({ file }: { file: AgentConfigFile }) {
+  const { tr } = useTranslations()
   const fileQuery = useAgentConfigFile(file.id)
   const put = usePutAgentConfigFile(file.id)
   const [draft, setDraft] = useState<string | null>(null)
@@ -351,9 +355,9 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
           data-slot="agent-config-conflict"
           className="flex items-center justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-label"
         >
-          <span>The file changed on disk since you opened it.</span>
+          <span>{tr('The file changed on disk since you opened it.')}</span>
           <Button size="sm" variant="outline" onClick={() => void fileQuery.refetch()}>
-            Reload from disk
+            {tr('Reload from disk')}
           </Button>
         </div>
       )}
@@ -361,7 +365,7 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
       {canWrite && (
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={save} disabled={!dirty || put.isPending}>
-            {file.exists ? 'Save' : 'Create'}
+            {file.exists ? tr('Save') : tr('Create')}
           </Button>
           <Button
             size="sm"
@@ -372,7 +376,7 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
             }}
             disabled={!dirty || put.isPending}
           >
-            Revert
+            {tr('Revert')}
           </Button>
           {dirty && <span className="text-label text-soft-foreground">Unsaved changes</span>}
         </div>

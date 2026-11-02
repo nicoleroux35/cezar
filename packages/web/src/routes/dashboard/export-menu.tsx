@@ -3,12 +3,14 @@ import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { collectDashboardExport, dashboardCsv, printableDashboard } from './export'
+import { useTranslations } from '@/i18n/use-translations'
 
 export function DashboardExportMenu({
   dashboard,
 }: {
   dashboard: RefObject<HTMLDivElement | null>
 }) {
+  const { tr } = useTranslations()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -24,7 +26,7 @@ export function DashboardExportMenu({
         title.trim(),
       )
       if (!report.modules.length) {
-        setError('Show at least one dashboard module before exporting.')
+        setError(tr('Show at least one dashboard module before exporting.'))
         return
       }
       if (format === 'csv') {
@@ -73,7 +75,7 @@ export function DashboardExportMenu({
             setBusy(false)
           } catch {
             dispose()
-            setError('Could not open the print dialog. Please try again.')
+            setError(tr('Could not open the print dialog. Please try again.'))
           }
         }
         timer = setTimeout(dispose, 120_000)
@@ -82,7 +84,7 @@ export function DashboardExportMenu({
       }
     } catch {
       setBusy(false)
-      setError('Could not prepare the export. Please try again.')
+      setError(tr('Could not prepare the export. Please try again.'))
     }
   }
   return (
@@ -90,29 +92,29 @@ export function DashboardExportMenu({
       <PopoverTrigger asChild>
         <Button variant="outline" className="min-h-11" disabled={busy}>
           <Download className="size-4" />
-          {busy ? 'Preparing report…' : 'Export'}
+          {busy ? tr('Preparing report…') : tr('Export')}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="max-w-[calc(100vw-2rem)] space-y-3">
-        <p className="text-sm font-medium">Export current dashboard</p>
+        <p className="text-sm font-medium">{tr('Export current dashboard')}</p>
         <p className="text-xs text-muted-foreground">
-          Visible modules, current filters and loaded rows. Hidden metrics are excluded.
+          {tr('Visible modules, current filters and loaded rows. Hidden metrics are excluded.')}
         </p>
         <label className="block space-y-1 text-xs text-muted-foreground">
-          Report title (optional)
+          {tr('Report title (optional)')}
           <input
             className="min-h-11 w-full rounded-md border bg-background px-3 text-sm text-foreground"
-            placeholder="e.g. Fleet review for leadership"
+            placeholder={tr('e.g. Fleet review for leadership')}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
         </label>
         <Button className="min-h-11 w-full" onClick={() => exportView('pdf')}>
-          PDF report…
+          {tr('PDF report…')}
         </Button>
-        <p className="text-xs text-muted-foreground">Choose Save as PDF in the print dialog.</p>
+        <p className="text-xs text-muted-foreground">{tr('Choose Save as PDF in the print dialog.')}</p>
         <Button variant="outline" className="min-h-11 w-full" onClick={() => exportView('csv')}>
-          Download CSV
+          {tr('Download CSV')}
         </Button>
         {error && (
           <p role="alert" className="text-sm">

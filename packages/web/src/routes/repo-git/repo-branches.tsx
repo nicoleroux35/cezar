@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
 import { useActiveForge } from '@/lib/active-forge'
 import { cn, isHttpUrl } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * The repo view's Branches segment (R5 Step 1.7): the branch list `GET /api/repo` already
@@ -25,6 +26,7 @@ import { cn, isHttpUrl } from '@/lib/utils'
  * `/api/github`) only behind it.
  */
 export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: RepoInfo }) {
+  const { tr } = useTranslations()
   const forge = useActiveForge()
   const sync = useRepoSync()
   const queryClient = useQueryClient()
@@ -82,10 +84,10 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
   return (
     <section data-slot="repo-branches" className="flex flex-col gap-6 px-4 py-4 md:px-6">
       <div>
-        <h2 className="eyebrow text-soft-foreground">Branches</h2>
+        <h2 className="eyebrow text-soft-foreground">{tr('Branches')}</h2>
         <Input
-          aria-label="Filter branches"
-          placeholder="Filter branches…"
+          aria-label={tr('Filter branches')}
+          placeholder={tr('Filter branches…')}
           value={branchQuery}
           onChange={(event) => setBranchQuery(event.target.value)}
           className="mt-2 max-w-xl"
@@ -140,7 +142,7 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
 
         <form data-slot="branch-create" className="mt-3 flex max-w-md items-center gap-2" onSubmit={submitCreate}>
           <Input
-            aria-label="New branch name"
+            aria-label={tr('New branch name')}
             placeholder="new-branch-name"
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
@@ -175,14 +177,14 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
           onChange={(event) => setBase.mutate(event.target.value === '' ? null : event.target.value)}
           className="mt-1.5 block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
         >
-          <option value="">follow checked-out branch (default)</option>
+          <option value="">{tr('follow checked-out branch (default)')}</option>
           {repo.branches.map((name) => (
             <option key={name} value={name}>
               {name}
             </option>
           ))}
         </select>
-        <p className="mt-1 text-meta text-soft-foreground">New task worktrees branch from this.</p>
+        <p className="mt-1 text-meta text-soft-foreground">{tr('New task worktrees branch from this.')}</p>
       </div>
 
       {forge?.available ? <ForgePullRequests /> : null}
@@ -194,12 +196,13 @@ export function RepoBranchesSection({ repo, info }: { repo: RepoResponse; info: 
  *  available. The payload itself still degrades (`available:false` + reason) — rendered
  *  honestly rather than hidden, since at this point a forge was detected. */
 function ForgePullRequests() {
+  const { tr } = useTranslations()
   const github = useGithub({ limit: 20 })
   return (
     <div data-slot="repo-prs" className="max-w-xl">
-      <h2 className="eyebrow text-soft-foreground">Open pull requests</h2>
+      <h2 className="eyebrow text-soft-foreground">{tr('Open pull requests')}</h2>
       {github.isPending ? (
-        <p className="mt-2 text-xs text-soft-foreground">Loading pull requests…</p>
+        <p className="mt-2 text-xs text-soft-foreground">{tr('Loading pull requests…')}</p>
       ) : github.isError ? (
         <p className="mt-2 text-xs text-soft-foreground">{github.error.message}</p>
       ) : !github.data.available ? (
@@ -207,7 +210,7 @@ function ForgePullRequests() {
           {github.data.reason ?? 'The forge is unreachable right now.'}
         </p>
       ) : github.data.prs.length === 0 ? (
-        <p className="mt-2 text-xs text-soft-foreground">No open pull requests.</p>
+        <p className="mt-2 text-xs text-soft-foreground">{tr('No open pull requests.')}</p>
       ) : (
         <ul className="mt-2 flex flex-col divide-y divide-border">
           {github.data.prs.map((pr) => (

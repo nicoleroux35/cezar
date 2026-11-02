@@ -8,6 +8,7 @@ import { AutomationEditor } from './editor'
 import { AutomationLog } from './log'
 import { AutomationsList } from './automations-list'
 import { useAutomationActions, useAutomationsGate, useAutomationsQuery } from './use-automations'
+import { useTranslations } from '@/i18n/use-translations'
 
 export type AutomationsView = 'list' | 'week' | 'day'
 
@@ -21,6 +22,7 @@ export type AutomationsView = 'list' | 'week' | 'day'
  * keep it.
  */
 export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'edit' | 'log' }) {
+  const { tr } = useTranslations()
   const { automationId } = useParams()
   const navigate = useNavigate()
   const gate = useAutomationsGate()
@@ -33,7 +35,7 @@ export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'e
   if (!gate.known) {
     return (
       <div data-route="automations" className="flex min-h-full flex-col p-3 md:p-5">
-        <PageState text="Loading automations…" />
+        <PageState text={tr('Loading automations…')} />
       </div>
     )
   }
@@ -43,8 +45,8 @@ export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'e
         <CenteredState
           icon={<ZapIcon />}
           tone="neutral"
-          title="Automations are off"
-          subtitle="This cockpit was started with CEZ_AUTOMATIONS=0. Unset it and restart the service to turn automations on."
+          title={tr('Automations are off')}
+          subtitle={tr('This cockpit was started with CEZ_AUTOMATIONS=0. Unset it and restart the service to turn automations on.')}
           heading="h2"
         />
       </div>
@@ -58,16 +60,16 @@ export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'e
   }
   if (mode === 'edit') {
     const automation = data?.automations.find((item) => item.id === automationId)
-    if (data && !automation) return <div data-route="automations" className="p-5"><PageState text="Automation not found." /></div>
+    if (data && !automation) return <div data-route="automations" className="p-5"><PageState text={tr('Automation not found.')} /></div>
     return automation
       ? <AutomationEditor data={data} automation={automation} actions={actions} onBack={back} onSaved={back} onLog={() => navigate(`/automations/${encodeURIComponent(automation.id)}/log`)} />
-      : <div data-route="automations" className="p-5"><PageState text="Loading automation…" /></div>
+      : <div data-route="automations" className="p-5"><PageState text={tr('Loading automation…')} /></div>
   }
   if (mode === 'log') {
     const automation = data?.automations.find((item) => item.id === automationId)
     return automationId
       ? <AutomationLog automationId={automationId} automation={automation} timeZone={data?.timeZone} onBack={back} />
-      : <div data-route="automations" className="p-5"><PageState text="Automation not found." /></div>
+      : <div data-route="automations" className="p-5"><PageState text={tr('Automation not found.')} /></div>
   }
   return (
     <AutomationsList

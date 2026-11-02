@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/toaster'
 import { resetSid } from '@/lib/sid'
+import { useTranslations } from '@/i18n/use-translations'
+import type { TranslationText } from '@/i18n/text'
 import { TELEMETRY_CODE_URL, TELEMETRY_DOC_URL, shouldAskForTelemetry } from '@/lib/telemetry-consent'
 
 /**
@@ -17,7 +19,7 @@ import { TELEMETRY_CODE_URL, TELEMETRY_DOC_URL, shouldAskForTelemetry } from '@/
  * sent before a "Share" click.
  */
 
-const SHARED = [
+const SHARED: readonly TranslationText[] = [
   'How many tasks you start (agent, model)',
   'How many messages you send',
   'Which pages you open',
@@ -25,7 +27,7 @@ const SHARED = [
   'Version, OS, app or CLI',
   'A random install id',
 ]
-const NEVER = [
+const NEVER: readonly TranslationText[] = [
   'Prompts, messages, code, diffs',
   'File paths',
   'Repo, branch or project names',
@@ -55,20 +57,22 @@ export function useSetTelemetryConsent() {
 type Answer = 'granted' | 'denied'
 
 function AnswerButtons({ busy, onAnswer, size }: { busy: boolean; onAnswer: (c: Answer) => void; size: 'sm' | 'lg' }) {
+  const { tr } = useTranslations()
   const cls = size === 'lg' ? 'min-h-11' : 'h-9'
   return (
     <>
       <Button variant="outline" className={cls} disabled={busy} data-slot="telemetry-deny" onClick={() => onAnswer('denied')}>
-        Don’t share
+        {tr('Don’t share')}
       </Button>
       <Button className={cls} disabled={busy} data-slot="telemetry-grant" onClick={() => onAnswer('granted')}>
-        Share usage data
+        {tr('Share usage data')}
       </Button>
     </>
   )
 }
 
 export function TelemetryConsentBanner() {
+  const { tr } = useTranslations()
   const consent = useTelemetryConsent()
   const setConsent = useSetTelemetryConsent()
   const [busy, setBusy] = useState(false)
@@ -96,7 +100,7 @@ export function TelemetryConsentBanner() {
             className="underline underline-offset-2 hover:text-foreground"
             onClick={() => setDetails(true)}
           >
-            Details
+            {tr('Details')}
           </button>
         </p>
         <div className="flex gap-2">
@@ -108,7 +112,8 @@ export function TelemetryConsentBanner() {
   )
 }
 
-function ConsentList({ title, tone, items }: { title: string; tone: 'ok' | 'no'; items: string[] }) {
+function ConsentList({ title, tone, items }: { title: string; tone: 'ok' | 'no'; items: readonly TranslationText[] }) {
+  const { tr } = useTranslations()
   const Icon = tone === 'ok' ? CheckIcon : XIcon
   return (
     <div>
@@ -120,7 +125,7 @@ function ConsentList({ title, tone, items }: { title: string; tone: 'ok' | 'no';
               className={`mt-0.5 size-3.5 shrink-0 ${tone === 'ok' ? 'text-success' : 'text-soft-foreground'}`}
               aria-hidden="true"
             />
-            {item}
+            {tr(item)}
           </li>
         ))}
       </ul>
@@ -140,6 +145,7 @@ export function TelemetryDetailsDialog({
   busy: boolean
   onAnswer: (c: Answer) => void
 }) {
+  const { tr } = useTranslations()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -153,30 +159,28 @@ export function TelemetryDetailsDialog({
       >
         <div className="space-y-5 p-6">
           <div className="space-y-1.5">
-            <span className="block eyebrow text-muted-foreground">
-              What is sent
+            <span className="block font-mono text-meta font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {tr('What is sent')}
             </span>
-            <DialogTitle className="text-xl font-semibold tracking-tight">Usage data, in full</DialogTitle>
+            <DialogTitle className="text-xl font-semibold tracking-tight">{tr('Usage data, in full')}</DialogTitle>
             <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
-              Counts of what you use and reports of what broke, so cezar’s maintainers at Open Mercato
-              can fix bugs without you filing them. Off until you say yes.
+              {tr('Counts of what you use and reports of what broke, so cezar’s maintainers at Open Mercato can fix bugs without you filing them. Off until you say yes.')}
             </DialogDescription>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <ConsentList title="Shared" tone="ok" items={SHARED} />
-            <ConsentList title="Never shared" tone="no" items={NEVER} />
+            <ConsentList title={tr('Shared')} tone="ok" items={SHARED} />
+            <ConsentList title={tr('Never shared')} tone="no" items={NEVER} />
           </div>
 
           <p className="text-xs leading-relaxed text-soft-foreground">
-            Every label is a closed list the server enforces. Withdraw anytime in Settings → Privacy or
-            with <code className="font-mono">cezar telemetry disable</code> — the install id is deleted.{' '}
+            {tr('Every label is a closed list the server enforces. Withdraw anytime in Settings → Privacy or with')} <code className="font-mono">cezar telemetry disable</code> — {tr('the install id is deleted.')}{' '}
             <a href={TELEMETRY_CODE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
-              Read the code
+              {tr('Read the code')}
             </a>
             {' · '}
             <a href={TELEMETRY_DOC_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
-              Privacy notice
+              {tr('Privacy notice')}
             </a>
           </p>
 

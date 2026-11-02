@@ -36,7 +36,7 @@ import { RepoSyncBar } from './repo-sync-bar'
 export type RepoTab = 'changes' | 'commits' | 'branches' | 'files'
 
 export function RepoGitRoute({ tab }: { tab: RepoTab }) {
-  const { t } = useTranslations()
+  const { t, tr } = useTranslations()
   const repo = useRepo()
 
   if (repo.isPending) return <RepoGitLoading />
@@ -46,7 +46,7 @@ export function RepoGitRoute({ tab }: { tab: RepoTab }) {
         <CenteredState
           icon={<TriangleAlertIcon />}
           tone="danger"
-          title="Could not load the repository"
+          title={tr('Could not load the repository')}
           subtitle={repo.error.message}
         />
       </div>
@@ -59,8 +59,8 @@ export function RepoGitRoute({ tab }: { tab: RepoTab }) {
         <CenteredState
           icon={<GitBranchIcon />}
           tone="neutral"
-          title="Not a git repository"
-          subtitle="The cockpit is running outside a git repository — start it inside one to browse changes, commits and branches."
+          title={tr('Not a git repository')}
+          subtitle={tr('The cockpit is running outside a git repository — start it inside one to browse changes, commits and branches.')}
         />
       </div>
     )
@@ -69,6 +69,7 @@ export function RepoGitRoute({ tab }: { tab: RepoTab }) {
 }
 
 function RepoView({ repo, info, tab, t }: { repo: RepoResponse; info: RepoInfo; tab: RepoTab; t: ReturnType<typeof useTranslations>['t'] }) {
+  const { tr } = useTranslations()
   return (
     // Changes fills `main` from md up so its tree and diff can be two scrollers of their own
     // (see `RepoChangesSection`); the other tabs scroll with the page.
@@ -78,7 +79,7 @@ function RepoView({ repo, info, tab, t }: { repo: RepoResponse; info: RepoInfo; 
         className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 pt-3 backdrop-blur md:px-6"
       >
         <div className="flex min-w-0 items-center gap-2.5">
-          <h1 className="text-lg font-semibold">Git</h1>
+          <h1 className="text-lg font-semibold">{tr('Git')}</h1>
           <BranchChip branch={info.branch} />
           {info.remote ? (
             <span data-slot="repo-remote" className="hidden min-w-0 truncate text-meta text-soft-foreground md:inline">
@@ -101,7 +102,7 @@ function RepoView({ repo, info, tab, t }: { repo: RepoResponse; info: RepoInfo; 
             {t('git.tab.branches')}
           </TabLink>
           <TabLink to="/git/files" active={tab === 'files'}>
-            Files
+            {tr('Files')}
           </TabLink>
         </div>
       </header>

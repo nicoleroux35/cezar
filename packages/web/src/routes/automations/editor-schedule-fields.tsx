@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import { isScheduleEvery } from './editor-draft'
+import { useTranslations } from '@/i18n/use-translations'
 
 const TYPES: ReadonlyArray<[ScheduleType, string]> = [
   ['daily', 'Every day'],
@@ -49,6 +50,7 @@ export function EditorScheduleFields({
   timeZone: string
   onChange: (schedule: AutomationSchedule) => void
 }) {
+  const { tr } = useTranslations()
   const s = normalizeSchedule(schedule)
   const set = (patch: Partial<AutomationSchedule>) => {
     const { date, ...rest } = s
@@ -60,7 +62,7 @@ export function EditorScheduleFields({
     && nextOccurrence({ type: 'once', date: s.date, hour: s.hour, minute: s.minute }, Date.now(), timeZone) === null
   return (
     <div data-slot="editor-schedule" className="flex flex-col gap-3.5">
-      <div role="group" aria-label="Schedule type" className="flex flex-wrap gap-1.5">
+      <div role="group" aria-label={tr('Schedule type')} className="flex flex-wrap gap-1.5">
         {TYPES.map(([value, label]) => (
           <Chip key={value} active={s.type === value} aria-pressed={s.type === value} onClick={() => set({ type: value })}>
             {label}
@@ -68,7 +70,7 @@ export function EditorScheduleFields({
         ))}
       </div>
       {s.type === 'weekly' ? (
-        <div role="group" aria-label="Weekday" className="flex flex-wrap gap-1.5">
+        <div role="group" aria-label={tr('Weekday')} className="flex flex-wrap gap-1.5">
           {WEEKDAY_NAMES.map((name, index) => (
             <Chip
               key={name}
@@ -87,7 +89,7 @@ export function EditorScheduleFields({
           on
           <Input
             type="date"
-            aria-label="Date"
+            aria-label={tr('Date')}
             value={s.date ?? ''}
             onChange={(event) => { if (event.target.value) set({ date: event.target.value }) }}
             className="w-40 font-mono"
@@ -98,7 +100,7 @@ export function EditorScheduleFields({
         <div className="flex items-center gap-2 text-ui text-muted-foreground">
           every
           <Select value={String(s.every)} onValueChange={(value) => { const every = Number(value); if (isScheduleEvery(every)) set({ every }) }}>
-            <SelectTrigger size="sm" aria-label="Every N hours" className="text-ui">
+            <SelectTrigger size="sm" aria-label={tr('Every N hours')} className="text-ui">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -113,7 +115,7 @@ export function EditorScheduleFields({
         <div className="flex items-center gap-2 text-ui text-muted-foreground">
           at
           <Input
-            aria-label="Hour"
+            aria-label={tr('Hour')}
             inputMode="numeric"
             value={pad(s.hour)}
             onChange={(event) => set({ hour: Math.min(23, Math.max(0, Number(event.target.value) || 0)) })}
@@ -121,7 +123,7 @@ export function EditorScheduleFields({
           />
           :
           <Input
-            aria-label="Minute"
+            aria-label={tr('Minute')}
             inputMode="numeric"
             value={pad(s.minute)}
             onChange={(event) => set({ minute: Math.min(59, Math.max(0, Number(event.target.value) || 0)) })}

@@ -56,6 +56,7 @@ import { copyToClipboard, useCanOpenTerminal, useRunActions, useRunOpenChoices }
 
 import { buildTaskCommands, TASK_COMMAND_GROUPS, type TaskCommand } from './commands'
 import { OPEN_TASK_PALETTE_EVENT, type TaskPaletteSubject } from './open'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * ⌘P — the task palette (spec 2026-10-17-task-palette). ⌘K finds; ⌘P acts on ONE task, the
@@ -116,6 +117,7 @@ const RECENT_IN_DEFAULT_VIEW = 6
 const TASK_ROW = 'task-palette-task'
 
 export function TaskPalette() {
+  const { tr } = useTranslations()
   const location = useLocation()
   const pageTaskId = taskIdFromPath(location.pathname)
   const navigate = useNavigate()
@@ -442,8 +444,8 @@ export function TaskPalette() {
           if (!next) trackPaletteDismissed(mode === 'tasks' ? 'tasks' : mode === 'files' ? 'files' : 'actions')
           setOpen(next)
         }}
-        title="Task palette"
-        description="Act on a task, switch tasks, or open one of its files"
+        title={tr('Task palette')}
+        description={tr('Act on a task, switch tasks, or open one of its files')}
         showCloseButton={false}
         filter={prefixedScore}
         commandProps={{
@@ -479,7 +481,7 @@ export function TaskPalette() {
       >
         <div ref={body} data-slot="task-palette" data-mode={recording ? 'record' : renaming ? 'rename' : mode} className="contents">
           <CommandInput
-            placeholder={recording ? 'Press a shortcut — ⌫ removes it, esc cancels' : placeholder(renaming ? 'rename' : mode)}
+            placeholder={recording ? tr('Press a shortcut — ⌫ removes it, esc cancels') : placeholder(renaming ? 'rename' : mode, tr)}
             value={search}
             onValueChange={setSearch}
           />
@@ -509,7 +511,7 @@ export function TaskPalette() {
               </CommandGroup>
             ) : (
               <>
-                <CommandEmpty>Nothing matches.</CommandEmpty>
+                <CommandEmpty>{tr('Nothing matches.')}</CommandEmpty>
                 {mode === 'all' || mode === 'commands' ? (
                   <CommandGroups
                     commands={published?.runId === subjectId ? published.commands : []}
@@ -553,18 +555,18 @@ export function TaskPalette() {
   )
 }
 
-function placeholder(mode: PaletteMode | 'rename'): string {
+function placeholder(mode: PaletteMode | 'rename', tr: (text: any) => string = (t) => t): string {
   switch (mode) {
     case 'rename':
-      return 'New name…'
+      return tr('New name…')
     case 'tasks':
-      return 'Switch to a task…'
+      return tr('Switch to a task…')
     case 'files':
-      return 'Open a file in this task…'
+      return tr('Open a file in this task…')
     case 'commands':
-      return 'Run a command on this task…'
+      return tr('Run a command on this task…')
     default:
-      return 'Act on this task — @ tasks · > commands · # files'
+      return tr('Act on this task — @ tasks · > commands · # files')
   }
 }
 
@@ -579,6 +581,7 @@ function useLiveProjectId(): string | null {
 
 /** Which task the palette is acting on — the header row under the input. */
 function SubjectBar({ runId, picked }: { runId: string; picked: boolean }) {
+  const { tr } = useTranslations()
   const run = useRun(runId).data
   if (!run) return null
   const attention = deriveAttention(run)
@@ -587,12 +590,12 @@ function SubjectBar({ runId, picked }: { runId: string; picked: boolean }) {
       data-slot="task-palette-subject"
       className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 text-xs text-muted-foreground"
     >
-      <span className="shrink-0">Task</span>
+      <span className="shrink-0">{tr('Task')}</span>
       <span className="min-w-0 flex-1 truncate font-medium text-foreground">{runTitle(run)}</span>
       <Pill className="shrink-0" dot={attention.tone} pulse={attention.pulse}>
         {attention.label}
       </Pill>
-      {picked ? <span className="shrink-0 text-soft-foreground">⌫ back to tasks</span> : null}
+      {picked ? <span className="shrink-0 text-soft-foreground">{tr('⌫ back to tasks')}</span> : null}
     </div>
   )
 }
@@ -608,6 +611,7 @@ function CommandGroups({
   onPerform: (id: string) => void
   onRecord: (id: string) => void
 }) {
+  const { tr } = useTranslations()
   return (
     <>
       {TASK_COMMAND_GROUPS.map((group) => {
@@ -636,15 +640,15 @@ function CommandGroups({
                   {command.unavailable ? (
                     <span className="shrink-0 truncate text-xs text-soft-foreground">{command.unavailable}</span>
                   ) : command.pressed ? (
-                    <span className="shrink-0 text-xs text-primary">on</span>
+                    <span className="shrink-0 text-xs text-primary">{tr('on')}</span>
                   ) : null}
                   {/* The mouse twin of ⇧↵ — only commands that can be bound by id. */}
                   {!recordable(command.id) ? null : (
                     <button
                       type="button"
                       data-slot="task-palette-record"
-                      aria-label={`Set a shortcut for ${command.label}`}
-                      title="Set a shortcut (⇧↵)"
+                      aria-label={`${tr('Set a shortcut for')} ${command.label}`}
+                      title={tr('Set a shortcut (⇧↵)')}
                       className="hidden shrink-0 rounded p-0.5 text-soft-foreground group-hover/command:inline-flex hover:text-foreground"
                       onPointerDown={(event) => event.preventDefault()}
                       onClick={(event) => {

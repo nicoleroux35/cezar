@@ -8,6 +8,7 @@ import { StatusDot, type StatusDotTone } from '@/components/status-dot';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/toaster';
+import { useTranslations } from '@/i18n/use-translations';
 
 interface ForgeInfo {
   kind: ForgeKind;
@@ -64,6 +65,7 @@ function ForgeCard({
   status: ForgeStatus | undefined;
   onConnect: (host?: string) => void;
 }) {
+  const { tr } = useTranslations();
   const [selfHostedUrl, setSelfHostedUrl] = useState('');
   const [showSelfHosted, setShowSelfHosted] = useState(false);
 
@@ -80,7 +82,7 @@ function ForgeCard({
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <StatusDot tone={getStatusTone(status)} />
             <span>
-              {status?.authenticated ? 'Connected' : status?.available ? 'Not connected' : 'Not installed'}
+              {status?.authenticated ? tr('Connected') : status?.available ? tr('Not connected') : tr('Not installed')}
             </span>
             {status?.authenticated && status.user && (
               <span>• {status.user}</span>
@@ -88,7 +90,7 @@ function ForgeCard({
           </div>
 
           <p className="mt-1.5 text-xs text-soft-foreground">
-            {forge.description}
+            {tr(forge.description)}
           </p>
 
           {status?.hint && (
@@ -118,7 +120,7 @@ function ForgeCard({
                 }}
               />
               <p className="text-xs text-soft-foreground">
-                Press Enter or click Connect to use self-hosted instance
+                {tr('Press Enter or click Connect to use self-hosted instance')}
               </p>
             </div>
           )}
@@ -132,7 +134,7 @@ function ForgeCard({
               onClick={() => setShowSelfHosted(true)}
               disabled={!status?.available}
             >
-              Self-hosted
+              {tr('Self-hosted')}
             </Button>
           )}
           {!status?.authenticated && status?.available && (
@@ -141,7 +143,7 @@ function ForgeCard({
               variant="outline"
               onClick={() => handleConnect()}
             >
-              Connect
+              {tr('Connect')}
             </Button>
           )}
           <Button
@@ -149,7 +151,7 @@ function ForgeCard({
             variant="ghost"
             onClick={() => window.open(forge.docsUrl, '_blank')}
             className="px-2"
-            title="Documentation"
+            title={tr('Documentation')}
           >
             <ExternalLinkIcon className="h-3.5 w-3.5" />
           </Button>
@@ -160,6 +162,7 @@ function ForgeCard({
 }
 
 export function ForgesSection() {
+  const { tr } = useTranslations();
   const queryClient = useQueryClient();
 
   const { data: forgesStatus, isLoading } = useQuery({
@@ -175,12 +178,12 @@ export function ForgesSection() {
     onSuccess: (data, variables) => {
       toast.success(
         <div className="space-y-1.5">
-          <p className="text-sm font-medium">Run this command:</p>
+          <p className="text-sm font-medium">{tr('Run this command:')}</p>
           <code className="block rounded bg-muted px-2 py-1 text-xs font-mono">
             {data.command}
           </code>
           <p className="text-xs text-muted-foreground">
-            After running it, the status will update automatically.
+            {tr('After running it, the status will update automatically.')}
           </p>
         </div>,
         { duration: 10_000 },
@@ -191,13 +194,13 @@ export function ForgesSection() {
       }, 2000);
     },
     onError: (error) => {
-      toast.error(`Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`${tr('Failed to connect:')} ${error instanceof Error ? error.message : tr('Unknown error')}`);
     },
   });
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['forges', 'status'] });
-    toast.success('Refreshing forge status...');
+    toast.success(tr('Refreshing forge status...'));
   };
 
   return (
@@ -216,7 +219,7 @@ export function ForgesSection() {
           disabled={isLoading}
           className="h-7 px-2 text-ui"
         >
-          {isLoading ? 'Checking...' : 'Check again'}
+          {isLoading ? tr('Checking...') : tr('Check again')}
         </Button>
       </div>
 

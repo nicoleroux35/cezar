@@ -9,8 +9,10 @@ import { clearTrackerAssociation, saveTrackerAssociation, saveTrackerConnection,
 import { queryKeys, useTrackerConnection, useTrackerAssociation, useTrackerCandidates, workspaceQueryKeys } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
 
 export function TrackerSection() {
+  const { tr } = useTranslations()
   const connection = useTrackerConnection()
   const association = useTrackerAssociation()
   const queryClient = useQueryClient()
@@ -76,7 +78,7 @@ export function TrackerSection() {
       ])
       queryClient.setQueryData(result.associationKey, { association: null })
       await refresh(result.projectId)
-      toast('Tracker disconnected')
+      toast(tr('Tracker disconnected'))
     },
     onError: (error: Error) => toast(error.message, { tone: 'danger' }),
   })
@@ -96,7 +98,7 @@ export function TrackerSection() {
       await queryClient.cancelQueries({ queryKey: queryKeys.tracker.allFor(result.projectId) })
       queryClient.setQueryData(['tracker', result.projectId, 'connection'], { connection: result.connection, demo: result.demo })
       await refresh(result.projectId)
-      toast('Credentials saved for this project. Browse and connect a scope.')
+      toast(tr('Credentials saved for this project. Browse and connect a scope.'))
     },
     onError: (error: Error, _variables, projectId) => { if (queryScope() === projectId) setSecret(''); toast(error.message, { tone: 'danger' }) },
   })
@@ -126,9 +128,9 @@ export function TrackerSection() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4 md:p-6" data-slot="tracker-settings">
       <section className="rounded-lg border border-border bg-card p-4">
-        <h2 className="text-sm font-semibold">Issue tracker</h2>
+        <h2 className="text-sm font-semibold">{tr('Issue tracker')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Connect a project or team from your issue tracker. Credentials belong only to this project and are stored locally outside the repository. Server-wide environment keys are not used.
+          {tr('Connect a project or team from your issue tracker. Credentials belong only to this project and are stored locally outside the repository. Server-wide environment keys are not used.')}
         </p>
         {scopeConnected && association.data.association ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3">
@@ -139,18 +141,18 @@ export function TrackerSection() {
               </a>
             </div>
             <Button variant="outline" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>
-              <UnplugIcon className="size-3.5" /> Disconnect
+              <UnplugIcon className="size-3.5" /> {tr('Disconnect')}
             </Button>
           </div>
-        ) : <p className="mt-4 text-sm font-medium">{connection.isPending ? 'Loading connection…' : connection.isError ? 'Connection status unavailable.' : 'No tracker connected.'}</p>}
+        ) : <p className="mt-4 text-sm font-medium">{connection.isPending ? tr('Loading connection…') : connection.isError ? tr('Connection status unavailable.') : tr('No tracker connected.')}</p>}
       </section>
 
-      {savedAssociation && currentConnection && !connection.isError && !connection.data?.demo && !scopeConnected ? <p className="text-sm text-warning">This scope needs reconnection with this project's credentials. Configure a connection, then browse and select its scope again.</p> : null}
+      {savedAssociation && currentConnection && !connection.isError && !connection.data?.demo && !scopeConnected ? <p className="text-sm text-warning">{tr("This scope needs reconnection with this project's credentials. Configure a connection, then browse and select its scope again.")}</p> : null}
       {connection.data?.error ? <p role="alert" className="text-sm text-danger">{connection.data.error}</p> : null}
       <p className="text-xs text-muted-foreground">For local credential cleanup, run <code>cez tracker-connections list</code>, then <code>cez tracker-connections remove &lt;id&gt;</code>. Local deletion does not revoke the vendor token.</p>
-      {connection.isError ? <p className="text-sm text-danger">Could not load project connection. <button onClick={() => void connection.refetch()}>Retry</button></p> : null}
+      {connection.isError ? <p className="text-sm text-danger">{tr('Could not load project connection.')} <button onClick={() => void connection.refetch()}>{tr('Retry')}</button></p> : null}
       <section className="rounded-lg border border-border bg-card p-4">
-        <h2 className="text-sm font-semibold">Connect a provider</h2>
+        <h2 className="text-sm font-semibold">{tr('Connect a provider')}</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {trackerProviders.map((provider) => {
             const ready = !connection.isError && (connection.data?.demo === true || connection.data?.connection?.kind === provider.kind)
@@ -179,13 +181,13 @@ export function TrackerSection() {
       {credentialKind ? (
         <form className="rounded-lg border border-border bg-card p-4" onSubmit={event => { event.preventDefault(); saveCredentials.mutate() }} autoComplete="off">
           <h2 className="font-medium">{TRACKER_PROVIDERS[credentialKind].label} credentials for this project</h2>
-          <p className="mt-2 text-xs text-muted-foreground">Saved in a private .env file for this project, without encryption. Use read-only access limited to this project's data. Saving replaces this project's connection and requires selecting its scope again.</p>
+          <p className="mt-2 text-xs text-muted-foreground">{tr("Saved in a private .env file for this project, without encryption. Use read-only access limited to this project's data. Saving replaces this project's connection and requires selecting its scope again.")}</p>
           {credentialKind === 'jira' ? <>
-            <label className="mt-3 block text-sm">Jira site URL<input aria-label="Jira site URL" type="url" required value={origin} onChange={event => setOrigin(event.target.value)} placeholder="https://your-site.atlassian.net" className="mt-1 block w-full rounded border bg-background p-2" /></label>
+            <label className="mt-3 block text-sm">{tr('Jira site URL')}<input aria-label={tr('Jira site URL')} type="url" required value={origin} onChange={event => setOrigin(event.target.value)} placeholder="https://your-site.atlassian.net" className="mt-1 block w-full rounded border bg-background p-2" /></label>
             <label className="mt-3 block text-sm">Account email<input aria-label="Account email" type="email" required value={email} onChange={event => setEmail(event.target.value)} className="mt-1 block w-full rounded border bg-background p-2" /></label>
           </> : null}
-          <label className="mt-3 block text-sm">API token<input aria-label="API token" type="password" autoComplete="new-password" required maxLength={8192} value={secret} onChange={event => setSecret(event.target.value)} className="mt-1 block w-full rounded border bg-background p-2" /></label>
-          <div className="mt-3 flex gap-2"><Button type="submit" disabled={credentialBusy}>Save project credentials</Button><Button type="button" variant="outline" disabled={credentialBusy} onClick={resetSecrets}>Cancel</Button></div>
+          <label className="mt-3 block text-sm">{tr('API token')}<input aria-label={tr('API token')} type="password" autoComplete="new-password" required maxLength={8192} value={secret} onChange={event => setSecret(event.target.value)} className="mt-1 block w-full rounded border bg-background p-2" /></label>
+          <div className="mt-3 flex gap-2"><Button type="submit" disabled={credentialBusy}>{tr('Save project credentials')}</Button><Button type="button" variant="outline" disabled={credentialBusy} onClick={resetSecrets}>{tr('Cancel')}</Button></div>
         </form>
       ) : null}
 
@@ -217,8 +219,8 @@ export function TrackerSection() {
             ) : null}
           </div>
           <div className="mt-4 flex gap-2">
-            <Button variant="contrast" disabled={!selected || connect.isPending || credentialBusy} onClick={() => connect.mutate()}>Connect</Button>
-            <Button variant="ghost" onClick={() => setPickerOpen(false)}>Cancel</Button>
+            <Button variant="contrast" disabled={!selected || connect.isPending || credentialBusy} onClick={() => connect.mutate()}>{tr('Connect')}</Button>
+            <Button variant="ghost" onClick={() => setPickerOpen(false)}>{tr('Cancel')}</Button>
           </div>
         </section>
       ) : null}

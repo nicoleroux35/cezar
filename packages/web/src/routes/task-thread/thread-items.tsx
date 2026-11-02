@@ -27,6 +27,7 @@ import { useAgentProfiles } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
 import { ZoomableImage } from '@/components/zoomable-image'
 import { Link } from '@/lib/project-router'
 import { isImageAttachmentName, type FileDiff, type ToolKind, type UiToolItem } from '@open-mercato/cezar-api-client'
@@ -102,6 +103,7 @@ export function UserBubble({
   draftRunId?: string
   draftSurface?: string
 }) {
+  const { tr } = useTranslations()
   const missing = imageCount - images.length
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(text)
@@ -281,7 +283,7 @@ export function UserBubble({
               <ZoomableImage
                 key={url}
                 src={url}
-                alt="attached"
+                alt={tr('attached')}
                 className="max-h-40 max-w-[220px] rounded-md border border-border object-contain"
               />
             ) : (
@@ -301,7 +303,7 @@ export function UserBubble({
       ) : null}
       {missing > 0 ? (
         <span className="mt-1 block text-xs text-soft-foreground">
-          {missing} image{missing > 1 ? 's' : ''} attached
+          {missing} {tr('image')}{missing > 1 ? 's' : ''} {tr('attached')}
         </span>
       ) : null}
       {ts !== undefined ? (
@@ -368,6 +370,7 @@ export function ProviderAuthRequiredCard({
 }: {
   incident: ThreadProviderAuthRequired
 }) {
+  const { tr } = useTranslations()
   if (incident.profileId !== undefined) return <AccountAuthRequiredCard incident={incident} profileId={incident.profileId} />
   const label = PROVIDER_LABEL[incident.provider]
   return (
@@ -380,13 +383,13 @@ export function ProviderAuthRequiredCard({
         This run needed {label} authorization
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Review {label} settings before retrying.
+        {tr('Review')} {label} {tr('settings before retrying.')}
       </p>
       <Link
         to="/settings/agents#providers"
         className="mt-2 inline-flex text-xs font-medium text-foreground underline-offset-2 hover:underline"
       >
-        Open provider settings
+        {tr('Open provider settings')}
       </Link>
     </div>
   )
@@ -401,6 +404,7 @@ function AccountAuthRequiredCard({
   incident: ThreadProviderAuthRequired
   profileId: string
 }) {
+  const { tr } = useTranslations()
   const profiles = useAgentProfiles()
   const label = PROVIDER_LABEL[incident.provider]
   const account = profiles.data?.profiles
@@ -416,14 +420,14 @@ function AccountAuthRequiredCard({
         This run needed {label} account “{account}” to be signed in
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Sign that account in again before retrying.
+        {tr('Sign that account in again before retrying.')}
       </p>
       {/* Global settings sit outside every project scope — react-router's own Link. */}
       <GlobalLink
         to="/settings/global/accounts"
         className="mt-2 inline-flex text-xs font-medium text-foreground underline-offset-2 hover:underline"
       >
-        Open agent accounts
+        {tr('Open agent accounts')}
       </GlobalLink>
     </div>
   )
@@ -436,23 +440,24 @@ const SELF_UPDATING = new Set<ThreadProviderAuthRequired['provider']>(['claude',
 /** Follows an agent error saying its CLI is too old: hands the CLI's own update to a terminal,
  *  or shows the command to run when no terminal can be opened. */
 export function AgentUpdateRequiredCard({ incident }: { incident: ThreadAgentUpdateRequired }) {
+  const { tr } = useTranslations()
   const label = PROVIDER_LABEL[incident.provider]
   const [manual, setManual] = useState<{ message: string; command?: string } | null>(null)
   const update = useMutation({
     mutationFn: () => updateProvider(incident.provider),
     onSuccess: () => {
       setManual(null)
-      toast(`Updating ${label} in a terminal. Continue the task once it finishes.`)
+      toast(`${tr('Updating')} ${label} ${tr('in a terminal. Continue the task once it finishes.')}`)
     },
     onError: (error: Error) =>
       setManual({ message: error.message, command: error instanceof ApiError ? error.command : undefined }),
   })
   const copy = async (command: string) => {
     try {
-      await writeClipboard(command)
-      toast('Command copied')
+      await navigator.clipboard.writeText(command)
+      toast(tr('Command copied'))
     } catch {
-      toast('Could not copy the command', { tone: 'danger' })
+      toast(tr('Could not copy the command'), { tone: 'danger' })
     }
   }
   return (
@@ -465,7 +470,7 @@ export function AgentUpdateRequiredCard({ incident }: { incident: ThreadAgentUpd
       {SELF_UPDATING.has(incident.provider) ? (
         <>
           <p className="mt-1 text-xs text-muted-foreground">
-            Update it, then continue the task.
+            {tr('Update it, then continue the task.')}
           </p>
           <Button
             type="button"
@@ -475,12 +480,12 @@ export function AgentUpdateRequiredCard({ incident }: { incident: ThreadAgentUpd
             disabled={update.isPending}
             onClick={() => update.mutate()}
           >
-            Update {label}
+            {tr('Update')} {label}
           </Button>
         </>
       ) : (
         <p className="mt-1 text-xs text-muted-foreground">
-          Update it the way you installed it, then continue the task.
+          {tr('Update it the way you installed it, then continue the task.')}
         </p>
       )}
       {manual ? (
@@ -490,7 +495,7 @@ export function AgentUpdateRequiredCard({ incident }: { incident: ThreadAgentUpd
             <div className="mt-1 flex items-center gap-2">
               <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{manual.command}</code>
               <Button type="button" variant="ghost" size="sm" onClick={() => void copy(manual.command!)}>
-                Copy
+                {tr('Copy')}
               </Button>
             </div>
           ) : null}
@@ -505,6 +510,7 @@ export function AgentUpdateRequiredCard({ incident }: { incident: ThreadAgentUpd
  * Streams live — the reducer grows `text` in place, so the summary line grows with it.
  */
 export function ReasoningItem({ text }: { text: string }) {
+  const { tr } = useTranslations()
   const previewId = useId()
   // A mapper regression that mints an empty reasoning item should degrade
   // quietly rather than render a bare, un-expandable "Thinking —" row (#528).
@@ -521,7 +527,7 @@ export function ReasoningItem({ text }: { text: string }) {
           aria-hidden
           className="size-3.5 shrink-0 transition-transform group-data-[state=open]/reasoning:rotate-90"
         />
-        <span className="shrink-0">Thinking — </span>
+        <span className="shrink-0">{tr('Thinking —')} </span>
         <div className="min-w-0 truncate text-muted-foreground">
           <Markdown inline>{firstLine}</Markdown>
         </div>
@@ -555,6 +561,7 @@ export function ReasoningItem({ text }: { text: string }) {
  * same at 5s and at 20m. Either stamp missing or unparseable drops just its part.
  */
 export function WorkingIndicator({ since, lastActivityAt }: { since?: string; lastActivityAt?: string } = {}) {
+  const { tr } = useTranslations()
   const now = useNow()
   const elapsed = elapsedSince(since, now)
   const quiet = elapsedSince(lastActivityAt, now)
@@ -565,8 +572,8 @@ export function WorkingIndicator({ since, lastActivityAt }: { since?: string; la
       // Wraps rather than overflows: with both stamps the line outgrows a 320px phone column.
       className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1 text-ui text-soft-foreground"
     >
-      <LoaderCircleIcon role="status" aria-label="Working" className="size-3.5 shrink-0 animate-spin" />
-      <span className="shimmer font-medium">Working…</span>
+      <LoaderCircleIcon role="status" aria-label={tr('Working')} className="size-3.5 shrink-0 animate-spin" />
+      <span className="shimmer font-medium">{tr('Working…')}</span>
       {elapsed !== undefined ? (
         <span data-slot="working-elapsed" title={`Started ${exactLabel(since)}`} className="font-mono text-xs tabular-nums">
           {elapsed}
@@ -739,11 +746,12 @@ export function toolCommand(item: UiToolItem): string | undefined {
 
 /** Copy for an expanded command — a sibling of the header trigger, since a button cannot nest one. */
 function CopyCommandButton({ command }: { command: string }) {
+  const { tr } = useTranslations()
   const [copied, setCopied] = useState(false)
   return (
     <button
       type="button"
-      aria-label={copied ? 'Copied' : 'Copy command'}
+      aria-label={copied ? tr('Copied') : tr('Copy command')}
       onClick={() => {
         void writeClipboard(command)
           .then(() => {
@@ -788,6 +796,7 @@ export function ToolCard({
   cacheKey?: string
   renderNested?: (entries: readonly ThreadEntry[], scope: string) => ReactNode
 }) {
+  const { tr } = useTranslations()
   const cache = useThreadCardCache()
   const [userOpen, setUserOpenState] = useState<boolean | null>(
     () => (cacheKey !== undefined ? (cache?.get(cacheKey) ?? null) : null),
@@ -867,10 +876,10 @@ export function ToolCard({
         ) : null}
         <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
           {busy ? (
-            <LoaderCircleIcon role="status" aria-label="Running" className="size-3.5 animate-spin text-soft-foreground" />
+            <LoaderCircleIcon role="status" aria-label={tr('Running')} className="size-3.5 animate-spin text-soft-foreground" />
           ) : null}
-          {item.status === 'failed' ? <span className="text-xs text-muted-foreground">failed</span> : null}
-          {item.status === 'declined' ? <span className="text-xs text-soft-foreground">declined</span> : null}
+          {item.status === 'failed' ? <span className="text-xs text-muted-foreground">{tr('failed')}</span> : null}
+          {item.status === 'declined' ? <span className="text-xs text-soft-foreground">{tr('declined')}</span> : null}
           {item.toolKind === 'execute' && typeof item.exitCode === 'number' ? (
             <span
               data-slot="tool-exit"

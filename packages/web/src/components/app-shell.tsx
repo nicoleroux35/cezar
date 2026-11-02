@@ -450,6 +450,7 @@ export const AppShell = React.memo(function AppShell({
  * warning instead and waits for "Update & restart": a restart interrupts them.
  */
 function TitlebarUpdateButton({ latestVersion, brandName }: { latestVersion: string; brandName: string }) {
+  const { tr } = useTranslations()
   const [open, setOpen] = React.useState(false)
   return (
     <>
@@ -457,11 +458,11 @@ function TitlebarUpdateButton({ latestVersion, brandName }: { latestVersion: str
         type="button"
         data-slot="titlebar-update"
         onClick={() => setOpen(true)}
-        title={`Update ${brandName} to v${latestVersion} and restart`}
+        title={`${tr('Update')} ${brandName} ${tr('to')} v${latestVersion} ${tr('and restart')}`}
         className="inline-flex h-[18px] items-center gap-1 rounded-full border border-primary/40 bg-primary/15 px-2 text-meta font-semibold text-foreground transition-colors hover:bg-primary/30"
       >
         <StatusDot tone="pending" pulse className="size-[5px] shrink-0" />
-        Update {brandName}
+        {tr('Update')} {brandName}
         <span className="font-mono font-medium text-muted-foreground">v{latestVersion}</span>
       </button>
       {open ? <SelfUpdateDialog open={open} onOpenChange={setOpen} autoApply={latestVersion} brandName={brandName} /> : null}
@@ -506,8 +507,9 @@ const Sidebar = React.memo(function Sidebar({
 
 /** The `<md` drawer: the shared `SidebarDrawer` around the SAME content the column renders. */
 const MobileNavDrawer = React.memo(function MobileNavDrawer({ onNavigate, ...props }: NavProps & { onNavigate: () => void }) {
+  const { tr } = useTranslations()
   return (
-    <SidebarDrawer slot="mobile-nav-drawer" title="Navigation">
+    <SidebarDrawer slot="mobile-nav-drawer" title={tr('Navigation')}>
       {(closeButton) => <SidebarContent {...props} onNavigate={onNavigate} headerAction={closeButton} />}
     </SidebarDrawer>
   )
@@ -557,6 +559,7 @@ function SidebarContent({
    *  below the traffic lights. */
   compactHeader?: boolean
 }) {
+  const { tr } = useTranslations()
   return (
     <div
       data-slot="sidebar-content"
@@ -635,7 +638,7 @@ function SidebarContent({
         </>
       ) : (
         <>
-          <nav aria-label="Main" className="px-2.5 py-1.5">
+          <nav aria-label={tr('Main')} className="px-2.5 py-1.5">
             {items.map((item) => {
               const isActive = item.to === activeTo
               const Icon = item.icon
@@ -834,7 +837,7 @@ function GlobalSettingsLink({
  * cheaper half of the trade.
  */
 function AddProjectMenu() {
-  const { t } = useTranslations()
+  const { t, tr } = useTranslations()
   const [browsing, setBrowsing] = React.useState(false)
   const [cloning, setCloning] = React.useState(false)
   const addProjectLabel = t('sidebar.addProject')
@@ -883,21 +886,21 @@ function AddProjectMenu() {
           }}
         >
           <FolderPlusIcon aria-hidden="true" />
-          New project…
+          {tr('New project')}…
         </DropdownMenuItem>
       </DropdownMenuContent>
       {browsing ? (
-        <DialogErrorBoundary label="Open local folder" onError={() => setBrowsing(false)}>
+        <DialogErrorBoundary label={tr('Open local folder')} onError={() => setBrowsing(false)}>
           <AddProjectDialog open onOpenChange={setBrowsing} />
         </DialogErrorBoundary>
       ) : null}
       {cloning ? (
-        <DialogErrorBoundary label="Clone from GitHub" onError={() => setCloning(false)}>
+        <DialogErrorBoundary label={tr('Clone from GitHub')} onError={() => setCloning(false)}>
           <CloneProjectDialog open onOpenChange={setCloning} />
         </DialogErrorBoundary>
       ) : null}
       {creating ? (
-        <DialogErrorBoundary label="New project" onError={() => setCreating(false)}>
+        <DialogErrorBoundary label={tr('New project')} onError={() => setCreating(false)}>
           <CreateProjectDialog open onOpenChange={setCreating} />
         </DialogErrorBoundary>
       ) : null}
@@ -922,6 +925,7 @@ function AddProjectMenu() {
  * even with no update to announce.
  */
 export function VersionChip({ version, latestVersion, brandName }: { version: string; latestVersion: string | null; brandName: string }) {
+  const { tr } = useTranslations()
   const updateAvailable = Boolean(latestVersion && latestVersion !== version)
   // The chip opens the self-update dialog (PoC): channel, latest, and a version picker.
   const [open, setOpen] = React.useState(false)
@@ -931,8 +935,8 @@ export function VersionChip({ version, latestVersion, brandName }: { version: st
         type="button"
         data-slot="version-chip"
         data-update-available={updateAvailable ? 'true' : undefined}
-        title={updateAvailable ? `v${version} — update available: v${latestVersion}` : `v${version}`}
-        aria-label={updateAvailable ? `${brandName} v${version}, update to v${latestVersion} available — open updater` : `${brandName} v${version} — open updater`}
+        title={updateAvailable ? `v${version} — ${tr('update available')}: v${latestVersion}` : `v${version}`}
+        aria-label={updateAvailable ? `${brandName} v${version}, ${tr('update to')} v${latestVersion} ${tr('available — open updater')}` : `${brandName} v${version} — ${tr('open updater')}`}
         onClick={() => setOpen(true)}
         className="flex min-w-0 cursor-pointer items-center gap-1 rounded-full border border-border px-1.5 py-px font-mono text-micro font-medium text-soft-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
@@ -961,6 +965,7 @@ export function VersionChip({ version, latestVersion, brandName }: { version: st
  * whole point of the ask is that github.com learns nothing about the person making it.
  */
 export function StarChip({ count }: { count: number }) {
+  const { tr } = useTranslations()
   const formatted = formatStarCount(count)
   return (
     <a
@@ -968,8 +973,8 @@ export function StarChip({ count }: { count: number }) {
       href={CEZAR_REPO_URL}
       target="_blank"
       rel="noopener noreferrer"
-      title={`Star cezar on GitHub — ${count.toLocaleString()} stars`}
-      aria-label={`Star cezar on GitHub — ${count.toLocaleString()} stars`}
+      title={`${tr('Star cezar on GitHub')} — ${count.toLocaleString()} ${tr('stars')}`}
+      aria-label={`${tr('Star cezar on GitHub')} — ${count.toLocaleString()} ${tr('stars')}`}
       className="flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px font-mono text-micro font-medium text-soft-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
       <span aria-hidden="true">⭐</span>
@@ -980,6 +985,7 @@ export function StarChip({ count }: { count: number }) {
 
 /** Mobile chrome (<md): the sidebar's replacement. Its menu button opens `MobileNavDrawer`. */
 function MobileTopBar({ title }: { title: string }) {
+  const { tr } = useTranslations()
   return (
     <header
       data-slot="mobile-top-bar"
@@ -994,7 +1000,7 @@ function MobileTopBar({ title }: { title: string }) {
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Open menu"
+            aria-label={tr('Open menu')}
             // 44px: the minimum touch target, overriding the 36px desktop icon-button size.
             className="-ml-1.5 size-11"
           >

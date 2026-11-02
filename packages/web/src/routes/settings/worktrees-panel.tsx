@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
 import { formatMem } from '@/lib/tasks-table'
 import { shortAge } from '@/lib/format'
+import { useTranslations } from '@/i18n/use-translations'
 
 /** What the confirm dialog is about — a bulk reclaim, or one row's delete. */
 type Confirming = { kind: 'reclaim' } | { kind: 'delete'; runId: string; title: string } | { kind: 'orphan'; worktreeId: string; title: string } | null
@@ -34,6 +35,7 @@ type Confirming = { kind: 'reclaim' } | { kind: 'delete'; runId: string; title: 
  * Live-updates through the global event stream (queryKeys.worktrees).
  */
 export function WorktreesPanel() {
+  const { tr } = useTranslations()
   const worktrees = useWorktrees()
   const lifecycle = useWorktreeLifecycles()
   const config = useConfig()
@@ -53,9 +55,9 @@ export function WorktreesPanel() {
       toast(
         result.reclaimed.length === 0
           ? configured || managed.some(item => item.operation || item.autoCleanupSuppressed)
-            ? 'No worktrees reclaimed yet. Pending cleanup or retained worktrees may keep usage above the limit.'
-            : 'Nothing to reclaim — all worktrees are within the limit'
-          : `Reclaimed ${result.reclaimed.length} worktree${result.reclaimed.length === 1 ? '' : 's'} (branch kept)`,
+            ? tr('No worktrees reclaimed yet. Pending cleanup or retained worktrees may keep usage above the limit.')
+            : tr('Nothing to reclaim — all worktrees are within the limit')
+          : `${tr('Reclaimed')} ${result.reclaimed.length} ${tr('worktree')}${result.reclaimed.length === 1 ? '' : 's'} ${tr('(branch kept)')}`,
       )
     },
     onError: (error: Error) => toast(error.message, { tone: 'danger' }),
@@ -69,15 +71,15 @@ export function WorktreesPanel() {
       void refresh()
       if ('operation' in result) {
         setSelectedOperation({id: result.operation.id, title: worktrees.data?.worktrees.find(item => item.runId === runId)?.title ?? runId})
-        toast('Cleanup requested. The worktree remains until cleanup and removal complete.')
-      } else toast('Worktree removed')
+        toast(tr('Cleanup requested. The worktree remains until cleanup and removal complete.'))
+      } else toast(tr('Worktree removed'))
     },
     onError: (error: Error) => toast(error.message, { tone: 'danger' }),
   })
 
   const removeOrphan = useMutation({
     mutationFn: (worktreeId: string) => startLifecycleRemoval({ requestId: crypto.randomUUID(), worktreeId, intent: 'orphan' }),
-    onSuccess: result => { setSelectedOperation({id: result.operation.id, title: 'Orphan worktree'}); void refresh(); toast('Orphan cleanup requested. Review its progress below.') },
+    onSuccess: result => { setSelectedOperation({id: result.operation.id, title: 'Orphan worktree'}); void refresh(); toast(tr('Orphan cleanup requested. Review its progress below.')) },
     onError: (error: Error) => toast(error.message, { tone: 'danger' }),
   })
 
@@ -115,7 +117,7 @@ export function WorktreesPanel() {
       ) : (
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full border-collapse text-sm">
-            <caption className="sr-only">Task worktrees currently materialized on disk</caption>
+            <caption className="sr-only">{tr('Task worktrees currently materialized on disk')}</caption>
             <thead>
               <tr className="border-b border-border text-left text-label text-soft-foreground">
                 <th scope="col" className="px-3 py-2 font-medium">Task</th>
@@ -142,10 +144,10 @@ export function WorktreesPanel() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p data-slot="worktrees-footer" className="text-label text-soft-foreground">
-          {rows.length} worktree{rows.length === 1 ? '' : 's'}
-          {totalBytes !== null ? ` · ${formatMem(totalBytes) || '0 kB'} on disk` : ' · size unavailable'}
+          {rows.length} {tr('worktree')}{rows.length === 1 ? '' : 's'}
+          {totalBytes !== null ? ` · ${formatMem(totalBytes) || '0 kB'} ${tr('on disk')}` : ` · ${tr('size unavailable')}`}
           {' · '}
-          {keep === 0 ? 'keeping all (unlimited)' : `keeping the last ${keep}`}
+          {keep === 0 ? tr('keeping all (unlimited)') : `${tr('keeping the last')} ${keep}`}
         </p>
         <Button
           type="button"
@@ -155,19 +157,19 @@ export function WorktreesPanel() {
           disabled={busy}
           onClick={() => setConfirming({ kind: 'reclaim' })}
         >
-          Reclaim now
+          {tr('Reclaim now')}
         </Button>
       </div>
 
-      {lifecycle.isError && <p className="text-xs text-danger" role="alert">Lifecycle state could not be loaded: {lifecycle.error.message}</p>}
+      {lifecycle.isError && <p className="text-xs text-danger" role="alert">{tr('Lifecycle state could not be loaded:')} {lifecycle.error.message}</p>}
       {managed.filter(item => item.operation || item.autoCleanupSuppressed || item.needsAttention || !item.task).map(item => <section key={item.worktreeId} className="min-w-0 rounded-md border border-border p-3" data-slot="lifecycle-worktree-row">
         <h3 className="text-sm font-medium">{item.task?.title ?? `Orphan worktree ${item.runId.slice(0, 8)}`}</h3>
         <p className="break-all font-mono text-meta text-muted-foreground">{item.worktreePath}</p>
         {item.error && <p className="mt-1 text-xs text-danger">{item.error}</p>}
-        {item.needsAttention && <p className="mt-1 text-xs text-danger">{item.operation?.phase === 'setup' ? 'Setup needs attention' : 'Cleanup needs attention'} — worktree retained.</p>}
-        {item.autoCleanupSuppressed && <p className="mt-1 text-xs text-muted-foreground">Automatic cleanup is suppressed for this generation because it was kept or cancelled. Explicit removal is still available.</p>}
+        {item.needsAttention && <p className="mt-1 text-xs text-danger">{item.operation?.phase === 'setup' ? tr('Setup needs attention') : tr('Cleanup needs attention')} — {tr('worktree retained.')}</p>}
+        {item.autoCleanupSuppressed && <p className="mt-1 text-xs text-muted-foreground">{tr('Automatic cleanup is suppressed for this generation because it was kept or cancelled. Explicit removal is still available.')}</p>}
         {item.operation ? <div id={`lifecycle-operation-${item.operation.id}`} className="mt-3 scroll-mt-4"><LifecycleOperationCard operationId={item.operation.id} worktreePath={item.worktreePath} taskTitle={item.task?.title} /></div>
-          : !item.task && !item.error && item.onDisk ? <Button className="mt-2" type="button" variant="outline" size="sm" disabled={busy} onClick={() => setConfirming({kind: 'orphan', worktreeId: item.worktreeId, title: item.worktreePath})}>Remove orphan worktree</Button> : null}
+          : !item.task && !item.error && item.onDisk ? <Button className="mt-2" type="button" variant="outline" size="sm" disabled={busy} onClick={() => setConfirming({kind: 'orphan', worktreeId: item.worktreeId, title: item.worktreePath})}>{tr('Remove orphan worktree')}</Button> : null}
       </section>)}
       {selectedOperation && !managed.some(item => item.operation?.id === selectedOperation.id) && <div id={`lifecycle-operation-${selectedOperation.id}`}><LifecycleOperationCard operationId={selectedOperation.id} taskTitle={selectedOperation.title} /></div>}
 
@@ -175,30 +177,29 @@ export function WorktreesPanel() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirming?.kind === 'delete' || confirming?.kind === 'orphan' ? 'Delete this worktree?' : 'Reclaim old worktrees?'}
+              {confirming?.kind === 'delete' || confirming?.kind === 'orphan' ? tr('Delete this worktree?') : tr('Reclaim old worktrees?')}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirming?.kind === 'delete' || confirming?.kind === 'orphan' ? (
                 <>
-                  This removes the worktree directory and its branch — the local-only work is not
-                  recoverable afterwards. Configured cleanup scripts run first; failures retain the directory for your recovery choice.
+                  {tr('This removes the worktree directory and its branch — the local-only work is not recoverable afterwards. Configured cleanup scripts run first; failures retain the directory for your recovery choice.')}
                   <span className="mt-1 block truncate font-medium text-foreground" title={confirming.title}>
                     {confirming.title}
                   </span>
                 </>
               ) : (
-                'Finished worktrees beyond the keep-limit are reclaimed now (directory only). Their branches are kept, so the work stays recoverable.'
+                tr('Finished worktrees beyond the keep-limit are reclaimed now (directory only). Their branches are kept, so the work stays recoverable.')
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogCancel>{tr('Keep it')}</AlertDialogCancel>
             <AlertDialogAction
               data-action="worktrees-confirm"
               className={confirming?.kind === 'delete' || confirming?.kind === 'orphan' ? 'bg-danger text-danger-foreground hover:brightness-[0.96]' : undefined}
               onClick={runConfirmed}
             >
-              {confirming?.kind === 'delete' || confirming?.kind === 'orphan' ? 'Delete' : 'Reclaim now'}
+              {confirming?.kind === 'delete' || confirming?.kind === 'orphan' ? tr('Delete') : tr('Reclaim now')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -218,6 +219,7 @@ function WorktreeRow({
   disabled: boolean
   onDelete: () => void
 }) {
+  const { tr } = useTranslations()
   return (
     <tr data-slot="worktree-row" data-run={worktree.runId} className="border-b border-border last:border-0">
       <th scope="row" className="max-w-[220px] px-3 py-2 text-left font-normal">
@@ -228,7 +230,7 @@ function WorktreeRow({
       </th>
       <td className="px-3 py-2">
         <span className="text-label text-soft-foreground">{worktree.status}</span>
-        {lifecycle?.needsAttention && <span className="block text-meta text-danger">{lifecycle.operation?.phase === 'setup' ? 'Setup needs attention' : 'Cleanup needs attention'}</span>}
+        {lifecycle?.needsAttention && <span className="block text-meta text-danger">{lifecycle.operation?.phase === 'setup' ? tr('Setup needs attention') : tr('Cleanup needs attention')}</span>}
         {lifecycle?.autoCleanupSuppressed && <span className="block text-meta text-muted-foreground">Automatic cleanup suppressed</span>}
         {worktree.reclaimable && !lifecycle?.autoCleanupSuppressed ? (
           <span data-slot="worktree-reclaimable" className="ml-1 text-meta text-soft-foreground">
@@ -246,11 +248,11 @@ function WorktreeRow({
           variant="ghost"
           size="sm"
           data-action="worktree-delete"
-          aria-label={`Delete the worktree for ${worktree.title}`}
+          aria-label={`${tr('Delete the worktree for')} ${worktree.title}`}
           disabled={disabled}
           onClick={onDelete}
         >
-          Delete
+          {tr('Delete')}
         </Button>
       </td>
     </tr>

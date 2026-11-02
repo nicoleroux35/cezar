@@ -15,6 +15,7 @@ import { NextRunsRail, nextRuns } from './next-runs-rail'
 import { StatsStrip } from './stats-strip'
 import type { AutomationActions } from './use-automations'
 import { WeekView } from './week-view'
+import { useTranslations } from '@/i18n/use-translations'
 
 function viewOptions(count: number | undefined): SegmentedOption<AutomationsView>[] {
   return [
@@ -43,6 +44,7 @@ export function AutomationsList({
   view: AutomationsView
   onViewChange: (view: AutomationsView) => void
 }) {
+  const { tr } = useTranslations()
   const [railOpen, setRailOpen] = useState(false)
   const now = Date.now()
   const upcoming = data ? nextRuns(data.automations, now, data.timeZone, 12) : []
@@ -53,10 +55,10 @@ export function AutomationsList({
       {/* Below `md` the header may wrap onto a second row (the editor's rule): a phone cannot fit
           the title, the view switch, How it works and New automation on one line. */}
       <header className="sticky top-0 z-10 flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-border bg-background px-5 max-md:py-2 md:h-14 md:flex-nowrap">
-        <h1 className="text-base font-semibold">Automations</h1>
+        <h1 className="text-base font-semibold">{tr('Automations')}</h1>
         <Segmented<AutomationsView>
           slot="automations-view"
-          label="View"
+          label={tr('View')}
           value={view}
           options={viewOptions(data?.automations.length)}
           onChange={onViewChange}
@@ -90,7 +92,7 @@ export function AutomationsList({
         </div>
       ) : !data ? (
         <div className="p-5">
-          <PageState text="Loading automations…" />
+          <PageState text={tr('Loading automations…')} />
         </div>
       ) : data.automations.length === 0 ? (
         // The explainer (spec 2026-10-26-first-run-onboarding § Automations) rather than an

@@ -88,6 +88,8 @@ import { usageMetricVisibility } from '@/lib/token-metrics'
 import { LiveNowProvider, RelativeAge } from '@/lib/live-now'
 import { RowSpacer, useWindowedRows } from '@/lib/use-windowed-rows'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
+import type { TranslationText } from '@/i18n/text'
 
 /**
  * The global Tasks page at `/tasks` — every registered project's work in one table.
@@ -237,6 +239,7 @@ function useIndexedRunMutation<V extends { task: GlobalTask }>({
 }
 
 export function GlobalTasksRoute() {
+  const { tr } = useTranslations()
   const projects = useProjects()
   // The same host gate the per-project table honours: `CEZ_HIDE_COST` and friends turn these
   // columns off everywhere, and a cross-project view is not an exception.
@@ -410,7 +413,7 @@ export function GlobalTasksRoute() {
         <CenteredState
           icon={<LayersIcon />}
           tone="danger"
-          title="Tasks across projects did not load"
+          title={tr('Tasks across projects did not load')}
           subtitle={(index.error ?? projects.error)?.message}
         />
       </div>
@@ -427,8 +430,8 @@ export function GlobalTasksRoute() {
         type="text"
         value={queryDraft}
         onChange={(event) => setQueryDraft(event.target.value)}
-        placeholder="Search every project…"
-        aria-label="Search tasks across projects"
+        placeholder={tr('Search every project…')}
+        aria-label={tr('Search tasks across projects')}
         className="h-9 w-full rounded-md border border-input bg-card pr-3 pl-8 text-ui text-foreground outline-none placeholder:text-soft-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
       />
     </div>
@@ -437,13 +440,13 @@ export function GlobalTasksRoute() {
   return (
     <div data-route="global-tasks" className="flex min-h-full flex-col">
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
-        <h1 className="text-base font-semibold">All tasks</h1>
+        <h1 className="text-base font-semibold">{tr('All tasks')}</h1>
         <div className="inline-flex gap-0.5 rounded-md bg-muted p-[3px]">
           <ViewTab view="active" current={view} onSelect={setView}>
-            Active
+            {tr('Active')}
           </ViewTab>
           <ViewTab view="archived" current={view} onSelect={setView}>
-            Archived
+            {tr('Archived')}
           </ViewTab>
         </div>
         <div className="flex-1" />
@@ -623,6 +626,7 @@ function FilterBar({
   /** Rows each origin would show under the current facets and view. */
   originCounts: Record<TaskOrigin, number>
 }) {
+  const { tr } = useTranslations()
   const tags = React.useMemo(() => allProjectTags(projects), [projects])
 
   // One `tasksExcludingFacet` per facet: the counts a facet shows must not already assume that
@@ -650,9 +654,9 @@ function FilterBar({
       <div className="flex flex-wrap items-center gap-1.5">
         <Segmented
           slot="task-origin"
-          label="Show tasks started by"
+          label={tr('Show tasks started by')}
           value={origin}
-          options={TASK_ORIGIN_OPTIONS.map((option) => ({ ...option, count: originCounts[option.value] }))}
+          options={TASK_ORIGIN_OPTIONS.map((option) => ({ ...option, label: tr(option.label as TranslationText), count: originCounts[option.value] }))}
           onChange={onOriginChange}
         />
         <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
@@ -660,25 +664,25 @@ function FilterBar({
             one project is that project's own Tasks page, which every project name here links to. */}
         <FacetFilter
           slot="status"
-          label="Status"
+          label={tr('Status')}
           selected={filters.statuses}
           onToggle={(value) => onToggle('statuses', value)}
           onClear={() => onClearFacet('statuses')}
           options={allStatuses(tasks)
             .map((status) => ({ value: status, label: status }))
             .map(withCount(counts.statuses))}
-          emptyLabel="No tasks to filter"
+          emptyLabel={tr('No tasks to filter')}
         />
         <FacetFilter
           slot="workflow"
-          label="Workflow"
+          label={tr('Workflow')}
           selected={filters.workflows}
           onToggle={(value) => onToggle('workflows', value)}
           onClear={() => onClearFacet('workflows')}
           options={allWorkflows(tasks)
             .map((workflow) => ({ value: workflow, label: workflow }))
             .map(withCount(counts.workflows))}
-          emptyLabel="No tasks to filter"
+          emptyLabel={tr('No tasks to filter')}
         />
         <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
         <span className="text-meta font-medium text-soft-foreground">Group by</span>
@@ -686,7 +690,7 @@ function FilterBar({
             no "None" button to hunt for. */}
         <SegmentedControl
           slot="group-by"
-          label="Group tasks by"
+          label={tr('Group tasks by')}
           value={groupBy}
           options={GROUP_BY_OPTIONS}
           onChange={(picked) => onGroupByChange(toggleGroupBy(groupBy, picked))}
@@ -696,9 +700,9 @@ function FilterBar({
         <span className="text-meta font-medium text-soft-foreground">Sort by</span>
         <Segmented
           slot="sort-by"
-          label="Sort tasks by"
+          label={tr('Sort tasks by')}
           value={sortBy}
-          options={SORT_OPTIONS}
+          options={SORT_OPTIONS.map((option) => ({ ...option, label: tr(option.label as TranslationText) }))}
           onChange={onSortByChange}
         />
         {canReset({ filters, groupBy }) ? (
@@ -733,7 +737,7 @@ function FilterBar({
               real question, and it is the one this chip answers. */}
           <ToggleChip
             slot="tag-filter"
-            label="Untagged"
+            label={tr('Untagged')}
             count={counts.tags.get(UNTAGGED) ?? 0}
             selected={filters.tags.includes(UNTAGGED)}
             onToggle={() => onToggle('tags', UNTAGGED)}
@@ -792,6 +796,7 @@ function TaskTable({
   busy: boolean
   showCost: boolean
 }) {
+  const { tr } = useTranslations()
   // Dispatched children nest under the task that ordered them, in that task's own place in the
   // ordering. Per TABLE, which is per group: a child grouped away from its parent (a different
   // tag, a different project) stands on its own rather than being filed where nobody is looking
@@ -810,18 +815,18 @@ function TaskTable({
   )
   const tableWindow = useWindowedRows<HTMLTableSectionElement>(rows.length)
   const headers = [
-    <Th key="status" className="w-[104px]">Status</Th>,
-    <Th key="task">Task</Th>,
-    showProject ? <Th key="project" className="w-[124px]">Project</Th> : null,
-    <Th key="tags" className="hidden w-[120px] xl:table-cell">Tags</Th>,
-    <Th key="ref" className="w-[84px]">Ref</Th>,
-    <Th key="workflow" className="hidden w-[108px] xl:table-cell">Workflow</Th>,
-    showCost ? <Th key="cost" className="hidden w-[64px] text-right lg:table-cell">Cost</Th> : null,
-    <Th key="cpu" className="hidden w-[56px] text-right xl:table-cell">CPU</Th>,
-    <Th key="mem" className="hidden w-[84px] text-right xl:table-cell">Mem</Th>,
-    <Th key="age" className="w-[72px] text-right">{sortTimeLabel(sortBy)}</Th>,
+    <Th key="status" className="w-[104px]">{tr('Status')}</Th>,
+    <Th key="task">{tr('Task')}</Th>,
+    showProject ? <Th key="project" className="w-[124px]">{tr('Project')}</Th> : null,
+    <Th key="tags" className="hidden w-[120px] xl:table-cell">{tr('Tags')}</Th>,
+    <Th key="ref" className="w-[84px]">{tr('Ref')}</Th>,
+    <Th key="workflow" className="hidden w-[108px] xl:table-cell">{tr('Workflow')}</Th>,
+    showCost ? <Th key="cost" className="hidden w-[64px] text-right lg:table-cell">{tr('Cost')}</Th> : null,
+    <Th key="cpu" className="hidden w-[56px] text-right xl:table-cell">{tr('CPU')}</Th>,
+    <Th key="mem" className="hidden w-[84px] text-right xl:table-cell">{tr('Mem')}</Th>,
+    <Th key="age" className="w-[72px] text-right">{tr(sortTimeLabel(sortBy) as never)}</Th>,
     <Th key="actions" className="w-[64px] text-right">
-      <span className="sr-only">Actions</span>
+      <span className="sr-only">{tr('Actions')}</span>
     </Th>,
   ].filter((header) => header !== null)
   const columnCount = headers.length
@@ -1288,6 +1293,7 @@ function GlobalTasksEmptyState({
   hiddenByOrigin?: boolean
   onShowAll?: () => void
 }) {
+  const { tr } = useTranslations()
   if (hiddenByOrigin) {
     return (
       <div data-slot="global-tasks-empty" data-empty-kind="origin-hidden">
@@ -1295,15 +1301,15 @@ function GlobalTasksEmptyState({
           heading="h2"
           icon={<LayersIcon />}
           tone="neutral"
-          title={origin === 'regular' ? 'No regular tasks here' : 'No automation tasks here'}
+          title={origin === 'regular' ? tr('No regular tasks here') : tr('No automation tasks here')}
           subtitle={
             origin === 'regular'
-              ? 'Tasks started by automations are hidden.'
-              : 'Only tasks started by automations are shown.'
+              ? tr('Tasks started by automations are hidden.')
+              : tr('Only tasks started by automations are shown.')
           }
           actions={
             <Button type="button" variant="outline" onClick={onShowAll}>
-              Show all tasks
+              {tr('Show all tasks')}
             </Button>
           }
         />
@@ -1316,8 +1322,8 @@ function GlobalTasksEmptyState({
         heading="h2"
         icon={<SearchXIcon />}
         tone="neutral"
-        title="No matching tasks"
-        subtitle="No task in any project matches these filters."
+        title={tr('No matching tasks')}
+        subtitle={tr('No task in any project matches these filters.')}
       />
     )
   }
@@ -1326,16 +1332,16 @@ function GlobalTasksEmptyState({
       heading="h2"
       icon={<ArchiveIcon />}
       tone="neutral"
-      title="Nothing archived yet"
-      subtitle="Finished tasks you archive land here, from every project."
+      title={tr('Nothing archived yet')}
+      subtitle={tr('Finished tasks you archive land here, from every project.')}
     />
   ) : (
     <CenteredState
       heading="h2"
       icon={<ListChecksIcon />}
       tone="neutral"
-      title="No tasks yet"
-      subtitle="Start a task in any project and it shows up here."
+      title={tr('No tasks yet')}
+      subtitle={tr('Start a task in any project and it shows up here.')}
     />
   )
 }

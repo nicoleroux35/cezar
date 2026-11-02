@@ -70,6 +70,7 @@ import { useWorkspaceLayouts } from './use-workspace-layouts'
 import { AvailableViewsContext } from './view-picker'
 import { ViewDropZones } from './view-drop-zones'
 import { WorkspaceColumns, type ColumnActions } from './workspace-columns'
+import { useTranslations } from '@/i18n/use-translations'
 
 /** Lazy: xterm is the heaviest thing on this screen, and most visits never open a shell. */
 const TerminalDrawer = lazy(() =>
@@ -89,6 +90,7 @@ const GraphColumn = lazy(() =>
  * set, which opens that view as a card and leaves every saved layout alone (§5.3).
  */
 export function TaskWorkspaceRoute({ view }: { view?: ViewId }) {
+  const { tr } = useTranslations()
   const { id } = useParams<{ id: string }>()
   const run = useRun(id)
 
@@ -125,15 +127,15 @@ export function TaskWorkspaceRoute({ view }: { view?: ViewId }) {
         <CenteredState
           icon={notFound ? <SearchXIcon /> : <MessageSquareTextIcon />}
           tone={notFound ? 'neutral' : 'danger'}
-          title={notFound ? 'Task not found' : 'Could not load this task'}
+          title={notFound ? tr('Task not found') : tr('Could not load this task')}
           subtitle={
             notFound
-              ? 'No run has this id. It may have been deleted, or the link is from another machine.'
+              ? tr('No run has this id. It may have been deleted, or the link is from another machine.')
               : run.error.message
           }
           actions={
             <Button asChild variant="outline">
-              <Link to="/">Back to tasks</Link>
+              <Link to="/">{tr('Back to tasks')}</Link>
             </Button>
           }
         />
@@ -162,6 +164,7 @@ function WorkspaceView({
   deepLinkView?: ViewId
   onMarkedUnread: (runId: string) => void
 }) {
+  const { tr } = useTranslations()
   const layouts = useWorkspaceLayouts(run.id)
   const { openDeepLink, addLayout, closeLayout, selectLayout, setColumnBrowser, openInBrowser, applySaved, keepAs } = layouts
   // Layouts saved for every task: nothing is saved until the user names one (Layout menu).
@@ -419,8 +422,8 @@ function WorkspaceView({
         variant="ghost"
         size="icon-sm"
         data-action="maximize-layout"
-        aria-label="Full view"
-        title="Full view — hide everything but this layout (F)"
+        aria-label={tr('Full view')}
+        title={tr('Full view — hide everything but this layout (F)')}
         className="text-muted-foreground"
         onClick={toggleMaximized}
       >
@@ -655,13 +658,13 @@ function WorkspaceView({
           return <FilesView run={run} embedded stateKey={`${run.id}:${layoutName}:${index}:files`} />
         case 'graph':
           return (
-            <Suspense fallback={<ColumnLoading title="Loading graph…" />}>
+            <Suspense fallback={<ColumnLoading title={tr('Loading graph…')} />}>
               <GraphColumn run={run} embedded />
             </Suspense>
           )
         case 'terminal':
           return terminalAllowed ? (
-            <Suspense fallback={<ColumnLoading title="Loading terminal…" />}>
+            <Suspense fallback={<ColumnLoading title={tr('Loading terminal…')} />}>
               <TerminalDrawer runId={run.id} height={0} onHeightChange={noop} onOpenInBrowser={openInBrowser} fill />
             </Suspense>
           ) : (
@@ -669,8 +672,8 @@ function WorkspaceView({
               icon={<TerminalIcon />}
               tone="neutral"
               heading="h2"
-              title="Terminal disabled"
-              subtitle="The terminal is off on this cockpit — it is off in hosted mode unless CEZ_TERMINAL=1."
+              title={tr('Terminal disabled')}
+              subtitle={tr('The terminal is off on this cockpit — it is off in hosted mode unless CEZ_TERMINAL=1.')}
             />
           )
         case 'browser':
@@ -730,7 +733,7 @@ function WorkspaceView({
           role="status"
           className="shrink-0 border-b border-border bg-muted/40 px-4 py-1.5 text-xs text-muted-foreground sm:px-6"
         >
-          This task's saved layouts could not be loaded yet — retrying. Changes made meanwhile are not saved.
+          {tr("This task's saved layouts could not be loaded yet — retrying. Changes made meanwhile are not saved.")}
         </div>
       ) : null}
       {layouts.saveFailed ? (
@@ -739,8 +742,7 @@ function WorkspaceView({
           role="status"
           className="shrink-0 border-b border-border bg-muted/40 px-4 py-1.5 text-xs text-muted-foreground sm:px-6"
         >
-          This layout could not be saved on this host — it keeps working in this tab, but will not come back after a
-          refresh.
+          {tr('This layout could not be saved on this host — it keeps working in this tab, but will not come back after a refresh.')}
         </div>
       ) : null}
       <AvailableViewsContext.Provider value={availableViews}>
@@ -773,11 +775,11 @@ function WorkspaceView({
                 icon={<LayoutGridIcon />}
                 tone="neutral"
                 heading="h2"
-                title="No layouts"
-                subtitle="You closed every layout of this task. Create a new one, or come back later — the task will open with a Chat layout."
+                title={tr('No layouts')}
+                subtitle={tr('You closed every layout of this task. Create a new one, or come back later — the task will open with a Chat layout.')}
                 actions={
                   <Button variant="outline" onClick={createLayout}>
-                    New layout
+                    {tr('New layout')}
                   </Button>
                 }
               />

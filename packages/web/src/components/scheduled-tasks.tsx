@@ -7,23 +7,25 @@ import { automationsQueryKey, useAutomationsGate, useAutomationsQuery } from '@/
 import { Link, useNavigate } from '@/lib/project-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { writeClipboard } from '@/lib/clipboard'
+import { useTranslations } from '@/i18n/use-translations'
 
 /** Task-facing view of composer starts. The implementation's automation terminology stays hidden. */
 export function ScheduledTasks({ compact = false, enabled = true }: { compact?: boolean; enabled?: boolean }) {
+  const { tr } = useTranslations()
   const [startedRuns, setStartedRuns] = useState<string[]>([])
   const gate = useAutomationsGate()
   const query = useAutomationsQuery(enabled && gate.known && !gate.off)
   const items = query.data?.automations.filter(a => a.deferredStart) ?? []
   if (!items.length && !startedRuns.length) return null
-  return <section aria-label="Scheduled tasks" className={compact ? 'px-2 py-3' : 'border-b p-4 md:px-5'}>
-    <h2 className="mb-2 eyebrow text-muted-foreground">Scheduled · {items.length}</h2>
-    {startedRuns.length > 0 && <p role="status">This scheduled task already started. {startedRuns.map((id, index) => <Link key={id} to={`/tasks/${id}`} className="mr-3 underline">View run {index + 1}</Link>)}</p>}
+  return <section aria-label={tr('Scheduled tasks')} className={compact ? 'px-2 py-3' : 'border-b p-4 md:px-5'}>
+    <h2 className="mb-2 eyebrow text-muted-foreground">{tr('Scheduled')} · {items.length}</h2>
+    {startedRuns.length > 0 && <p role="status">{tr('This scheduled task already started.')} {startedRuns.map((id, index) => <Link key={id} to={`/tasks/${id}`} className="mr-3 underline">{tr('View run')} {index + 1}</Link>)}</p>}
     {compact ? items.map(item => <Link key={item.id} to={`/#scheduled-${item.id}`} className="block truncate rounded px-2 py-1.5 text-sm">◷ {item.name}</Link>) :
       <div className="grid gap-3">{items.map(item => <ScheduledTask key={item.id} item={item} onAlreadyStarted={setStartedRuns} />)}</div>}
   </section>
 }
 function ScheduledTask({ item, onAlreadyStarted }: { item: AutomationListEntry; onAlreadyStarted: (ids: string[]) => void }) {
+  const { tr } = useTranslations()
   const location = useLocation()
   const state = item.deferredStart!
   const navigate = useNavigate()
@@ -62,30 +64,30 @@ function ScheduledTask({ item, onAlreadyStarted }: { item: AutomationListEntry; 
     }
   }, [anchor, location.hash, location.key])
   const inlineSkills = item.task.steps?.flatMap(step => step.skill ? [step.skill] : []) ?? []
-  const workflowLabel = item.task.workflow ?? (inlineSkills.length ? `Skills: ${inlineSkills.join(', ')}` : 'Inline steps')
-  const modelLabel = state.binding.models?.map(m => `${m.step ? `${m.step}: ` : ''}${m.runner} / ${m.model ?? 'Provider default'}`).join('; ') ?? item.task.model ?? 'Resolved step models unavailable'
-  const label = state.status === 'failed' ? "Couldn't start" : state.status === 'missed' ? 'Missed' : state.status === 'launching' ? 'Starting…' : state.holdUntil ? 'Waiting for reset' : 'Scheduled'
+  const workflowLabel = item.task.workflow ?? (inlineSkills.length ? `${tr('Skills:')} ${inlineSkills.join(', ')}` : tr('Inline steps'))
+  const modelLabel = state.binding.models?.map(m => `${m.step ? `${m.step}: ` : ''}${m.runner} / ${m.model ?? tr('Provider default')}`).join('; ') ?? item.task.model ?? tr('Resolved step models unavailable')
+  const label = state.status === 'failed' ? tr("Couldn't start") : state.status === 'missed' ? tr('Missed') : state.status === 'launching' ? tr('Starting…') : state.holdUntil ? tr('Waiting for reset') : tr('Scheduled')
   return <details id={anchor} open={open} onToggle={e => setOpen(e.currentTarget.open)} className="rounded-lg border p-3">
     <summary className="cursor-pointer text-sm"><span className="font-medium">{item.name}</span><span className="ml-2 text-muted-foreground">{label} · {new Date(state.notBefore).toLocaleString('en-GB', { timeZone: state.timeZone })} · {state.timeZone}</span></summary>
     <div className="mt-3 space-y-3 text-sm">
       <p className="whitespace-pre-wrap break-words">{item.task.prompt}</p>
       <p className="text-muted-foreground">{workflowLabel} · {modelLabel} · {state.binding.accounts.map(a => `${a.runner} / ${a.id}`).join(', ')}</p>
-      <p className="text-muted-foreground">The server must be running. This is the earliest start; account holds and queue limits still apply.</p>
-      {state.holdUntil && <p>Waiting until {new Date(state.holdUntil).toLocaleString('en-GB', { timeZone: state.timeZone })} for a newer observed reset.</p>}
+      <p className="text-muted-foreground">{tr('The server must be running. This is the earliest start; account holds and queue limits still apply.')}</p>
+      {state.holdUntil && <p>{tr('Waiting until')} {new Date(state.holdUntil).toLocaleString('en-GB', { timeZone: state.timeZone })} {tr('for a newer observed reset.')}</p>}
       {state.error && <p role="status">{state.error}</p>}
-      {ambiguous && <p>Check the runs below. Start missing runs creates only the ones that do not exist yet — a run you deleted starts again. Dismiss removes this entry and starts nothing.</p>}
-      {state.runIds.map((id, index) => <Link key={id} to={`/tasks/${id}`} className="mr-3 underline">Check run {index + 1}</Link>)}
+      {ambiguous && <p>{tr('Check the runs below. Start missing runs creates only the ones that do not exist yet — a run you deleted starts again. Dismiss removes this entry and starts nothing.')}</p>}
+      {state.runIds.map((id, index) => <Link key={id} to={`/tasks/${id}`} className="mr-3 underline">{tr('Check run')} {index + 1}</Link>)}
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act(() => writeClipboard(item.task.prompt))}>Copy prompt</Button>
-        <Button size="sm" variant="outline" disabled={busy || (claimed && !ambiguous)} onClick={() => void act(async () => { const result = await runAutomationNow(item.id, item.revision); navigate(`/tasks/${result.runId}`) })}>{ambiguous ? 'Start missing runs' : state.status === 'failed' ? 'Retry' : 'Run now'}</Button>
-        <Button size="sm" variant="ghost" disabled={busy || claimed || bindingInvalid} onClick={toggleEditing}>Change time</Button>
-        <Button size="sm" variant="ghost" disabled={busy || (claimed && !ambiguous)} onClick={() => void act(() => deleteAutomation(item.id, item.revision))}>{ambiguous ? 'Dismiss' : 'Cancel'}</Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act(() => navigator.clipboard.writeText(item.task.prompt))}>{tr('Copy prompt')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || (claimed && !ambiguous)} onClick={() => void act(async () => { const result = await runAutomationNow(item.id, item.revision); navigate(`/tasks/${result.runId}`) })}>{ambiguous ? tr('Start missing runs') : state.status === 'failed' ? tr('Retry') : tr('Run now')}</Button>
+        <Button size="sm" variant="ghost" disabled={busy || claimed || bindingInvalid} onClick={toggleEditing}>{tr('Change time')}</Button>
+        <Button size="sm" variant="ghost" disabled={busy || (claimed && !ambiguous)} onClick={() => void act(() => deleteAutomation(item.id, item.revision))}>{ambiguous ? tr('Dismiss') : tr('Cancel')}</Button>
       </div>
       {editSnapshot && !bindingInvalid && <form className="flex flex-wrap items-end gap-2" onSubmit={e => { e.preventDefault(); void act(async () => {
         const [hour, minute] = time.split(':').map(Number)
         await updateAutomation(item.id, { expectedRevision: editSnapshot.revision, name: editSnapshot.name, kind: 'schedule', task: editSnapshot.task, schedule: { type: 'once', date, hour: hour ?? 0, minute: minute ?? 0 }, enabled: true })
         setEditSnapshot(null)
-      }) }}><label>Date<Input type="date" required value={date} onChange={e => setDate(e.target.value)} /></label><label>Time (server time zone)<Input type="time" required value={time} onChange={e => setTime(e.target.value)} /></label><Button type="submit" disabled={busy}>Save time</Button></form>}
+      }) }}><label>{tr('Date')}<Input type="date" required value={date} onChange={e => setDate(e.target.value)} /></label><label>{tr('Time (server time zone)')}<Input type="time" required value={time} onChange={e => setTime(e.target.value)} /></label><Button type="submit" disabled={busy}>{tr('Save time')}</Button></form>}
       {error && <p role="alert" className="text-destructive">{error}</p>}
     </div>
   </details>

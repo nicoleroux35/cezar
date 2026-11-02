@@ -21,6 +21,7 @@ import { RunHeader } from '../task-thread/run-header'
 import { CommitList } from './commit-list'
 import { GitTabLoadError, GitTabLoading } from './git-tab-loading'
 import { DiffViewToggles } from './diff-controls'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * `/tasks/:id/commits` — the run's own commits (`<base>..HEAD`), each opening its structured diff
@@ -46,6 +47,7 @@ export function CommitsView({
   embedded?: boolean
   stateKey?: string
 }) {
+  const { tr } = useTranslations()
   const { sha: urlSha } = useParams<{ sha: string }>()
   const [picked, setPicked] = useRememberedState<string | null>(stateKey, null)
   const sha = embedded ? (picked ?? undefined) : urlSha
@@ -72,7 +74,7 @@ export function CommitsView({
         </>
       ) : commits.isPending ? (
         <p data-slot="commits-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
-          Loading commits…
+          {tr('Loading commits…')}
         </p>
       ) : commits.isError ? (
         <CenteredState
@@ -81,8 +83,8 @@ export function CommitsView({
           heading="h2"
           title={
             commits.error instanceof ApiError && commits.error.status === 409
-              ? 'No commits to show'
-              : 'Could not load the commits'
+              ? tr('No commits to show')
+              : tr('Could not load the commits')
           }
           subtitle={commits.error.message}
         />
@@ -91,8 +93,8 @@ export function CommitsView({
           icon={<GitCommitHorizontalIcon />}
           tone="neutral"
           heading="h2"
-          title="No commits yet"
-          subtitle="This task hasn't committed anything on its branch. Autosave commits and any the agent makes appear here."
+          title={tr('No commits yet')}
+          subtitle={tr("This task hasn't committed anything on its branch. Autosave commits and any the agent makes appear here.")}
         />
       ) : (
         <CommitList
@@ -111,6 +113,7 @@ export function CommitsView({
 }
 
 function CommitDiffView({ runId, sha }: { runId: string; sha: string }) {
+  const { tr } = useTranslations()
   const commit = useRunCommit(runId, sha)
   const desktop = useIsDesktop()
   const [mode, setMode] = useState<DiffMode>('unified')
@@ -126,7 +129,7 @@ function CommitDiffView({ runId, sha }: { runId: string; sha: string }) {
         <Button asChild variant="ghost" size="sm" data-slot="commit-back">
           <Link to={`/tasks/${runId}/commits`}>
             <ArrowLeftIcon aria-hidden="true" />
-            All commits
+            {tr('All commits')}
           </Link>
         </Button>
         {commit.data ? <DiffStatLabel stat={commit.data.stat} /> : null}
@@ -137,14 +140,14 @@ function CommitDiffView({ runId, sha }: { runId: string; sha: string }) {
 
       {commit.isPending ? (
         <p data-slot="commit-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
-          Loading commit…
+          {tr('Loading commit…')}
         </p>
       ) : commit.isError ? (
         <CenteredState
           icon={refused ? <SearchXIcon /> : <TriangleAlertIcon />}
           tone={refused ? 'neutral' : 'danger'}
           heading="h2"
-          title={refused ? 'Commit not found' : 'Could not load the commit'}
+          title={refused ? tr('Commit not found') : tr('Could not load the commit')}
           subtitle={commit.error.message}
         />
       ) : (
@@ -161,8 +164,8 @@ function CommitDiffView({ runId, sha }: { runId: string; sha: string }) {
               icon={<GitCommitHorizontalIcon />}
               tone="neutral"
               heading="h2"
-              title="No file changes"
-              subtitle="This commit carries no diff of its own — a merge commit's changes live on the commits it merged."
+              title={tr('No file changes')}
+              subtitle={tr("This commit carries no diff of its own — a merge commit's changes live on the commits it merged.")}
             />
           ) : (
             // The diff's own scroller from md up: its file headers stick to ITS top, so a run

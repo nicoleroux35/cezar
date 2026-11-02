@@ -13,6 +13,7 @@ import { StatusDot } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
 import { deriveAttention } from '@/lib/attention'
 import { shortAge } from '@/lib/format'
 import { availablePromptTemplates, insertTemplate, normalizePromptTemplates } from '@/lib/prompt-templates'
@@ -62,6 +63,7 @@ export function isTodoRunnable(todo: TodoItem): boolean {
 }
 
 export function InboxRoute() {
+  const { tr } = useTranslations()
   // The nav item is inbox-gated in the shell, but the route stays reachable so an old
   // bookmark still resolves (the forge routes' rule). "Inbox empty" would be a lie here —
   // the inbox is switched off, not empty — so say that instead, and park the query.
@@ -86,8 +88,8 @@ export function InboxRoute() {
         <h1 className="text-base font-semibold">Inbox</h1>
         <p className="text-ui text-soft-foreground">
           {inboxOff
-            ? 'Disabled for this server; per-task Notes still run.'
-            : 'Follow-ups agents suggested when they finished a task.'}
+            ? tr('Disabled for this server; per-task Notes still run.')
+            : tr('Follow-ups agents suggested when they finished a task.')}
         </p>
       </header>
 
@@ -96,8 +98,8 @@ export function InboxRoute() {
           <CenteredState
             icon={<InboxIcon />}
             tone="neutral"
-            title="The follow-up inbox is off"
-            subtitle="Agents are not asked to leave follow-ups. Set CEZ_FOLLOWUPS=1 and restart the service to turn the inbox on."
+            title={tr('The follow-up inbox is off')}
+            subtitle={tr('Agents are not asked to leave follow-ups. Set CEZ_FOLLOWUPS=1 and restart the service to turn the inbox on.')}
             heading="h2"
           />
         ) : todos === undefined ? (
@@ -105,7 +107,7 @@ export function InboxRoute() {
             <CenteredState
               icon={<TriangleAlertIcon />}
               tone="danger"
-              title="Could not load the inbox"
+              title={tr('Could not load the inbox')}
               subtitle={todosQuery.error.message}
               heading="h2"
             />
@@ -120,8 +122,8 @@ export function InboxRoute() {
             <CenteredState
               icon={<InboxIcon />}
               tone="neutral"
-              title="Inbox empty"
-              subtitle="Agents drop follow-up suggestions here when they finish a task."
+              title={tr('Inbox empty')}
+              subtitle={tr('Agents drop follow-up suggestions here when they finish a task.')}
               heading="h2"
             />
           )
@@ -153,6 +155,7 @@ function TodoCard({
   todo: TodoItem
   sourceTaskExists: boolean | null
 }) {
+  const { tr } = useTranslations()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const uiState = useUiState()
@@ -250,7 +253,7 @@ function TodoCard({
             data-slot="todo-meta"
             className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-soft-foreground"
           >
-            {todo.ts ? <span>{shortAge(todo.ts)} ago</span> : null}
+            {todo.ts ? <span>{shortAge(todo.ts)} {tr('ago')}</span> : null}
             {todo.action ? <span>{todo.action}</span> : null}
             {todo.taskId !== undefined ? (
               sourceTaskExists ? (
@@ -259,10 +262,10 @@ function TodoCard({
                   data-slot="todo-source"
                   className="text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
                 >
-                  source task
+                  {tr('source task')}
                 </Link>
               ) : (
-                <span data-slot="todo-source-gone">source task deleted</span>
+                <span data-slot="todo-source-gone">{tr('source task deleted')}</span>
               )
             ) : null}
             {/* href protocol guard (#431): link only for http(s) URLs. */}
@@ -292,23 +295,23 @@ function TodoCard({
                 variant="contrast"
                 size="sm"
                 data-action="todo-run"
-                title="Start a task from this follow-up"
+                title={tr('Start a task from this follow-up')}
                 disabled={busy || !resolved.canRun}
                 onClick={() => start.mutate()}
               >
                 <PlayIcon aria-hidden="true" className="size-3" />
-                Run
+                {tr('Run')}
               </Button>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 data-action="todo-dismiss"
-                title="Check off (remove)"
+                title={tr('Check off (remove)')}
                 disabled={busy}
                 onClick={() => dismiss.mutate()}
               >
-                Dismiss
+                {tr('Dismiss')}
               </Button>
             </>
           ) : (
@@ -317,12 +320,12 @@ function TodoCard({
               variant="contrast"
               size="sm"
               data-action="todo-acknowledge"
-              title="Acknowledge and remove this note"
+              title={tr('Acknowledge and remove this note')}
               disabled={busy}
               onClick={() => dismiss.mutate()}
             >
               <CheckIcon aria-hidden="true" className="size-3" />
-              Acknowledge
+              {tr('Acknowledge')}
             </Button>
           )}
         </div>
@@ -340,13 +343,13 @@ function TodoCard({
               className="inline-flex flex-wrap items-center gap-1 text-xs text-muted-foreground"
             >
               {resolved.providerError
-                ? 'Provider authentication could not be verified.'
-                : 'Connect an agent provider to run this follow-up.'}
+                ? tr('Provider authentication could not be verified.')
+                : tr('Connect an agent provider to run this follow-up.')}
               <Link
                 to="/settings/agents#providers"
                 className="font-medium text-foreground underline underline-offset-4"
               >
-                Configure providers
+                {tr('Configure providers')}
               </Link>
             </span>
           ) : null}
@@ -362,10 +365,10 @@ function TodoCard({
             <Textarea
               ref={notesRef}
               data-slot="todo-instructions-input"
-              aria-label="Extra instructions for this follow-up"
+              aria-label={tr('Extra instructions for this follow-up')}
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              placeholder="Add instructions for the agent… (appended to the suggestion above)"
+              placeholder={tr('Add instructions for the agent… (appended to the suggestion above)')}
               // Same cap the server enforces on the `prompt` body field, so an over-long note is
               // stopped at the keystroke rather than by a 400 on Run (the Settings inputs cap the
               // same way).
@@ -380,7 +383,7 @@ function TodoCard({
                 onClick={() => setNotesOpen(false)}
                 className="text-xs font-medium text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
               >
-                Hide
+                {tr('Hide')}
               </button>
             </div>
           </div>
@@ -393,7 +396,7 @@ function TodoCard({
           >
             {/* A collapsed composer keeps its draft, and Run still carries it — so say so
                 rather than hiding instructions the next Run would silently send. */}
-            {notes.trim() ? 'Edit instructions (added)' : '+ Add instructions'}
+            {notes.trim() ? tr('Edit instructions (added)') : tr('+ Add instructions')}
           </button>
         )
       ) : null}

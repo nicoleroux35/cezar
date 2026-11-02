@@ -29,6 +29,7 @@ import { GitTabLoadError, GitTabLoading } from './git-tab-loading'
 import { GitToolbar } from './git-toolbar'
 import type { DiffNewLineComment } from '@/components/diff/types'
 import { trackDiffCommentAdded } from '@/lib/telemetry'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * `/tasks/:id/changes` — the session git view's Changes tab (spec §"Session git view —
@@ -68,6 +69,7 @@ export function ChangesView({
   embedded?: boolean
   stateKey?: string
 }) {
+  const { tr } = useTranslations()
   const health = useHealth()
   // The remote that decides whether Push is offered comes from the PROJECT-scoped `/repo`, not
   // from `/api/health.repo`: health is bound to the boot folder, so a cezar booted outside a git
@@ -251,14 +253,14 @@ export function ChangesView({
 
       {changes.isPending ? (
         <p data-slot="changes-loading" className="px-4 py-6 text-center text-xs text-soft-foreground md:px-6">
-          Loading changes…
+          {tr('Loading changes…')}
         </p>
       ) : changes.isError ? (
         <CenteredState
           icon={changesRefused ? <FileDiffIcon /> : <GitCommitHorizontalIcon />}
           tone={changesRefused ? 'neutral' : 'danger'}
           heading="h2"
-          title={changesRefused ? 'No changes to show' : 'Could not load the changes'}
+          title={changesRefused ? tr('No changes to show') : tr('Could not load the changes')}
           subtitle={changes.error.message}
         />
       ) : files.length === 0 ? (
@@ -266,8 +268,8 @@ export function ChangesView({
           icon={<FileDiffIcon />}
           tone="neutral"
           heading="h2"
-          title="No changes yet"
-          subtitle="The worktree matches its base branch. Changes appear here as the agent works."
+          title={tr('No changes yet')}
+          subtitle={tr('The worktree matches its base branch. Changes appear here as the agent works.')}
         />
       ) : (
         // The dock floats over the bottom of this body (see `dockHeight`). The body itself must

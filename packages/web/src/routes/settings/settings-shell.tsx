@@ -23,6 +23,8 @@ import { cn } from '@/lib/utils'
 import { ProjectGeneral } from './project-general'
 import { ProjectLocationNav } from './project-location'
 import { settingsSectionsByScope, type SettingsScope, type SettingsSection } from './registry'
+import { useTranslations } from '@/i18n/use-translations'
+import type { TranslationText } from '@/i18n/text'
 
 /**
  * The unified, full-screen Settings frame (spec 2026-10-13-unified-settings).
@@ -186,6 +188,7 @@ function ProjectSectionLinks({
   activeId: SettingsSection['id'] | null
   indent: boolean
 }) {
+  const { tr } = useTranslations()
   const touch = React.useContext(TouchTargetsContext)
   return (
     <div className={cn('flex flex-col gap-0.5', indent && 'mt-0.5 ml-[14px] border-l border-border pl-2')}>
@@ -199,7 +202,7 @@ function ProjectSectionLinks({
         className={cn(navRowClass(active && activeId === null, touch), !touch && 'h-[30px]', 'text-ui')}
       >
         <SlidersHorizontalIcon aria-hidden="true" className="size-3.5 shrink-0" />
-        General
+        {tr('General')}
       </RouterNavLink>
       {sections.map((section) => {
         const current = active && section.id === activeId
@@ -212,7 +215,7 @@ function ProjectSectionLinks({
             className={cn(navRowClass(current, touch), !touch && 'h-[30px]', 'text-ui')}
           >
             <section.icon aria-hidden="true" className="size-3.5 shrink-0" />
-            {section.title}
+            {tr(section.title as TranslationText)}
           </RouterNavLink>
         )
       })}
@@ -229,7 +232,8 @@ function ProjectRowLabel({ project }: { project: TreeProject }) {
  *  409s — so an inert row with the pill and, for a screen reader (the `title` of a non-focusable
  *  element is unreachable), the same hint as visually-hidden text. Unregistering lives in Projects. */
 function MissingProjectRow({ project, indent }: { project: TreeProject; indent: boolean }) {
-  const hint = `${project.name} is gone — remove it in Projects`
+  const { tr } = useTranslations()
+  const hint = `${project.name} ${tr('is gone — remove it in Projects')}`
   return (
     <div
       data-slot="settings-project"
@@ -281,6 +285,7 @@ function ProjectTreeRow({
   expanded: boolean
   onToggle: () => void
 }) {
+  const { tr } = useTranslations()
   const active = project.id === activeProjectId
   const touch = React.useContext(TouchTargetsContext)
   // Unique per INSTANCE: below `md` the hidden desktop column and the open drawer both render
@@ -306,7 +311,7 @@ function ProjectTreeRow({
           // Only while the body is rendered: a reference to an id that is not in the DOM is an
           // a11y error, and a collapsed row has no body.
           aria-controls={expanded ? bodyId : undefined}
-          aria-label={`${expanded ? 'Collapse' : 'Expand'} ${project.name}`}
+          aria-label={`${expanded ? tr('Collapse') : tr('Expand')} ${project.name}`}
           className={cn(
             'flex shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground',
             touch ? 'size-11' : 'size-7',
@@ -321,7 +326,7 @@ function ProjectTreeRow({
           <RouterLink
             to={switchTo}
             data-slot="settings-project-link"
-            title={`Open ${project.name}'s ${sections.find((s) => s.id === openSectionId)?.title ?? 'General'}`}
+            title={`${tr('Open')} ${project.name} — ${tr((sections.find((s) => s.id === openSectionId)?.title ?? 'General') as TranslationText)}`}
             className={cn(
               'flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-ui font-semibold text-muted-foreground transition-colors hover:text-foreground',
               touch && 'min-h-11',
@@ -403,6 +408,7 @@ function SettingsSidebar(props: SidebarProps) {
 function SettingsMobileDrawer({ onOpenChange, ...props }: SidebarProps & {
   onOpenChange: (open: boolean) => void
 }) {
+  const { tr } = useTranslations()
   const { pathname } = useLocation()
   React.useEffect(() => {
     onOpenChange(false)
@@ -417,7 +423,7 @@ function SettingsMobileDrawer({ onOpenChange, ...props }: SidebarProps & {
     return () => query.removeEventListener('change', onChange)
   }, [onOpenChange])
   return (
-    <SidebarDrawer slot="settings-mobile-drawer" title="Settings navigation">
+    <SidebarDrawer slot="settings-mobile-drawer" title={tr('Settings navigation')}>
       {(closeButton) => <SettingsSidebarContent {...props} headerAction={closeButton} />}
     </SidebarDrawer>
   )
@@ -436,6 +442,7 @@ function SettingsSidebarContent({
   /** The drawer's close button. Absent on desktop, which has nothing to close. */
   headerAction?: React.ReactNode
 }) {
+  const { tr } = useTranslations()
   const { global, project } = settingsSectionsByScope(capabilities)
   const touch = Boolean(headerAction)
   // Expansion is derived from the URL — the active project is open — plus transient toggles.
@@ -481,7 +488,7 @@ function SettingsSidebarContent({
           variant="ghost"
           size="sm"
           data-slot="settings-back"
-          title="Back (Esc)"
+          title={tr('Back (Esc)')}
           onClick={leave}
           // h-[26px]: the brand tile's height. A taller control would grow this row and shift
           // the logo down the moment settings opens — the row must be pixel-identical to the
@@ -489,18 +496,18 @@ function SettingsSidebarContent({
           className={cn('-mr-2 ml-auto shrink-0', touch ? 'h-11' : 'h-[26px]')}
         >
           <ArrowLeftIcon aria-hidden="true" className="size-4" />
-          Back
+          {tr('Back')}
         </Button>
         {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
       </div>
 
       <nav
-        aria-label="Settings sections"
+        aria-label={tr('Settings sections')}
         data-slot="settings-nav"
         data-scope={scope}
         className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain px-2.5 py-1.5"
       >
-        <GroupLabel>General settings</GroupLabel>
+        <GroupLabel>{tr('General settings')}</GroupLabel>
         {/* No "General" row here: the global index has no content of its own and redirects to
             the first section (spec 2026-10-13-unified-settings). */}
         {global.map((section) => {
@@ -513,7 +520,7 @@ function SettingsSidebarContent({
               className={navRowClass(current, touch)}
             >
               <section.icon aria-hidden="true" className="size-4 shrink-0" />
-              {section.title}
+              {tr(section.title as TranslationText)}
             </RouterNavLink>
           )
         })}
@@ -542,7 +549,7 @@ function SettingsSidebarContent({
               </>
             ) : (
               <>
-                <GroupLabel>Project settings</GroupLabel>
+                <GroupLabel>{tr('Project settings')}</GroupLabel>
                 {tree.projects.map((entry) => (
                   <ProjectTreeRow
                     key={entry.id}
@@ -596,6 +603,7 @@ function SectionPills({
   activeId: SettingsSection['id']
   capabilities: CapabilityProps | undefined
 }) {
+  const { tr } = useTranslations()
   const sections = settingsSectionsByScope(capabilities)[scope]
   const NavLink = scope === 'global' ? RouterNavLink : ScopedNavLink
   const pillClass = (active: boolean) =>
@@ -605,20 +613,20 @@ function SectionPills({
     )
   return (
     <nav
-      aria-label="Sections of this area"
+      aria-label={tr('Sections of this area')}
       data-slot="settings-nav-mobile"
       className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-border px-3 py-2.5 md:hidden"
     >
       {scope === 'project' ? (
         <>
           <RouterLink to={GLOBAL_INDEX_PATH} data-slot="settings-all-pill" className={pillClass(false)}>
-            ‹ General settings
+            ‹ {tr('General settings')}
           </RouterLink>
           {/* Never the active pill: the index is a different route, and reaching it from a
               section is the whole reason this entry exists (main #772). Project scope only —
               the global index is a redirect, not a page. */}
           <NavLink to="/settings" end data-slot="settings-nav-index" className={pillClass(false)}>
-            General
+            {tr('General')}
           </NavLink>
         </>
       ) : null}
@@ -629,7 +637,7 @@ function SectionPills({
           data-section={section.id}
           className={pillClass(section.id === activeId)}
         >
-          {section.title}
+          {tr(section.title as TranslationText)}
         </NavLink>
       ))}
     </nav>
@@ -642,6 +650,7 @@ function SectionPills({
  *  desktop. A `div`, not a `header`: the density e2e measures the route's first `header`,
  *  which is the page header. */
 function MobileBar({ title, projectName }: { title: string; projectName: string | null }) {
+  const { tr } = useTranslations()
   return (
     <div
       data-slot="settings-mobile-bar"
@@ -654,7 +663,7 @@ function MobileBar({ title, projectName }: { title: string; projectName: string 
       {/* A real SheetTrigger, as in the app shell: Radix restores focus here on close and
           wires aria-haspopup / aria-expanded / aria-controls. The drawer holds Back. */}
       <SheetTrigger asChild>
-        <Button type="button" variant="ghost" size="icon" aria-label="Open settings menu" className="size-11">
+        <Button type="button" variant="ghost" size="icon" aria-label={tr('Open settings menu')} className="size-11">
           <MenuIcon aria-hidden="true" className="size-[17px]" />
         </Button>
       </SheetTrigger>
@@ -710,6 +719,7 @@ function PageHeader({
   title: string
   beside: string | null
 }) {
+  const { tr } = useTranslations()
   return (
     <header
       data-slot="settings-header"
@@ -717,9 +727,9 @@ function PageHeader({
     >
       <PageTitle title={title} projectName={beside} as="h1" />
       {section ? (
-        <p className="min-w-0 truncate text-ui text-soft-foreground">{section.description}</p>
+        <p className="min-w-0 truncate text-ui text-soft-foreground">{tr(section.description as TranslationText)}</p>
       ) : scope === 'project' ? (
-        <p className="text-ui text-soft-foreground">Project settings</p>
+        <p className="text-ui text-soft-foreground">{tr('Project settings')}</p>
       ) : null}
     </header>
   )
@@ -794,6 +804,7 @@ const cardClass =
   'flex items-center gap-3.5 rounded-lg border border-border bg-card p-4 shadow-xs transition-colors hover:bg-card-2'
 
 function SectionCard({ section }: { section: SettingsSection }) {
+  const { tr } = useTranslations()
   return (
     <li>
       <ScopedLink to={settingsSectionPath('project', section.id)} data-section={section.id} className={cardClass}>
@@ -801,8 +812,8 @@ function SectionCard({ section }: { section: SettingsSection }) {
           <section.icon aria-hidden="true" className="size-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-foreground">{section.title}</span>
-          <span className="block text-xs text-soft-foreground">{section.description}</span>
+          <span className="block text-sm font-medium text-foreground">{tr(section.title as TranslationText)}</span>
+          <span className="block text-xs text-soft-foreground">{tr(section.description as TranslationText)}</span>
         </span>
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-soft-foreground" />
       </ScopedLink>

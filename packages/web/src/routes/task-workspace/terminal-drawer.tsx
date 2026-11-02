@@ -35,6 +35,7 @@ import {
 } from './drawer-state'
 import { CommandPicker, DetectedUrlsStrip } from './terminal-extras'
 import { TerminalPane } from './terminal-pane'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * The bottom terminal drawer (spec `.ai/specs/2026-10-07-task-workspace.md` §6).
@@ -74,6 +75,7 @@ export function TerminalDrawer({
    *  no room, so the strip can say so. */
   onOpenInBrowser: (url: string) => boolean
 }) {
+  const { tr } = useTranslations()
   const [sessions, setSessions] = useState<TerminalSession[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState<string | null>(null)
@@ -256,7 +258,7 @@ export function TerminalDrawer({
         <TerminalIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
         <Tabs value={activeId ?? ''} onValueChange={setActiveId} className="min-w-0 flex-1 gap-0">
         <TabsList
-          aria-label="Terminal tabs"
+          aria-label={tr('Terminal tabs')}
           className="flex w-full min-w-0 justify-start gap-0.5 overflow-x-auto rounded-none bg-transparent p-0 group-data-[orientation=horizontal]/tabs:h-auto"
         >
           {sessions.map((session) => (
@@ -280,8 +282,8 @@ export function TerminalDrawer({
                   type="button"
                   variant="ghost"
                   size="icon-xs"
-                  aria-label="New terminal tab"
-                  title="New terminal tab — pick a shell"
+                  aria-label={tr('New terminal tab')}
+                  title={tr('New terminal tab — pick a shell')}
                   className="rounded"
                 >
                   <PlusIcon aria-hidden="true" className="size-3.5" />
@@ -304,8 +306,8 @@ export function TerminalDrawer({
               type="button"
               variant="ghost"
               size="icon-xs"
-              aria-label="New terminal tab"
-              title="New terminal tab"
+              aria-label={tr('New terminal tab')}
+              title={tr('New terminal tab')}
               onClick={() => addTab()}
               className="rounded"
             >
@@ -345,11 +347,11 @@ export function TerminalDrawer({
             // a build precisely so you can read in that same pane why it was wrong. No
             // confirmation, because an interrupt is cheap and recoverable; the tab's X is the
             // one that asks, because it takes the whole process tree.
-            title="Interrupt the command (Ctrl-C)"
+            title={tr('Interrupt the command (Ctrl-C)')}
             onClick={() => void writeRunTerminal(runId, active.id, '\x03').catch(() => {})}
           >
             <SquareIcon aria-hidden="true" className="size-3" />
-            Stop
+            {tr('Stop')}
           </Button>
         ) : null}
         {onMoveToColumn ? (
@@ -372,8 +374,8 @@ export function TerminalDrawer({
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label="Hide terminal"
-            title="Hide terminal — processes keep running"
+            aria-label={tr('Hide terminal')}
+            title={tr('Hide terminal — processes keep running')}
             onClick={onClose}
             className="rounded"
           >
@@ -499,6 +501,7 @@ function DrawerResizeHandle({
   height: number
   onHeightChange: (height: number) => void
 }) {
+  const { tr } = useTranslations()
   const origin = useRef<{ y: number; height: number } | null>(null)
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -549,7 +552,7 @@ function DrawerResizeHandle({
       data-slot="drawer-resize-handle"
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize terminal"
+      aria-label={tr('Resize terminal')}
       aria-valuenow={height}
       aria-valuemin={MIN_DRAWER_HEIGHT}
       aria-valuemax={MAX_DRAWER_HEIGHT}
@@ -559,7 +562,7 @@ function DrawerResizeHandle({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onKeyDown={onKeyDown}
-      title="Drag to resize — arrow keys adjust precisely"
+      title={tr('Drag to resize — arrow keys adjust precisely')}
       // A 5px grab strip straddling the top border, invisible until reached for. `touch-none` is
       // load-bearing: without it a touch drag is claimed by the browser's panning.
       className="absolute inset-x-0 -top-[3px] z-20 h-[5px] cursor-row-resize touch-none bg-transparent transition-colors hover:bg-violet/40 focus-visible:bg-violet/60 focus-visible:outline-none"

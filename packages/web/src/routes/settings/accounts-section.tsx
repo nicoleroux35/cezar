@@ -48,6 +48,7 @@ import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { PROVIDER_ORDER } from '@/lib/provider-status'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toaster'
+import { useTranslations } from '@/i18n/use-translations'
 import { OpenInMenu, cliTargetRunner } from '@/components/open-in-menu'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { DefaultAgentPicker, agentPickerRows } from '@/components/default-agent-picker'
@@ -129,6 +130,7 @@ const STATUS_PRESENTATION = {
 } as const satisfies Record<string, { label: string; tone: StatusDotTone }>
 
 export function AccountsSection() {
+  const { tr } = useTranslations()
   const profiles = useAgentProfiles()
 
   if (profiles.isPending) {
@@ -143,7 +145,7 @@ export function AccountsSection() {
       <CenteredState
         icon={<IdCardIcon />}
         tone="danger"
-        title="Agent accounts did not load"
+        title={tr('Agent accounts did not load')}
         subtitle={profiles.error.message}
         heading="h2"
       />
@@ -153,6 +155,7 @@ export function AccountsSection() {
 }
 
 function AccountsPane({ data }: { data: AgentProfilesResponse }) {
+  const { tr } = useTranslations()
   const health = useHealth()
   const [adding, setAdding] = useState<ProviderId | null>(null)
   const [editing, setEditing] = useState<AgentProfile | null>(null)
@@ -261,15 +264,13 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
       <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
         <AlertDialogContent data-slot="accounts-remove-confirm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove “{confirming?.label}”?</AlertDialogTitle>
+            <AlertDialogTitle>{tr('Remove')} “{confirming?.label}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This only forgets the account. Nothing in {confirming?.configDir} is deleted — not
-              your login, not your sessions. Projects using it fall back to the default account,
-              and tasks that ran under it can no longer be resumed from here.
+              {tr('This only forgets the account. Nothing in')} {confirming?.configDir} {tr('is deleted — not your login, not your sessions. Projects using it fall back to the default account, and tasks that ran under it can no longer be resumed from here.')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tr('Cancel')}</AlertDialogCancel>
             <AlertDialogAction
               data-action="accounts-remove-confirm"
               disabled={remove.isPending}
@@ -279,14 +280,14 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
                 remove.mutate(target.id, {
                   onSuccess: () => {
                     setConfirming(null)
-                    toast(`Removed ${target.label}`)
+                    toast(`${tr('Removed')} ${target.label}`)
                   },
                   // The server's own words: a 409 explains something this pane cannot infer.
                   onError: (error) => toast(error.message, { tone: 'danger' }),
                 })
               }}
             >
-              Remove
+              {tr('Remove')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -314,6 +315,7 @@ function AgentTab({
   onEdit: (account: AgentProfile) => void
   onRemove: (account: AgentProfile) => void
 }) {
+  const { tr } = useTranslations()
   const installed = check?.available === true
   // `http` has no binary to install and no version to report: it is an HTTP endpoint, and
   // `backend-detect` answers `available: true` for it by presence of its config. Saying "No — npm i
@@ -344,13 +346,13 @@ function AgentTab({
             PROCESS env, which knows nothing about a stored account — its config only reaches the
             spawned child. Printing that here would say "not configured" under an account that is. */}
         {installed && check?.version && !isHttp ? (
-          <Row label="Version">
+          <Row label={tr('Version')}>
             <span data-slot="agent-version" className="font-mono text-label">
               {check.version}
             </span>
           </Row>
         ) : null}
-        <Row label="Accounts">
+        <Row label={tr('Accounts')}>
           <span>
             {isHttp
               ? accounts.length === 1
@@ -374,7 +376,7 @@ function AgentTab({
             data-provider={provider}
             onClick={onAdd}
           >
-            Add account
+            {tr('Add account')}
           </Button>
         ) : null}
       </div>

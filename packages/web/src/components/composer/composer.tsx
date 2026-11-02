@@ -43,6 +43,7 @@ import {
 import { releaseStaged, sendWithStaged, stageAttachment } from './attachment-staging'
 import { applyCompletion, detectTrigger, type TriggerState } from './composer-text'
 import { formatElapsed, useDictation } from './dictation'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * The SHARED composer (spec §"Task thread" composer + §"New task" composer intelligence —
@@ -170,22 +171,27 @@ export function Composer({
   draftItems,
   footerStart,
   footerEnd,
-  sendAriaLabel = 'Send',
+  sendAriaLabel,
   sendLabel,
   sendMenu,
   sendShortcut,
   stop,
   disabled = false,
   submitDisabled = false,
-  disabledReason = 'Session closed — Continue to reopen.',
+  disabledReason,
   allowEmptySubmit = false,
-  placeholder = 'Reply — / for skills, @ for files…',
-  ariaLabel = 'Reply to the agent',
+  placeholder,
+  ariaLabel,
   autocompleteSkills = true,
   quickReplies = false,
   getMentionCandidates,
   ref,
 }: ComposerProps) {
+  const { tr } = useTranslations()
+  const resolvedSendAriaLabel = sendAriaLabel ?? tr('Send')
+  const resolvedDisabledReason = disabledReason ?? tr('Session closed — Continue to reopen.')
+  const resolvedPlaceholder = placeholder ?? tr('Reply — / for skills, @ for files…')
+  const resolvedAriaLabel = ariaLabel ?? tr('Reply to the agent')
   // Optionally controlled: `value` (when given) shadows the internal state, and every write is
   // mirrored to both — updater functions resolve against whichever is authoritative right now.
   const [internalText, setInternalText] = useState('')
@@ -572,7 +578,7 @@ export function Composer({
     <Button
       type="button"
       size={sendLabel ? "sm" : "icon-sm"}
-      aria-label={sendAriaLabel}
+      aria-label={resolvedSendAriaLabel}
       disabled={sendDisabled}
       className={cn(sendLabel ? "h-8" : "size-8", sendMenu && "rounded-r-none")}
       onClick={submitDraft}
@@ -586,7 +592,7 @@ export function Composer({
       side="top"
       label={
         <span data-slot="composer-send-shortcut" className="flex items-center gap-2">
-          {sendLabel ?? sendAriaLabel}
+          {sendLabel ?? resolvedSendAriaLabel}
           <kbd className="font-sans opacity-70">{sendShortcut}</kbd>
         </span>
       }
@@ -617,8 +623,8 @@ export function Composer({
                 <button
                   key={`${attachment.name}-${index}`}
                   type="button"
-                  aria-label={`Remove ${attachment.name}`}
-                  title="Click to remove"
+                  aria-label={`${tr('Remove')} ${attachment.name}`}
+                  title={tr('Click to remove')}
                   className={cn(
                     'group relative overflow-hidden rounded-md border border-border',
                     attachment.isImage
@@ -658,8 +664,8 @@ export function Composer({
             rows={1}
             value={text}
             disabled={disabled}
-            aria-label={ariaLabel}
-            placeholder={disabled ? disabledReason : placeholder}
+            aria-label={resolvedAriaLabel}
+            placeholder={disabled ? resolvedDisabledReason : resolvedPlaceholder}
             // 16px on touch widths — iOS zooms any focused input below 16px (spec mobile rule).
             className="block max-h-[220px] min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-base leading-normal outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed md:min-h-[54px] md:px-4 md:pt-3 md:text-sm"
             onChange={(event) => {
@@ -840,6 +846,7 @@ function AttachButton({
   disabled: boolean
   onFiles: (files: readonly File[]) => void
 }) {
+  const { tr } = useTranslations()
   const inputRef = useRef<HTMLInputElement>(null)
   return (
     <>
@@ -847,8 +854,8 @@ function AttachButton({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Attach files"
-        title="Attach images or files (or paste a screenshot)"
+        aria-label={tr('Attach files')}
+        title={tr('Attach images or files (or paste a screenshot)')}
         disabled={disabled}
         className="size-8 text-muted-foreground"
         onClick={() => inputRef.current?.click()}
@@ -890,12 +897,13 @@ function DictationBar({
   onInsert: () => void
   onInsertAndSend: () => void
 }) {
+  const { tr } = useTranslations()
   const now = useNow(1000)
   return (
     <div
       data-slot="dictation-overlay"
       role="status"
-      aria-label="Dictation in progress"
+      aria-label={tr('Dictation in progress')}
       className="flex items-center gap-2.5 rounded-b-xl border-t border-border bg-muted/60 px-3 py-2"
     >
       <span
@@ -911,7 +919,7 @@ function DictationBar({
         className="min-w-0 flex-1 truncate text-sm text-foreground"
       >
         {transcript === '' ? (
-          <span className="text-muted-foreground">Listening…</span>
+          <span className="text-muted-foreground">{tr('Listening…')}</span>
         ) : (
           transcript
         )}
@@ -920,7 +928,7 @@ function DictationBar({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label="Cancel dictation"
+        aria-label={tr('Cancel dictation')}
         className="size-8 text-muted-foreground"
         onClick={onCancel}
       >
@@ -930,7 +938,7 @@ function DictationBar({
         type="button"
         variant="outline"
         size="icon-sm"
-        aria-label="Insert transcription"
+        aria-label={tr('Insert transcription')}
         className="size-8"
         onClick={onInsert}
       >
@@ -939,7 +947,7 @@ function DictationBar({
       <Button
         type="button"
         size="icon-sm"
-        aria-label="Insert transcription and send"
+        aria-label={tr('Insert transcription and send')}
         className="size-8"
         onClick={onInsertAndSend}
       >

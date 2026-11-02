@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 import { DISPATCH_SUBTASK_OPTIONS } from './editor-draft'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * The automation's own dispatch setting (spec 2026-09-14-automations-redesign Q4, § UI/UX 4.4):
@@ -26,6 +27,7 @@ export function EditorDispatchRow({
   reviewChild: boolean
   onChange: (patch: { dispatch?: boolean; maxSubtasks?: number; reviewChild?: boolean }) => void
 }) {
+  const { tr } = useTranslations()
   if (!available) return null
   const options = DISPATCH_SUBTASK_OPTIONS.includes(maxSubtasks as (typeof DISPATCH_SUBTASK_OPTIONS)[number])
     ? DISPATCH_SUBTASK_OPTIONS
@@ -34,14 +36,14 @@ export function EditorDispatchRow({
     <div
       data-slot="editor-dispatch"
       data-enabled={enabled ? 'true' : undefined}
-      title="Let this run start its own subtasks with cez task create — each in a worktree forked off its branch, reporting back into the parent session."
+      title={tr('Let this run start its own subtasks with cez task create — each in a worktree forked off its branch, reporting back into the parent session.')}
       className="flex flex-wrap items-center gap-2.5 border-t border-border pt-3 text-ui text-muted-foreground"
     >
       <Label className="text-ui font-medium text-foreground">
         <GitForkIcon aria-hidden="true" className={cn('size-3.5', enabled ? 'text-violet' : 'text-soft-foreground')} />
         Dispatch
         {/* Review child is a dispatch child: off with its parent, and not restored with it (#1742). */}
-        <Switch aria-label="Dispatch" checked={enabled} onCheckedChange={(next) => onChange(next ? { dispatch: true } : { dispatch: false, reviewChild: false })} />
+        <Switch aria-label={tr('Dispatch')} checked={enabled} onCheckedChange={(next) => onChange(next ? { dispatch: true } : { dispatch: false, reviewChild: false })} />
       </Label>
       {enabled ? (
         <>
@@ -49,7 +51,7 @@ export function EditorDispatchRow({
           <span className="inline-flex items-center gap-1.5">
             up to
             <Select value={String(maxSubtasks)} onValueChange={(value) => onChange({ maxSubtasks: Number(value) })}>
-              <SelectTrigger size="sm" aria-label="Max subtasks" className="h-7 px-2 text-label">
+              <SelectTrigger size="sm" aria-label={tr('Max subtasks')} className="h-7 px-2 text-label">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -62,7 +64,7 @@ export function EditorDispatchRow({
           </span>
           <span className="text-soft-foreground">·</span>
           <Label className="text-ui font-normal text-muted-foreground">
-            <Switch size="sm" aria-label="Review child" checked={reviewChild} onCheckedChange={(next) => onChange({ reviewChild: next })} />
+            <Switch size="sm" aria-label={tr('Review child')} checked={reviewChild} onCheckedChange={(next) => onChange({ reviewChild: next })} />
             review child
           </Label>
           <span data-slot="editor-dispatch-hint" className="ml-auto text-meta whitespace-nowrap text-soft-foreground">

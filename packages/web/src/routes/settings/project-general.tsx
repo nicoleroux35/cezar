@@ -11,6 +11,7 @@ import { ProjectFolderField } from './project-location'
 import { AddBootProjectButton, MaxParallelStepper, STATUS_LABEL } from './projects-section'
 import { RemoveProjectDialog, useProjectRemoval } from './remove-project'
 import { SettingsField } from './settings-field'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * Project settings → General: what THIS project is, and the few knobs that belong to the project
@@ -49,7 +50,8 @@ function fullDate(iso: string): string {
   return at.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-export function ProjectGeneral({ capabilities }: { capabilities?: Partial<Pick<Capabilities, 'singleProject' | 'webhooks' | 'webhooksUnavailableReason'>> }) {
+export function ProjectGeneral({ capabilities }: { capabilities?: Partial<Pick<Capabilities, 'singleProject'>> }) {
+  const { tr } = useTranslations()
   const projectId = useActiveProjectId()
   const projects = useProjects()
   const health = useHealth()
@@ -92,8 +94,8 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Partial<Pick<C
       <WebhookCard />
       {project.unregistered ? (
         <SettingsField
-          title="Add to your projects"
-          hint="cezar is serving this folder because you started it here — starting cezar somewhere new never adds it to your project list for you. Adding it keeps it in the sidebar between runs and gives it a registry entry to hold settings like the task cap. Nothing on disk changes either way."
+          title={tr('Add to your projects')}
+          hint={tr('cezar is serving this folder because you started it here — starting cezar somewhere new never adds it to your project list for you. Adding it keeps it in the sidebar between runs and gives it a registry entry to hold settings like the task cap. Nothing on disk changes either way.')}
         >
           <AddBootProjectButton root={project.root} name={project.name} notAddable={project.notAddable === true} />
         </SettingsField>
@@ -101,11 +103,11 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Partial<Pick<C
       {managesRegistry ? (
         <>
           <SettingsField
-            title="Max parallel tasks"
+            title={tr('Max parallel tasks')}
             hint={
               config.data
-                ? `How many of this project's tasks may run at once — leave it empty to use the workspace default (${config.data.resources.maxParallel}). Each project runs up to its own value independently of the others.`
-                : "How many of this project's tasks may run at once — leave it empty to use the workspace default. Each project runs up to its own value independently of the others."
+                ? `${tr("How many of this project's tasks may run at once — leave it empty to use the workspace default")} (${config.data.resources.maxParallel}). ${tr('Each project runs up to its own value independently of the others.')}`
+                : tr("How many of this project's tasks may run at once — leave it empty to use the workspace default. Each project runs up to its own value independently of the others.")
             }
           >
             {config.data ? (
@@ -127,27 +129,28 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Partial<Pick<C
  *  `canRemove` is whether the Remove field is rendered below — the missing-folder hint points at
  *  it, and must not point at a field single-project mode took away. */
 function ProjectFacts({ project, canRemove }: { project: ProjectListEntry; canRemove: boolean }) {
+  const { tr } = useTranslations()
   return (
     <SettingsField
-      title="Project"
-      hint="The registry entry for this checkout — re-probed every time the project list is read."
+      title={tr('Project')}
+      hint={tr('The registry entry for this checkout — re-probed every time the project list is read.')}
     >
       <dl
         data-slot="project-facts"
         className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-md border border-border bg-card p-3 text-ui"
       >
-        <dt className="text-muted-foreground">Name</dt>
+        <dt className="text-muted-foreground">{tr('Name')}</dt>
         <dd className="min-w-0 truncate text-foreground">{project.name}</dd>
 
-        <dt className="text-muted-foreground">Status</dt>
+        <dt className="text-muted-foreground">{tr('Status')}</dt>
         <dd data-slot="project-general-status" className={project.status === 'missing' ? 'text-danger' : 'text-foreground'}>
-          {STATUS_LABEL[project.status]}
+          {tr(STATUS_LABEL[project.status])}
           {/* A registered folder that has been deleted or moved is the one status worth acting
               on, and "folder not found" alone does not say what to do about it. */}
           {project.status === 'missing'
             ? canRemove
-              ? ' — remove it below, or restore the folder'
-              : ' — restore the folder at the path above'
+              ? tr(' — remove it below, or restore the folder')
+              : tr(' — restore the folder at the path above')
             : null}
         </dd>
 
@@ -155,7 +158,7 @@ function ProjectFacts({ project, canRemove }: { project: ProjectListEntry; canRe
             invites the reader to wonder which branch is checked out, a missing row does not. */}
         {project.branch !== undefined ? (
           <>
-            <dt className="text-muted-foreground">Branch</dt>
+            <dt className="text-muted-foreground">{tr('Branch')}</dt>
             <dd className="min-w-0 truncate font-mono text-xs text-foreground">{project.branch}</dd>
           </>
         ) : null}
@@ -164,22 +167,22 @@ function ProjectFacts({ project, canRemove }: { project: ProjectListEntry; canRe
             — inventing them (or dashing two rows) would say less than naming the state once. */}
         {project.unregistered ? (
           <>
-            <dt className="text-muted-foreground">In your projects</dt>
+            <dt className="text-muted-foreground">{tr('In your projects')}</dt>
             <dd data-slot="project-general-unregistered" className="text-foreground">
-              No — served because cezar was started here
+              {tr('No — served because cezar was started here')}
             </dd>
           </>
         ) : (
           <>
-            <dt className="text-muted-foreground">Added</dt>
+            <dt className="text-muted-foreground">{tr('Added')}</dt>
             <dd className="text-foreground">
               {fullDate(project.addedAt)}
               <span className="text-soft-foreground">
-                {project.source === 'checkout' ? ' · cloned from GitHub' : ' · opened locally'}
+                {project.source === 'checkout' ? tr(' · cloned from GitHub') : tr(' · opened locally')}
               </span>
             </dd>
 
-            <dt className="text-muted-foreground">Last opened</dt>
+            <dt className="text-muted-foreground">{tr('Last opened')}</dt>
             <dd className="text-foreground">{fullDate(project.lastOpenedAt)}</dd>
           </>
         )}
@@ -205,6 +208,7 @@ function ProjectFacts({ project, canRemove }: { project: ProjectListEntry; canRe
  * is always registered.
  */
 function RemoveProject({ project, bootProject }: { project: ProjectListEntry; bootProject: string }) {
+  const { tr } = useTranslations()
   const [confirming, setConfirming] = useState<ProjectListEntry | null>(null)
   const remove = useProjectRemoval()
   const navigate = useNavigate()
@@ -212,8 +216,8 @@ function RemoveProject({ project, bootProject }: { project: ProjectListEntry; bo
 
   return (
     <SettingsField
-      title="Remove from workspace"
-      hint="Unregisters this project so it leaves the sidebar and the project list. Nothing on disk is deleted — the folder, its git history and its task history all stay, and adding it back later finds everything intact."
+      title={tr('Remove from workspace')}
+      hint={tr('Unregisters this project so it leaves the sidebar and the project list. Nothing on disk is deleted — the folder, its git history and its task history all stay, and adding it back later finds everything intact.')}
     >
       <div className="flex items-center gap-3">
         <Button
@@ -224,13 +228,13 @@ function RemoveProject({ project, bootProject }: { project: ProjectListEntry; bo
           // Leads with the words on the button (WCAG 2.5.3 Label in Name) so speech input can
           // reach it, then says what "Remove" actually does — the row context that makes a bare
           // "Remove" safe-sounding isn't read out with it.
-          aria-label={`Remove ${project.name} from the workspace — unregisters it, no files are deleted`}
-          title={isBoot ? 'cezar is serving this project — stop it and use `cezar projects remove`' : undefined}
+          aria-label={`${tr('Remove')} ${project.name} ${tr('from the workspace — unregisters it, no files are deleted')}`}
+          title={isBoot ? tr('cezar is serving this project — stop it and use `cezar projects remove`') : undefined}
           disabled={isBoot || remove.isPending}
           onClick={() => setConfirming(project)}
           className="text-danger"
         >
-          Remove {project.name}
+          {tr('Remove')} {project.name}
         </Button>
         {isBoot ? (
           <span data-slot="project-general-remove-boot" className="text-meta text-soft-foreground">

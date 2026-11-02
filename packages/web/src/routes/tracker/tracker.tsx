@@ -9,6 +9,7 @@ import { CenteredState } from '@/components/centered-state'
 import { useIsDesktop } from '@/lib/use-desktop'
 import { shortAge } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/use-translations'
 import { TRACKER_PROVIDERS } from '@/lib/tracker-providers'
 import { getTrackerItem } from '@/api/client'
 import { useTrackerWatch } from '@/api/tracker-watch'
@@ -25,6 +26,7 @@ import { TrackerLabelFilter } from './tracker-label-filter'
 const emptySelection = (): TrackerHandoffSelection => ({ workflow: null, selectedSkills: [], engine: { runner: null, model: null, account: null } })
 
 export function TrackerRoute() {
+  const { tr } = useTranslations()
   const { id } = useParams()
   const { projectId } = useProjectScope()
   const association = useTrackerAssociation()
@@ -38,21 +40,21 @@ export function TrackerRoute() {
     const current = previous?.key === associationKey ? previous.value : emptySelection()
     return { key: associationKey, value: typeof update === 'function' ? update(current) : update }
   })
-  if (association.isPending) return <PageState text="Loading tracker…" />
+  if (association.isPending) return <PageState text={tr('Loading tracker…')} />
   if (association.isError) return (
     <div className="p-8 text-center text-sm text-danger">
       <p>{association.error.message}</p>
-      <Link className="mt-3 inline-block text-violet underline underline-offset-4" to="/settings/tracker">Open tracker settings</Link>
+      <Link className="mt-3 inline-block text-violet underline underline-offset-4" to="/settings/tracker">{tr('Open tracker settings')}</Link>
     </div>
   )
   if (!association.data.association) return <SetupState />
   // Connection-bound scopes survive disconnect so Settings can display their selection.
   // They must not mount a browser/watch without the corresponding credentials.
   if (association.data.association.connectionId) {
-    if (connection.isPending) return <PageState text="Loading tracker…" />
+    if (connection.isPending) return <PageState text={tr('Loading tracker…')} />
     if (connection.isError) return <div role="alert" className="p-8 text-center text-sm">
-      <p>Could not verify the tracker connection.</p>
-      <Button className="mt-3" variant="outline" onClick={() => void connection.refetch()}>Retry connection</Button>
+      <p>{tr('Could not verify the tracker connection.')}</p>
+      <Button className="mt-3" variant="outline" onClick={() => void connection.refetch()}>{tr('Retry connection')}</Button>
     </div>
     if (!connection.data.demo && (
       connection.data.connection?.id !== association.data.association.connectionId
@@ -67,17 +69,19 @@ function trackerAssociationKey(association: TrackerAssociation): string {
 }
 
 function SetupState() {
+  const { tr } = useTranslations()
   return (
     <div className="mx-auto flex min-h-[55vh] max-w-lg flex-col items-center justify-center p-6 text-center">
       <TicketIcon className="size-8 text-muted-foreground" />
-      <h1 className="mt-3 text-lg font-semibold">Connect an issue tracker</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Choose a project or team from your issue tracker in project settings.</p>
-      <Link className="mt-4 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" to="/settings/tracker">Open tracker settings</Link>
+      <h1 className="mt-3 text-lg font-semibold">{tr('Connect an issue tracker')}</h1>
+      <p className="mt-1 text-sm text-muted-foreground">{tr('Choose a project or team from your issue tracker in project settings.')}</p>
+      <Link className="mt-4 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground" to="/settings/tracker">{tr('Open tracker settings')}</Link>
     </div>
   )
 }
 
 function TrackerBrowse({ scopePending, association, selectedId, drafts, selection, setSelection }: { scopePending: boolean; association: TrackerAssociation; selectedId?: string; drafts: TrackerDraftCache; selection: TrackerHandoffSelection; setSelection: React.Dispatch<React.SetStateAction<TrackerHandoffSelection>> }) {
+  const { tr } = useTranslations()
   const queryClient = useQueryClient()
   const desktop = useIsDesktop()
   const listVisible = desktop || selectedId === undefined
@@ -115,15 +119,15 @@ function TrackerBrowse({ scopePending, association, selectedId, drafts, selectio
       <div className="flex min-w-0 items-center gap-2.5">
         <h1 className="text-lg font-semibold">{provider}</h1>
         <span className="min-w-0 truncate font-mono text-meta text-soft-foreground" title={association.externalName}>{association.externalName}</span>
-        <Link to="/settings/tracker" aria-label="Connection settings" title="Connection settings" className="ml-auto shrink-0 text-soft-foreground hover:text-foreground"><SettingsIcon className="size-3.5" /></Link>
-        <button type="button" aria-label="Refresh" title={`Refresh from ${provider}`} disabled={watch.checking || result.isFetching} onClick={() => void refresh()} className="flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-micro font-medium text-soft-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-55">
+        <Link to="/settings/tracker" aria-label={tr('Connection settings')} title={tr('Connection settings')} className="ml-auto shrink-0 text-soft-foreground hover:text-foreground"><SettingsIcon className="size-3.5" /></Link>
+        <button type="button" aria-label={tr('Refresh')} title={`${tr('Refresh from')} ${provider}`} disabled={watch.checking || result.isFetching} onClick={() => void refresh()} className="flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-micro font-medium text-soft-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-55">
           <RefreshCwIcon aria-hidden="true" className={cn('size-[9px]', (watch.checking || result.isFetching) && 'motion-safe:animate-spin')} />
-          {watch.checkedAt ? `synced ${shortAge(watch.checkedAt)} ago` : 'refresh'}
+          {watch.checkedAt ? `${tr('synced')} ${shortAge(watch.checkedAt)} ${tr('ago')}` : tr('refresh')}
         </button>
       </div>
       <div className="mt-2.5 flex items-center justify-between border-b border-border pb-2">
-        <h2 className="text-ui font-medium">Issues · {items.length}{result.hasNextPage ? '+' : ''}</h2>
-        <select aria-label="Issue state" className="min-w-0 rounded-md border border-input bg-card px-2 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={state} onChange={(event) => { setState(event.target.value as 'active' | 'all'); setStateExplicit(true) }}><option value="active">Active</option><option value="all">All states</option></select>
+        <h2 className="text-ui font-medium">{tr('Issues')} · {items.length}{result.hasNextPage ? '+' : ''}</h2>
+        <select aria-label={tr('Issue state')} className="min-w-0 rounded-md border border-input bg-card px-2 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={state} onChange={(event) => { setState(event.target.value as 'active' | 'all'); setStateExplicit(true) }}><option value="active">{tr('Active')}</option><option value="all">{tr('All states')}</option></select>
       </div>
       <form className="mt-2.5 flex items-center gap-2 pb-3" onSubmit={(event) => {
         event.preventDefault()
@@ -132,20 +136,20 @@ function TrackerBrowse({ scopePending, association, selectedId, drafts, selectio
         if (next === query && nextState === state) void refresh()
         else { setQuery(next); setState(nextState) }
       }}>
-        <div className="relative min-w-0 flex-1"><SearchIcon aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-soft-foreground" /><input type="search" aria-label="Search tracker" maxLength={256} className="w-full rounded-md border border-input bg-card py-1 pr-2 pl-7 text-ui outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={queryDraft} onChange={(event) => setQueryDraft(event.target.value)} placeholder="Search issues…" /></div>
-        <Button type="submit" variant="outline" size="sm" disabled={result.isFetching}>Search</Button>
+        <div className="relative min-w-0 flex-1"><SearchIcon aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-soft-foreground" /><input type="search" aria-label={tr('Search tracker')} maxLength={256} className="w-full rounded-md border border-input bg-card py-1 pr-2 pl-7 text-ui outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" value={queryDraft} onChange={(event) => setQueryDraft(event.target.value)} placeholder={tr('Search issues…')} /></div>
+        <Button type="submit" variant="outline" size="sm" disabled={result.isFetching}>{tr('Search')}</Button>
         <TrackerLabelFilter options={items.flatMap(item => item.labels)} selected={labels} onChange={setLabels} />
       </form>
     </header>
-    {watch.error ? <p role="status" className="px-4 py-2 text-xs text-danger">{watch.error} The displayed list may be outdated.</p> : null}
-    {watch.hasChanges ? <div className="m-2 rounded-md border border-border bg-muted/40 p-3 text-xs"><p>New changes are available. Your loaded pages have been preserved.</p><Button size="sm" className="mt-2" variant="outline" onClick={() => void watch.applyChanges()}>Show changes</Button></div> : null}
-    {result.isPending && listVisible ? <PageState text="Loading issues…" /> : null}
+    {watch.error ? <p role="status" className="px-4 py-2 text-xs text-danger">{watch.error} {tr('The displayed list may be outdated.')}</p> : null}
+    {watch.hasChanges ? <div className="m-2 rounded-md border border-border bg-muted/40 p-3 text-xs"><p>{tr('New changes are available. Your loaded pages have been preserved.')}</p><Button size="sm" className="mt-2" variant="outline" onClick={() => void watch.applyChanges()}>{tr('Show changes')}</Button></div> : null}
+    {result.isPending && listVisible ? <PageState text={tr('Loading issues…')} /> : null}
     {result.isError ? <Failure reason={result.error.message} generation={result.errorUpdatedAt} retryAfterSeconds={result.error instanceof TrackerRefreshError && result.error.failure.code === 'rate_limited' ? result.error.failure.retryAfterSeconds : undefined} retry={() => void result.restart()} /> : null}
     {failure && !failure.available ? <Failure reason={failure.reason} generation={result.dataUpdatedAt} retryAfterSeconds={failure.code === 'rate_limited' ? failure.retryAfterSeconds : undefined} retry={() => void result.restart()} /> : null}
-    {!result.isPending && !result.isError && !failure && items.length === 0 ? <PageState text={query.trim() ? 'No issues match this search.' : 'No issues in this view.'} /> : null}
+    {!result.isPending && !result.isError && !failure && items.length === 0 ? <PageState text={query.trim() ? tr('No issues match this search.') : tr('No issues in this view.')} /> : null}
     <ul data-slot="tracker-rows" className="flex flex-col gap-0.5 px-2 py-2">{items.map(item => <TrackerRow scopePending={scopePending} key={item.id} association={association} item={item} active={detailId === item.id} />)}</ul>
-    {result.hasNextPage ? <Button className="mx-4 mb-4 shrink-0" variant="outline" onClick={() => void result.fetchNextPage()} disabled={result.isFetchingNextPage}>Load more</Button> : null}
-  </>} detail={detailId ? <TrackerDetail scopePending={scopePending} key={`${trackerAssociationKey(association)}:${detailId}`} association={association} id={detailId} drafts={drafts} selection={selection} onSelectionChange={setSelection} /> : <CenteredState icon={<CircleDotIcon />} tone="neutral" heading="h2" title="Nothing selected" subtitle="Choose an issue from the list." />} />
+    {result.hasNextPage ? <Button className="mx-4 mb-4 shrink-0" variant="outline" onClick={() => void result.fetchNextPage()} disabled={result.isFetchingNextPage}>{tr('Load more')}</Button> : null}
+  </>} detail={detailId ? <TrackerDetail scopePending={scopePending} key={`${trackerAssociationKey(association)}:${detailId}`} association={association} id={detailId} drafts={drafts} selection={selection} onSelectionChange={setSelection} /> : <CenteredState icon={<CircleDotIcon />} tone="neutral" heading="h2" title={tr('Nothing selected')} subtitle={tr('Choose an issue from the list.')} />} />
 }
 
 function TrackerRow({ scopePending, association, item, active }: { scopePending: boolean; association: TrackerAssociation; item: TrackerItem; active: boolean }) {
@@ -200,6 +204,7 @@ export function trackerDetailReadyForDrag(
 }
 
 function TrackerDetail({ scopePending, association, id, selection, onSelectionChange, drafts }: { scopePending: boolean; drafts: TrackerDraftCache; association: TrackerAssociation; id: string; selection: TrackerHandoffSelection; onSelectionChange: React.Dispatch<React.SetStateAction<TrackerHandoffSelection>> }) {
+  const { tr } = useTranslations()
   const detail = useTrackerItem(association, id)
   const workflows = useWorkflows()
   const skills = useSkills()
@@ -214,18 +219,18 @@ function TrackerDetail({ scopePending, association, id, selection, onSelectionCh
       : null
   // Keep the scoped composer mounted through a failed refresh; retained context is never launchable.
   const item = detail.data?.available ? detail.data.item : lastItem
-  if (!item) return <div className="p-4"><DetailBackLink />{detail.isPending ? <PageState text="Loading full issue detail…" /> : failure}</div>
+  if (!item) return <div className="p-4"><DetailBackLink />{detail.isPending ? <PageState text={tr('Loading full issue detail…')} /> : failure}</div>
   return (
     <article data-slot="tracker-detail-inner" className="min-w-0 px-4 py-4 md:px-7 md:py-5">
       <DetailBackLink />
-      <p className="flex flex-wrap items-center gap-x-1.5 font-mono text-micro text-soft-foreground">
-        <span>{item.id}</span>·<span>issue</span>·<span>opened by {item.author}</span>·<span title={new Date(item.createdAt).toLocaleString()}>{shortAge(item.createdAt)} ago</span>·
-        <a className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground hover:underline" href={item.url} target="_blank" rel="noopener noreferrer">open on {TRACKER_PROVIDERS[association.kind].label}<ExternalLinkIcon aria-hidden="true" className="size-2.5" /></a>
+      <p className="flex flex-wrap items-center gap-x-1.5 font-mono text-meta text-soft-foreground">
+        <span>{item.id}</span>·<span>{tr('issue')}</span>·<span>{tr('opened by')} {item.author}</span>·<span title={new Date(item.createdAt).toLocaleString()}>{shortAge(item.createdAt)} {tr('ago')}</span>·
+        <a className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground hover:underline" href={item.url} target="_blank" rel="noopener noreferrer">{tr('open on')} {TRACKER_PROVIDERS[association.kind].label}<ExternalLinkIcon aria-hidden="true" className="size-2.5" /></a>
       </p>
       <h2 className="mt-2 text-xl leading-snug font-semibold">{item.title}</h2>
       <div className="mt-3 flex flex-wrap items-center gap-1.5"><span className="rounded border border-border px-1.5 py-px text-micro text-muted-foreground">{item.status}</span>{item.labels.map(label => <span key={label} className="rounded-full border border-border px-1.5 py-px text-micro text-muted-foreground">{label}</span>)}</div>
       {failure}
-      {trackerLosses(item).length ? <div className="mt-4 rounded-md border border-warning/50 bg-warning/10 p-3 text-sm"><AlertTriangleIcon className="mr-2 inline size-4" />This snapshot is incomplete. Review the limitations in the handoff panel.</div> : null}
+      {trackerLosses(item).length ? <div className="mt-4 rounded-md border border-warning/50 bg-warning/10 p-3 text-sm"><AlertTriangleIcon className="mr-2 inline size-4" />{tr('This snapshot is incomplete. Review the limitations in the handoff panel.')}</div> : null}
       <section data-slot="tracker-body" className="mt-5 text-sm"><Markdown>{item.body.trim() || '*No description was provided.*'}</Markdown></section>
       <TrackerHandoff scopePending={scopePending} key={`${trackerAssociationKey(association)}:${item.id}`} item={item} detailUnavailable={detail.isError || !detail.data?.available} drafts={drafts} selection={selection} onSelectionChange={onSelectionChange} workflows={workflows.data?.workflows ?? []} skills={skills.data ?? []} />
     </article>
@@ -233,6 +238,7 @@ function TrackerDetail({ scopePending, association, id, selection, onSelectionCh
 }
 
 function Failure({ reason, retry, retryAfterSeconds = 0, generation }: { reason: string; retry: () => void; retryAfterSeconds?: number; generation: number }) {
+  const { tr } = useTranslations()
   const [cooldown, setCooldown] = useState(retryAfterSeconds)
   useEffect(() => setCooldown(retryAfterSeconds), [reason, retryAfterSeconds, generation])
   useEffect(() => {
@@ -240,7 +246,7 @@ function Failure({ reason, retry, retryAfterSeconds = 0, generation }: { reason:
     const timer = window.setInterval(() => setCooldown((value) => Math.max(0, value - 1)), 1_000)
     return () => window.clearInterval(timer)
   }, [cooldown > 0])
-  return <div className="mt-5 rounded-md border border-danger/30 bg-danger/5 p-4 text-sm"><p className="text-danger">{reason}</p><div className="mt-3 flex items-center gap-3"><Button variant="outline" disabled={cooldown > 0} onClick={retry}><RefreshCwIcon className="size-3.5" />{cooldown > 0 ? `Retry in ${cooldown}s` : 'Retry'}</Button><Link className="text-xs text-violet underline underline-offset-4" to="/settings/tracker">Tracker settings</Link></div></div>
+  return <div className="mt-5 rounded-md border border-danger/30 bg-danger/5 p-4 text-sm"><p className="text-danger">{reason}</p><div className="mt-3 flex items-center gap-3"><Button variant="outline" disabled={cooldown > 0} onClick={retry}><RefreshCwIcon className="size-3.5" />{cooldown > 0 ? `${tr('Retry in')} ${cooldown}s` : tr('Retry')}</Button><Link className="text-xs text-violet underline underline-offset-4" to="/settings/tracker">{tr('Tracker settings')}</Link></div></div>
 }
 
 function PageState({ text, danger = false }: { text: string; danger?: boolean }) {
@@ -248,5 +254,6 @@ function PageState({ text, danger = false }: { text: string; danger?: boolean })
 }
 
 function DetailBackLink() {
-  return <Link className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden" to="/tracker"><ArrowLeftIcon aria-hidden="true" className="size-3.5" />Back to the list</Link>
+  const { tr } = useTranslations()
+  return <Link className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden" to="/tracker"><ArrowLeftIcon aria-hidden="true" className="size-3.5" />{tr('Back to the list')}</Link>
 }

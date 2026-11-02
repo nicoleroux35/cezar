@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toaster'
 import { providerStatusFor } from '@/lib/provider-status'
-import { writeClipboard } from '@/lib/clipboard'
+import { useTranslations } from '@/i18n/use-translations'
 
 /** The provider cards this pane renders, in order. Exported so tests count them from the
  *  source of truth rather than from a literal that a new runner silently invalidates. */
@@ -73,6 +73,7 @@ function withProviderEnabled(
 }
 
 export function ProviderSettings() {
+  const { tr } = useTranslations()
   const status = useProviderStatus()
   const refresh = useRefreshProviderStatus()
   const retry = useRetryProviderAuth()
@@ -165,8 +166,8 @@ export function ProviderSettings() {
       setManual(null)
       toast(
         result.opened
-          ? 'Finish signing in in the terminal, then check again.'
-          : 'Provider is already connected.',
+          ? tr('Finish signing in in the terminal, then check again.')
+          : tr('Provider is already connected.'),
       )
       await queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.providerStatus })
     },
@@ -182,10 +183,10 @@ export function ProviderSettings() {
 
   const copyCommand = async (command: string) => {
     try {
-      await writeClipboard(command)
-      toast('Command copied')
+      await navigator.clipboard.writeText(command)
+      toast(tr('Command copied'))
     } catch {
-      toast('Could not copy the command', { tone: 'danger' })
+      toast(tr('Could not copy the command'), { tone: 'danger' })
     }
   }
 
@@ -216,7 +217,7 @@ export function ProviderSettings() {
             disabled={status.isFetching}
             onClick={() => void status.refetch()}
           >
-            Retry
+            {tr('Retry')}
           </Button>
         </div>
       ) : null}
@@ -228,7 +229,7 @@ export function ProviderSettings() {
           const presentation = state
             ? STATUS_PRESENTATION[state]
             : status.isPending
-              ? { label: 'Checking…', tone: 'neutral' as const }
+              ? { label: tr('Checking…'), tone: 'neutral' as const }
               : STATUS_PRESENTATION.unknown
           const isConnecting = connect.isPending && connect.variables === provider.id
           const isChecking = refresh.isPending
@@ -247,15 +248,15 @@ export function ProviderSettings() {
                     <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                       <StatusDot tone={presentation.tone} pulse={status.isPending} />
                       <span>{presentation.label}</span>
-                      {current?.enabled === false ? <span>Disabled</span> : null}
+                      {current?.enabled === false ? <span>{tr('Disabled')}</span> : null}
                     </div>
                     {state === 'not-installed' ? (
                       <p className="mt-1.5 text-xs text-soft-foreground">
-                        Install {provider.label}, then run <code>{provider.login}</code>.
+                        {tr('Install')} {provider.label}, {tr('then run')} <code>{provider.login}</code>.
                       </p>
                     ) : state === 'unknown' || (status.isError && !state) ? (
                       <p className="mt-1.5 text-xs text-soft-foreground">
-                        {current?.hint ?? 'Verification failed. Check again when the provider is available.'}
+                        {current?.hint ?? tr('Verification failed. Check again when the provider is available.')}
                       </p>
                     ) : current?.hint ? (
                       <p className="mt-1.5 text-xs text-soft-foreground">{current.hint}</p>
@@ -266,7 +267,7 @@ export function ProviderSettings() {
                     {state !== 'not-installed' ? (
                       <Switch
                         checked={current?.enabled ?? true}
-                        aria-label={`Use ${provider.label}`}
+                        aria-label={`${tr('Use')} ${provider.label}`}
                         onCheckedChange={(enabled) => queueToggle(provider.id, enabled)}
                       />
                     ) : null}
@@ -275,14 +276,14 @@ export function ProviderSettings() {
                       variant="ghost"
                       size="sm"
                       data-action="provider-check"
-                      aria-label={`Check ${provider.label}`}
-                      title={`Verify ${provider.label} installation and authentication`}
+                      aria-label={`${tr('Check')} ${provider.label}`}
+                      title={`${tr('Verify')} ${provider.label} ${tr('installation and authentication')}`}
                       disabled={refresh.isPending || status.isPending}
                       onClick={() => refresh.mutate(undefined, {
                         onError: (error) => toast(error.message, { tone: 'danger' }),
                       })}
                     >
-                      {isChecking ? 'Checking…' : 'Check'}
+                      {isChecking ? tr('Checking…') : tr('Check')}
                     </Button>
                     {state === 'disconnected' ? (
                       <Button
@@ -292,7 +293,7 @@ export function ProviderSettings() {
                         disabled={connect.isPending}
                         onClick={() => connect.mutate(provider.id)}
                       >
-                        {isConnecting ? 'Opening…' : 'Connect'}
+                        {isConnecting ? tr('Opening…') : tr('Connect')}
                       </Button>
                     ) : null}
                     {incidentId !== undefined ? (
@@ -305,21 +306,20 @@ export function ProviderSettings() {
                           retry.mutate(
                             { provider: provider.id, authFailureId: incidentId },
                             {
-                              onSuccess: () => toast(`${provider.label} can be tried again.`),
+                              onSuccess: () => toast(`${provider.label} ${tr('can be tried again.')}`),
                               onError: (error) => toast(error.message, { tone: 'danger' }),
                             },
                           )
                         }
                       >
-                        Try again
+                        {tr('Try again')}
                       </Button>
                     ) : null}
                   </div>
                 </div>
                 {incidentId !== undefined ? (
                   <p className="mt-2 text-xs text-soft-foreground">
-                    Use this after completing the provider sign-in flow. cezar cannot validate the
-                    credential without a task/model request; it will verify it on the next task.
+                    {tr('Use this after completing the provider sign-in flow. cezar cannot validate the credential without a task/model request; it will verify it on the next task.')}
                   </p>
                 ) : null}
               </div>
@@ -327,7 +327,7 @@ export function ProviderSettings() {
               {manual?.provider === provider.id && state !== 'connected' ? (
                 <div
                   role="region"
-                  aria-label={`${manual.label} manual sign-in`}
+                  aria-label={`${manual.label} ${tr('manual sign-in')}`}
                   className="rounded-md border border-pending/40 bg-pending/5 px-3.5 py-3"
                 >
                   <p className="text-ui text-foreground">{manual.message}</p>
@@ -341,7 +341,7 @@ export function ProviderSettings() {
                       size="sm"
                       onClick={() => void copyCommand(manual.command)}
                     >
-                      Copy command
+                      {tr('Copy command')}
                     </Button>
                   </div>
                 </div>

@@ -4,6 +4,7 @@ import { ArrowDownIcon, ArrowUpIcon, CloudUploadIcon, RefreshCwIcon } from 'luci
 import { ApiError, type RepoSyncAction } from '@/api/client'
 import { useRepoSync, useRepoSyncAction } from '@/api/queries'
 import type { BranchTracking, RepoSync } from '@open-mercato/cezar-api-client'
+import { useTranslations } from '@/i18n/use-translations'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
 import { cn } from '@/lib/utils'
@@ -14,6 +15,7 @@ import { cn } from '@/lib/utils'
  * The server never fetches on its own, so "last fetched" is shown rather than implied.
  */
 export function RepoSyncBar() {
+  const { tr } = useTranslations()
   const sync = useRepoSync()
   const action = useRepoSyncAction()
   if (!sync.data) return null
@@ -32,13 +34,13 @@ export function RepoSyncBar() {
   return (
     <div data-slot="repo-sync" className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-meta">
       {s.upstream ? (
-        <span data-slot="repo-upstream" className="truncate font-mono text-soft-foreground" title="Upstream">
+        <span data-slot="repo-upstream" className="truncate font-mono text-soft-foreground" title={tr('Upstream')}>
           → {s.upstream}
         </span>
       ) : s.branch ? (
-        <span data-slot="repo-upstream" className="text-soft-foreground">not published</span>
+        <span data-slot="repo-upstream" className="text-soft-foreground">{tr('not published')}</span>
       ) : (
-        <span data-slot="repo-upstream" className="text-soft-foreground">detached HEAD</span>
+        <span data-slot="repo-upstream" className="text-soft-foreground">{tr('detached HEAD')}</span>
       )}
       {s.upstream ? (
         <SyncCounts ahead={s.ahead} behind={s.behind} />
@@ -46,23 +48,23 @@ export function RepoSyncBar() {
         <SyncCounts ahead={s.outgoing.length} behind={null} />
       ) : null}
       <span data-slot="repo-fetched" className="hidden text-soft-foreground sm:inline">
-        {s.lastFetchedAt ? `fetched ${relativeTime(s.lastFetchedAt)}` : 'never fetched'}
+        {s.lastFetchedAt ? `${tr('fetched')} ${relativeTime(s.lastFetchedAt)}` : tr('never fetched')}
       </span>
       <div className="ml-auto flex items-center gap-1">
-        <SyncButton which="fetch" label="Fetch" busy={busy} pending={pending} onClick={run} disabled={!s.pushRemote}>
+        <SyncButton which="fetch" label={tr('Fetch')} busy={busy} pending={pending} onClick={run} disabled={!s.pushRemote}>
           <RefreshCwIcon aria-hidden="true" className={cn(busy && pending === 'fetch' && 'animate-spin')} />
         </SyncButton>
         {s.upstream ? (
           <>
-            <SyncButton which="pull" label="Pull" busy={busy} pending={pending} onClick={run} disabled={!s.behind}>
+            <SyncButton which="pull" label={tr('Pull')} busy={busy} pending={pending} onClick={run} disabled={!s.behind}>
               <ArrowDownIcon aria-hidden="true" />
             </SyncButton>
-            <SyncButton which="push" label="Push" busy={busy} pending={pending} onClick={run} disabled={!s.ahead}>
+            <SyncButton which="push" label={tr('Push')} busy={busy} pending={pending} onClick={run} disabled={!s.ahead}>
               <ArrowUpIcon aria-hidden="true" />
             </SyncButton>
             <SyncButton
               which="sync"
-              label="Sync"
+              label={tr('Sync')}
               busy={busy}
               pending={pending}
               onClick={run}
@@ -73,7 +75,7 @@ export function RepoSyncBar() {
             </SyncButton>
           </>
         ) : s.branch && s.pushRemote ? (
-          <SyncButton which="push" label="Publish branch" busy={busy} pending={pending} onClick={run} variant="outline">
+          <SyncButton which="push" label={tr('Publish branch')} busy={busy} pending={pending} onClick={run} variant="outline">
             <CloudUploadIcon aria-hidden="true" />
           </SyncButton>
         ) : null}
@@ -118,23 +120,24 @@ function SyncButton({
 
 /** `↑2 ↓1`, omitting a side that is unknown; `in sync` when both are zero. */
 export function SyncCounts({ ahead, behind }: { ahead: number | null; behind: number | null }) {
+  const { tr } = useTranslations()
   if (ahead === null && behind === null) return null
   if (!ahead && !behind) {
     return (
       <span data-slot="sync-counts" className="text-soft-foreground">
-        in sync
+        {tr('in sync')}
       </span>
     )
   }
   return (
     <span data-slot="sync-counts" className="flex items-center gap-1 font-mono">
       {ahead ? (
-        <span data-sync="ahead" title={`${ahead} to push`} className="text-primary">
+        <span data-sync="ahead" title={`${ahead} ${tr('to push')}`} className="text-primary">
           ↑{ahead}
         </span>
       ) : null}
       {behind ? (
-        <span data-sync="behind" title={`${behind} to pull`} className="text-warning">
+        <span data-sync="behind" title={`${behind} ${tr('to pull')}`} className="text-warning">
           ↓{behind}
         </span>
       ) : null}

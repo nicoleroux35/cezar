@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
 import { runTitle } from '@/lib/task-groups'
 import { isSubmitShortcut } from '@/lib/use-submit-shortcut'
+import { useTranslations } from '@/i18n/use-translations'
 
 /**
  * The Commit dialog (spec #390: "message box prefilled with auto-summary; commit -A").
@@ -39,6 +40,7 @@ export function CommitDialog({
   /** Fired once the commit has landed (before the dialog closes). */
   onCommitted?: () => void
 }) {
+  const { tr } = useTranslations()
   const queryClient = useQueryClient()
   const [message, setMessage] = useState('')
 
@@ -78,16 +80,16 @@ export function CommitDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-slot="commit-dialog">
         <DialogHeader>
-          <DialogTitle>{andPush ? 'Commit and push' : 'Commit changes'}</DialogTitle>
+          <DialogTitle>{andPush ? tr('Commit and push') : tr('Commit changes')}</DialogTitle>
           <DialogDescription>
-            Stages everything in the task&apos;s worktree (git add -A) and commits to{' '}
-            {run.branch ? <span className="font-mono">{run.branch}</span> : 'its branch'}
-            {andPush ? ', then pushes it' : ''}.
+            {tr("Stages everything in the task's worktree (git add -A) and commits to")}{' '}
+            {run.branch ? <span className="font-mono">{run.branch}</span> : tr('its branch')}
+            {andPush ? tr(', then pushes it') : ''}.
           </DialogDescription>
         </DialogHeader>
         <Textarea
           data-slot="commit-message"
-          aria-label="Commit message"
+          aria-label={tr('Commit message')}
           rows={3}
           value={message}
           onChange={(event) => setMessage(event.target.value)}
@@ -111,7 +113,7 @@ export function CommitDialog({
         />
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {tr('Cancel')}
           </Button>
           <Button
             data-slot="commit-confirm"

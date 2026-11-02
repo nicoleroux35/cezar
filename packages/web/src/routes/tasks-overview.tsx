@@ -38,6 +38,7 @@ import { isRunActive } from '@/routes/task-thread/run-actions'
 import { useRunUsage } from '@/api/global-events'
 import { queryKeys, useHealth, usePinRun, useReferenceProjectId, useRepo, useRuns, writePatchedRunToCaches } from '@/api/queries'
 import { useTranslations } from '@/i18n/use-translations'
+import type { TranslationText } from '@/i18n/text'
 import { BUCKET_TRANSLATION_KEYS } from '@/lib/task-groups'
 import type { RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
 import { CenteredState } from '@/components/centered-state'
@@ -241,7 +242,7 @@ export function TasksOverview({
   /** True while a bulk delete is in flight: the confirm waits on it rather than fire twice. */
   deleting?: boolean
 }) {
-  const { t } = useTranslations()
+  const { t, tr } = useTranslations()
   const [query, setQuery] = React.useState('')
   // The subtask accordion (#1110): ids of the parents whose dispatched rows are unfolded.
   // Empty on arrival — collapsed is the default, and the chip on the parent row is the handle.
@@ -559,7 +560,7 @@ export function TasksOverview({
             onClick={() => setReorderMode(!reorderMode)}
           >
             <GripVerticalIcon className="size-3.5" aria-hidden="true" />
-            {reorderMode ? 'Done' : 'Reorder'}
+            {reorderMode ? tr('Done') : tr('Reorder')}
           </Button>
         ) : null}
         {/* Icon-only, with an aria-label for the same reason the others have text: the header is
@@ -574,8 +575,8 @@ export function TasksOverview({
             type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search tasks…"
-            aria-label="Search tasks"
+            placeholder={tr('Search tasks…')}
+            aria-label={tr('Search tasks')}
             className="h-9 w-full rounded-md border border-input bg-card pr-3 pl-8 text-ui text-foreground outline-none placeholder:text-soft-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
           />
         </div>
@@ -623,7 +624,7 @@ export function TasksOverview({
         {/* A project whose only tasks are SCHEDULED has no runs to show yet — say so instead of
             claiming the table is empty (upstream's deferred start). */}
         {runs === undefined ? null : hasScheduledTasks && all.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No tasks have started yet.</p>
+          <p className="text-sm text-muted-foreground">{tr('No tasks have started yet.')}</p>
         ) : visible.length === 0 ? (
           <TasksEmptyState
             view={view}
@@ -646,8 +647,7 @@ export function TasksOverview({
                 <div className="rounded-lg border border-border bg-muted/30 p-4">
                   <p className="text-sm text-muted-foreground">
                     <GripVerticalIcon className="inline size-4 align-text-bottom" aria-hidden="true" />
-                    {' '}Drag tasks and groups to reorder them. Click a group to unfold its tasks.
-                    Click "Done" to save.
+                    {' '}{tr('Drag tasks and groups to reorder them. Click a group to unfold its tasks. Click "Done" to save.')}
                   </p>
                 </div>
                 <ReorderableTaskList
@@ -835,11 +835,10 @@ export function TasksOverview({
           >
             <ScaleIcon className="size-[15px] shrink-0 text-soft-foreground" aria-hidden="true" />
             <span>
-              <strong className="font-semibold text-foreground">{group.title}</strong> — {group.count} variants
-              finished
+              <strong className="font-semibold text-foreground">{group.title}</strong> — {group.count} {tr('variants finished')}
             </span>
             <Button asChild variant="outline" size="sm" className="md:ml-auto">
-              <Link to={`/compare/${group.groupId}`}>Compare</Link>
+              <Link to={`/compare/${group.groupId}`}>{tr('Compare')}</Link>
             </Button>
           </div>
         ))}
@@ -850,7 +849,7 @@ export function TasksOverview({
       <Link
         to="/new"
         data-slot="new-task-fab"
-        aria-label="New task"
+        aria-label={tr('New task')}
         className="fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-20 inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-modal md:hidden"
       >
         <PlusIcon className="size-[22px]" aria-hidden="true" />
@@ -971,6 +970,7 @@ function TasksEmptyState({
   onShowAll?: () => void
   firstRun?: React.ReactNode
 }) {
+  const { tr } = useTranslations()
   const needle = query.trim()
   const kind = needle
     ? 'search-miss'
@@ -988,10 +988,10 @@ function TasksEmptyState({
           heading="h2"
           icon={<SearchXIcon />}
           tone="neutral"
-          title="No tasks match these filters"
+          title={tr('No tasks match these filters')}
           actions={
             <Button type="button" variant="outline" onClick={onClearFilters}>
-              Clear filters
+              {tr('Clear filters')}
             </Button>
           }
         />
@@ -1000,15 +1000,15 @@ function TasksEmptyState({
           heading="h2"
           icon={<WorkflowIcon />}
           tone="neutral"
-          title={origin === 'regular' ? 'No regular tasks here' : 'No automation tasks here'}
+          title={origin === 'regular' ? tr('No regular tasks here') : tr('No automation tasks here')}
           subtitle={
             origin === 'regular'
-              ? 'Tasks started by automations are hidden.'
-              : 'Only tasks started by automations are shown.'
+              ? tr('Tasks started by automations are hidden.')
+              : tr('Only tasks started by automations are shown.')
           }
           actions={
             <Button type="button" variant="outline" onClick={onShowAll}>
-              Show all tasks
+              {tr('Show all tasks')}
             </Button>
           }
         />
@@ -1017,16 +1017,16 @@ function TasksEmptyState({
           heading="h2"
           icon={<SearchXIcon />}
           tone="neutral"
-          title="No matching tasks"
-          subtitle={`No tasks match “${needle}”.`}
+          title={tr('No matching tasks')}
+          subtitle={`${tr('No tasks match')} “${needle}”.`}
         />
       ) : kind === 'archive' ? (
         <CenteredState
           heading="h2"
           icon={<ArchiveIcon />}
           tone="neutral"
-          title="Nothing archived yet"
-          subtitle="Finished tasks you archive land here."
+          title={tr('Nothing archived yet')}
+          subtitle={tr('Finished tasks you archive land here.')}
         />
       ) : firstRun ? (
         firstRun
@@ -1036,13 +1036,13 @@ function TasksEmptyState({
           icon={<ListChecksIcon />}
           tone="primary"
           backdrop
-          title="No tasks yet"
-          subtitle="Describe a task to get started."
+          title={tr('No tasks yet')}
+          subtitle={tr('Describe a task to get started.')}
           actions={
             <Button asChild>
               <Link to="/new">
                 <PlusIcon aria-hidden="true" />
-                New task
+                {tr('New task')}
               </Link>
             </Button>
           }
@@ -1084,6 +1084,7 @@ function TasksFilterBar({
   sortBy: SortBy
   onSortByChange: (next: SortBy) => void
 }) {
+  const { tr } = useTranslations()
   const inView = React.useMemo(
     () => runs.filter((run) => (view === 'archived' ? run.archived : !run.archived)),
     [runs, view],
@@ -1108,15 +1109,15 @@ function TasksFilterBar({
     <div data-slot="tasks-filters" className="mb-3 flex flex-wrap items-center gap-1.5">
       <Segmented
         slot="task-origin"
-        label="Show tasks started by"
+        label={tr('Show tasks started by')}
         value={origin}
-        options={TASK_ORIGIN_OPTIONS.map((option) => ({ ...option, count: perOrigin[option.value] }))}
+        options={TASK_ORIGIN_OPTIONS.map((option) => ({ ...option, label: tr(option.label as TranslationText), count: perOrigin[option.value] }))}
         onChange={onOriginChange}
       />
       <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
       <FacetFilter
         slot="status"
-        label="Status"
+        label={tr('Status')}
         selected={filters.statuses}
         onToggle={(value) => toggle('statuses', value)}
         onClear={() => clear('statuses')}
@@ -1125,11 +1126,11 @@ function TasksFilterBar({
           label: status,
           count: statusCounts.get(status) ?? 0,
         }))}
-        emptyLabel="No tasks to filter"
+        emptyLabel={tr('No tasks to filter')}
       />
       <FacetFilter
         slot="workflow"
-        label="Workflow"
+        label={tr('Workflow')}
         selected={filters.workflows}
         onToggle={(value) => toggle('workflows', value)}
         onClear={() => clear('workflows')}
@@ -1138,12 +1139,12 @@ function TasksFilterBar({
           label: workflow,
           count: workflowCounts.get(workflow) ?? 0,
         }))}
-        emptyLabel="No tasks to filter"
+        emptyLabel={tr('No tasks to filter')}
       />
       {origin !== 'regular' && automationIds.length > 0 ? (
         <FacetFilter
           slot="automation"
-          label="Automation"
+          label={tr('Automation')}
           selected={filters.automations}
           onToggle={(value) => toggle('automations', value)}
           onClear={() => clear('automations')}
@@ -1152,7 +1153,7 @@ function TasksFilterBar({
             label: automationNames?.get(id) ?? id,
             count: automationCounts.get(id) ?? 0,
           }))}
-          emptyLabel="No automation tasks"
+          emptyLabel={tr('No automation tasks')}
         />
       ) : null}
       {active > 0 ? (
@@ -1163,13 +1164,13 @@ function TasksFilterBar({
           className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <XIcon className="size-3" aria-hidden="true" />
-          Clear ({active})
+          {tr('Clear')} ({active})
         </button>
       ) : null}
       {/* The all-projects bar's labelled-segmented grammar (its Group by and Sort by). */}
       <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-      <span className="text-meta font-medium text-soft-foreground">Sort by</span>
-      <Segmented slot="sort-by" label="Sort tasks by" value={sortBy} options={SORT_OPTIONS} onChange={onSortByChange} />
+      <span className="text-meta font-medium text-soft-foreground">{tr('Sort by')}</span>
+      <Segmented slot="sort-by" label={tr('Sort tasks by')} value={sortBy} options={SORT_OPTIONS.map((option) => ({ ...option, label: tr(option.label as TranslationText) }))} onChange={onSortByChange} />
     </div>
   )
 }
@@ -1441,10 +1442,11 @@ function TaskColumnHeader({
   onToggle: (id: TaskColumnId) => void
   disabled: boolean
 }) {
+  const { tr } = useTranslations()
   if (!column.canFold) {
     return (
       <Th columnId={column.id} right={column.align === 'right'}>
-        {column.label}
+        {tr(column.label as TranslationText)}
       </Th>
     )
   }
@@ -1456,7 +1458,7 @@ function TaskColumnHeader({
         <TooltipTrigger asChild>
           <button
             type="button"
-            aria-label={`${action} ${column.label} column`}
+            aria-label={`${tr(action as TranslationText)} ${column.label} column`}
             aria-pressed={expanded}
             disabled={disabled}
             onClick={() => onToggle(column.id)}
@@ -1479,7 +1481,7 @@ function TaskColumnHeader({
             )}
           </button>
         </TooltipTrigger>
-        <TooltipContent side="top">{column.label} · {action} column</TooltipContent>
+        <TooltipContent side="top">{tr(column.label as TranslationText)} · {tr(action as TranslationText)} {tr('column')}</TooltipContent>
       </Tooltip>
     </Th>
   )
@@ -1563,6 +1565,7 @@ const TableRow = React.memo(function TableRow({
   onToggleSelect?: (id: string) => void
   gitRepo: boolean
 }) {
+  const { tr } = useTranslations()
   const navigate = useNavigate()
   const attention = deriveAttention(run)
   const scheduled = scheduledResume(run)
@@ -1613,7 +1616,7 @@ const TableRow = React.memo(function TableRow({
               colSpan={2}
               className={cn(TD_BASE, 'text-right font-mono text-meta text-soft-foreground')}
             >
-              {run.paused ? 'paused' : `#${queuePosition} in queue`}
+              {run.paused ? tr('paused') : `#${queuePosition} ${tr('in queue')}`}
             </td>
           ) : (
             <UsageTds
@@ -1831,6 +1834,7 @@ function TitleCell({
   onRename: (id: string, title: string) => void
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
 }) {
+  const { tr } = useTranslations()
   const title = runTitle(run)
   const editor = useTitleEditor(title, (next) => onRename(run.id, next))
   // Read/unread (#unread-done-items): promote an unread done item (bright + semibold)
@@ -1898,7 +1902,7 @@ function TitleCell({
       <button
         type="button"
         data-slot="row-rename"
-        aria-label="Rename task"
+        aria-label={tr('Rename task')}
         onClick={editor.begin}
         className="shrink-0 rounded-sm p-0.5 text-soft-foreground opacity-0 transition-opacity group-hover/row:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
       >
@@ -2000,6 +2004,7 @@ const TaskCard = React.memo(function TaskCard({
   onToggleSelect?: (id: string) => void
   gitRepo: boolean
 }) {
+  const { tr } = useTranslations()
   const navigate = useNavigate()
   const attention = deriveAttention(run)
   const scheduled = scheduledResume(run)
@@ -2093,7 +2098,7 @@ const TaskCard = React.memo(function TaskCard({
         {queuePosition !== null ? (
           <>
             <Sep />
-            <span data-slot="queue-note">#{queuePosition} in queue</span>
+            <span data-slot="queue-note">#{queuePosition} {tr('in queue')}</span>
           </>
         ) : (
           <>
@@ -2179,11 +2184,12 @@ function branchPending(run: RunRecord, gitRepo: boolean): boolean {
 }
 
 function BranchSkeleton() {
+  const { tr } = useTranslations()
   return (
     <Skeleton
       data-slot="branch-skeleton"
       role="status"
-      aria-label="naming branch"
+      aria-label={tr('naming branch')}
       className="inline-block h-4 w-24 align-middle"
     />
   )
@@ -2366,6 +2372,7 @@ export function TasksOverviewRoute() {
  * Pause button for active tasks — parks the run, resumable via Start.
  */
 function PauseButton({ runId }: { runId: string }) {
+  const { tr } = useTranslations()
   const queryClient = useQueryClient()
   const pause = useMutation({
     mutationFn: async () => {
@@ -2374,7 +2381,7 @@ function PauseButton({ runId }: { runId: string }) {
     },
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
-      toast(result.paused ? 'Task paused' : 'The task already settled — nothing to pause.')
+      toast(result.paused ? tr('Task paused') : tr('The task already settled — nothing to pause.'))
     },
     onError: (error: Error) => {
       toast(error.message, { tone: 'danger' })
@@ -2386,7 +2393,7 @@ function PauseButton({ runId }: { runId: string }) {
       size="sm"
       variant="ghost"
       data-action="task-pause"
-      title="Park this task — resume it with Start"
+      title={tr('Park this task — resume it with Start')}
       onClick={(e) => {
         e.stopPropagation()
         pause.mutate()
@@ -2395,7 +2402,7 @@ function PauseButton({ runId }: { runId: string }) {
       className="h-6 gap-1 px-2 text-xs"
     >
       <PauseIcon className="size-3" aria-hidden="true" />
-      {pause.isPending ? 'Pausing…' : 'Pause'}
+      {pause.isPending ? tr('Pausing…') : tr('Pause')}
     </Button>
   )
 }
@@ -2404,6 +2411,7 @@ function PauseButton({ runId }: { runId: string }) {
  * Stop button for active or paused tasks — ends the run as cancelled.
  */
 function StopButton({ runId }: { runId: string }) {
+  const { tr } = useTranslations()
   const queryClient = useQueryClient()
   const stop = useMutation({
     mutationFn: async () => {
@@ -2412,7 +2420,7 @@ function StopButton({ runId }: { runId: string }) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
-      toast('Task stopped')
+      toast(tr('Task stopped'))
     },
     onError: (error: Error) => {
       toast(error.message, { tone: 'danger' })
@@ -2424,7 +2432,7 @@ function StopButton({ runId }: { runId: string }) {
       size="sm"
       variant="ghost"
       data-action="task-stop"
-      title="Stop this task now"
+      title={tr('Stop this task now')}
       onClick={(e) => {
         e.stopPropagation()
         stop.mutate()
@@ -2433,7 +2441,7 @@ function StopButton({ runId }: { runId: string }) {
       className="h-6 gap-1 px-2 text-xs"
     >
       <CircleStopIcon className="size-3" aria-hidden="true" />
-      {stop.isPending ? 'Stopping…' : 'Stop'}
+      {stop.isPending ? tr('Stopping…') : tr('Stop')}
     </Button>
   )
 }
@@ -2442,6 +2450,7 @@ function StopButton({ runId }: { runId: string }) {
  * Start button for paused tasks — shown inline in the status column.
  */
 function StartPausedButton({ runId }: { runId: string }) {
+  const { tr } = useTranslations()
   const queryClient = useQueryClient()
   const start = useMutation({
     mutationFn: async () => {
@@ -2450,7 +2459,7 @@ function StartPausedButton({ runId }: { runId: string }) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
-      toast('Task started')
+      toast(tr('Task started'))
     },
     onError: (error: Error) => {
       toast(error.message, { tone: 'danger' })
@@ -2469,7 +2478,7 @@ function StartPausedButton({ runId }: { runId: string }) {
       disabled={start.isPending}
       className="h-6 px-2 text-xs"
     >
-      {start.isPending ? 'Starting…' : 'Start'}
+      {start.isPending ? tr('Starting…') : tr('Start')}
     </Button>
   )
 }
