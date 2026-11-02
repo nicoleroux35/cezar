@@ -1,5 +1,6 @@
 import {
   BellIcon,
+  WebhookIcon,
   BookmarkIcon,
   BotIcon,
   FileCogIcon,
@@ -25,6 +26,7 @@ import { AccountsSection } from './accounts-section'
 import { AgentConfigSection } from './agent-config-section'
 import { AgentsSection } from './agents-section'
 import { AppearanceSection } from './appearance'
+import { GlobalInstructionsSection } from './global-instructions-section'
 import { InstructionsSection } from './instructions-section'
 import { KeyboardSection } from './keyboard-section'
 import { BookmarkletsSection } from './bookmarklets-section'
@@ -38,6 +40,7 @@ import { TasksSection } from './tasks-section'
 import { WorktreesSection } from './worktrees-section'
 import { TrackerSection } from './tracker-section'
 import { ProjectSecretsSection, WorkspaceSecretsSection } from './secrets-section'
+import { WebhooksSection } from './webhooks-section'
 import { IntegrationsSection } from './integrations-section'
 
 /**
@@ -64,6 +67,7 @@ export type SettingsSectionId =
   | 'agent-config'
   | 'forges'
   | 'instructions'
+  | 'global-instructions'
   | 'tasks'
   | 'resources'
   | 'worktrees'
@@ -74,6 +78,7 @@ export type SettingsSectionId =
   | 'tracker'
   | 'secrets'
   | 'integrations'
+  | 'webhooks'
   | 'workspace-secrets'
   | 'privacy'
 
@@ -109,6 +114,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     description: 'Encrypted values for this project’s check steps and cezar — never for agents.',
     icon: KeyRoundIcon,
     component: ProjectSecretsSection,
+    scope: 'project',
+  },
+  {
+    id: 'webhooks',
+    title: 'Webhooks',
+    description: 'Send task updates to Slack, Discord or your own endpoint.',
+    icon: WebhookIcon,
+    component: WebhooksSection,
     scope: 'project',
   },
   {
@@ -206,6 +219,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     description: 'Updates for skills installed on this machine.',
     icon: PackageCheckIcon,
     component: SkillsSection,
+    scope: 'global',
+  },
+  {
+    id: 'global-instructions',
+    title: 'Instructions',
+    description: 'A system prompt for every task in every project; a project’s own wins where they conflict.',
+    icon: MessageSquareTextIcon,
+    component: GlobalInstructionsSection,
     scope: 'global',
   },
   {

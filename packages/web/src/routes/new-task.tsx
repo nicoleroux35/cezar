@@ -1,4 +1,4 @@
-import { StartTimePicker, type StartChoice } from '@/components/start-time-picker'
+import { previewSettingsKey, StartTimePicker, type StartChoice } from '@/components/start-time-picker'
 import { ApiError, createDeferredStart } from '@/api/client'
 import { deferredCreateInputSchema } from '@open-mercato/cezar-api-client'
 import { markScheduledTasks } from '@/lib/scheduled-tasks-gate'
@@ -7,8 +7,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CheckIcon,
   ChevronDownIcon,
+  Clock3Icon,
+  FileTextIcon,
+  FlaskConicalIcon,
   FolderOpenIcon,
-  SparklesIcon,
+  GitCommitHorizontalIcon,
   SquareIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -33,9 +36,11 @@ import {
   useSkills,
   useUiState,
   useWorkspaceConfig,
+  useWorkspaceUiState,
   useWorkflows,
 } from '@/api/queries'
 import { useTranslations } from '@/i18n/use-translations'
+import { submitShortcutHint } from '@/lib/use-submit-shortcut'
 import type {
   AttachmentEntry,
   DispatchIntent,
@@ -46,8 +51,9 @@ import type {
 } from '@open-mercato/cezar-api-client'
 import { TwinkleBackdrop } from '@/components/centered-state'
 import { Composer, type ComposerHandle } from '@/components/composer/composer'
+import { ComposerTips } from '@/components/composer-tips'
 import { DispatchToggle } from '@/components/dispatch-toggle'
-import { GhostCodeBackdrop } from '@/components/ghost-code-backdrop'
+import { ghostChip, useOnboardingWrite } from '@/components/onboarding-kit'
 import { PickerPill, RunnerPill, chevron, chipClass } from '@/components/picker-pill'
 import { PromptTemplateMenu } from '@/components/prompt-template-menu'
 import { SourcePill } from '@/components/source-pill'
@@ -67,11 +73,11 @@ import {
   normalizePromptTemplates,
   resolveAutoApply,
 } from '@/lib/prompt-templates'
+import { markTipSeen } from '@/lib/composer-tips'
 import {
   bumpSkillUsage,
   orderSkillsByUsage,
 } from '@/lib/skills'
-import { submitShortcutHint } from '@/lib/use-submit-shortcut'
 import { cn } from '@/lib/utils'
 import { usableRunners } from '@/lib/provider-status'
 
@@ -108,7 +114,7 @@ import {
   type TaskSource,
 } from './new-task-form'
 import { parseNewTaskParams } from './new-task-params'
-import { trackMessageSent } from '@/lib/telemetry'
+import { trackMessageSent, trackTaskScheduled } from '@/lib/telemetry'
 
 // Keep recovery across route changes and reloads in this tab. Storage can be unavailable;
 // the memory copy still protects navigation within the running cockpit.
@@ -136,9 +142,10 @@ function saveScheduleRecovery(key: string, request: DeferredCreateInput | null) 
 }
 
 /**
- * `/new` — the full-screen new-task hero (spec §"New task (full-screen, #386)"; visual
- * contract docs/mockups/new-task.html): centered composer card on the twinkle surface, the
- * picker pill row inside the card below the textarea, suggested-task ghost chips underneath.
+ * `/new` — the full-screen new-task hero (spec §"New task (full-screen, #386)"), in the
+ * onboarding grammar since spec 2026-10-26-first-run-onboarding § Composer: a large light title
+ * on a plain surface, the composer card with the picker pill row below the textarea, the
+ * suggestion chips of the welcome page underneath, and one or two composer tips per visit.
  * This route also owns the saved-bookmarklet contract (spec 011, BACKWARD_COMPATIBILITY.md):
  * a full document load of `/new?skill=&ref=&auto=1&key=` auto-starts a run unattended when the
  * key matches `GET /api/launch-key`, and only prefills otherwise — `handleDeepLink()` in
@@ -172,6 +179,11 @@ export function NewTaskRoute() {
   const skills = useSkills()
   const repo = useRepo()
   const uiState = useUiState()
+  // Composer tips (spec 2026-10-26-first-run-onboarding § Composer tips) remember what was
+  // shown in the workspace ui-state — one person learns the composer once, for every project.
+  const workspaceUiState = useWorkspaceUiState()
+  const writeOnboarding = useOnboardingWrite()
+  const tipsRoot = useRef<HTMLDivElement>(null)
   // Settings → Agents runner/model policy for this project. `/api/health` is boot-bound and
   // cannot answer these per-project defaults when another project is active (#699).
   const config = useConfig()
@@ -242,8 +254,11 @@ export function NewTaskRoute() {
    */
   const scopeKeyOf = (id: string): string | null =>
     projects.data?.bootProject === id ? null : id
-  const sourcesReady =
-    skills.data !== undefined && workflows.data !== undefined && !uiState.isPending
+  // A catalog fetch that FAILED is settled, not loading: waiting on `data` alone left a remote
+  // cockpit whose /skills or /workflows request errored saying "Still loading" forever (31eda062).
+  const catalogFailed =
+    (skills.isError && skills.data === undefined) || (workflows.isError && workflows.data === undefined)
+  const sourcesReady = !skills.isPending && !workflows.isPending && !uiState.isPending
   // The draft's pick alone — a fresh `/new` selects nothing (see `resolveSource` for what the
   // persisted `lastTask` preselection was load-bearing for, and why it is gone).
   // Trunk-based projects (spec 2026-10-20-trunk-based-projects): an in-place project offers
@@ -256,9 +271,11 @@ export function NewTaskRoute() {
     draft.variants <= 1 &&
     draft.dispatch === null &&
     (draft.readOnly ?? (config.data?.profile === 'trunk' && looksLikeQuestion(draft.text)))
+  // Without a catalog the draft's pick cannot be checked here — send it and let the server judge,
+  // rather than silently swapping the user's skill for quick-task.
   const source =
-    resolveSource(draft.source, skillList, workflowList) ??
-    projectDefaultSource(config.data, askWanted, skillList)
+    (catalogFailed ? draft.source : resolveSource(draft.source, skillList, workflowList)) ??
+    projectDefaultSource(config.data, askWanted, catalogFailed ? null : skillList)
   const selectedSkill = source?.source === 'skill'
     ? skillList.find((skill) => skill.name === source.ref)
     : undefined
@@ -525,7 +542,7 @@ export function NewTaskRoute() {
     if (notice === null || !sourcesReady) return
     setNotice(null)
     const unknownSkill =
-      deepLink.skill !== '' && !skillList.some((s) => s.name === deepLink.skill)
+      deepLink.skill !== '' && !catalogFailed && !skillList.some((s) => s.name === deepLink.skill)
         ? deepLink.skill
         : ''
     if (unknownSkill !== '') {
@@ -545,6 +562,8 @@ export function NewTaskRoute() {
 
   const [startChoice, setStartChoice] = useState<StartChoice | null>(null)
   const [scheduleBlocked, setScheduleBlocked] = useState<string>()
+  const [scheduleLabel, setScheduleLabel] = useState<{ text: string; title: string }>()
+  const [scheduleOpen, setScheduleOpen] = useState(false)
   const recoveryKey = scheduleRecoveryKey(draftProjectId)
   const [scheduleRecovery, setScheduleRecovery] = useState(() => readScheduleRecovery(recoveryKey))
   const scheduleRequest = useRef<DeferredCreateInput | null>(scheduleRecovery)
@@ -631,7 +650,7 @@ export function NewTaskRoute() {
   }
   const schedulingDisabledReason = images.length ? 'Remove attachments to schedule this task.' : deepLink.todo ? 'Tasks linked to a todo can only start now.' : health.data?.capabilities?.automations !== true ? 'Scheduling is disabled on this server.' : undefined
   const previewTask = taskBody(draft.text, images)
-  const scheduleReady = !schedulingDisabledReason && !!startChoice?.preview && Date.parse(startChoice.preview.notBefore) > Date.now() && startChoice.taskJson === JSON.stringify(previewTask)
+  const scheduleReady = !schedulingDisabledReason && !!startChoice?.preview && Date.parse(startChoice.preview.notBefore) > Date.now() && startChoice.settingsKey === previewSettingsKey(previewTask)
   const submit = async (text: string, submitted: AttachmentEntry[]) => {
     if (scheduleRequest.current) throw new Error('Recover the original schedule before starting another task.')
     if (!providersReady || runner === null) {
@@ -667,8 +686,9 @@ export function NewTaskRoute() {
     }
     const body = taskBody(text, submitted)
     if (startChoice) {
-      if (schedulingDisabledReason || !startChoice.preview || Date.parse(startChoice.preview.notBefore) <= Date.now() || startChoice.taskJson !== JSON.stringify(body)) throw new Error('Check the start time again after changing the task settings.')
+      if (schedulingDisabledReason || !startChoice.preview || Date.parse(startChoice.preview.notBefore) <= Date.now() || startChoice.settingsKey !== previewSettingsKey(body)) throw new Error('Check the start time again after changing the task settings.')
       await sendSchedule({ task: body, start: startChoice.start, previewRevision: startChoice.preview.previewRevision, idempotencyKey: crypto.randomUUID() })
+      trackTaskScheduled(startChoice.start.kind === 'at' ? 'at' : 'usage_reset')
       return
     }
     const created = await createRun(body)
@@ -761,7 +781,7 @@ export function NewTaskRoute() {
         <TwinkleBackdrop />
         <div data-slot="auto-starting" role="status" className="text-center">
           <h1 className="animate-pulse text-lg font-semibold tracking-tight">{t('newTask.startingTask')}</h1>
-          <p className="mt-1.5 text-[13.5px] text-muted-foreground">
+          <p className="mt-1.5 text-ui text-muted-foreground">
             Launched from a bookmarklet — taking you to the run.
           </p>
         </div>
@@ -772,20 +792,19 @@ export function NewTaskRoute() {
   return (
     <div
       data-route="new"
+      data-onboarding=""
       className="relative isolate flex min-h-full flex-col items-center overflow-x-clip px-6 pt-[clamp(32px,7vh,84px)] pb-16 max-md:px-3.5 max-md:pt-7"
     >
-      <TwinkleBackdrop />
-      <GhostCodeBackdrop />
-
-      <div className="w-full max-w-[720px]">
-        <header className="mb-6 text-center max-md:mb-4">
-          <h1 className="text-lg font-semibold tracking-tight max-md:text-base">
+      {/* `relative`: the composer tips place their halo over a pill by measuring against this box. */}
+      <div ref={tipsRoot} className="relative w-full max-w-[720px]">
+        <header className="mb-7 text-center max-md:mb-5">
+          <h1 className="text-4xl font-light tracking-tight text-balance text-foreground max-md:text-3xl">
             What should the agent work on?
           </h1>
           {/* Follows the resolved run mode (#793). Printing the isolation promise
               unconditionally made this line false for every run the user opted out of — and
               for a non-git folder, where there is no worktree to opt into. */}
-          <p data-slot="run-mode-note" className="mt-1.5 text-[13.5px] text-muted-foreground max-md:text-xs">
+          <p data-slot="run-mode-note" className="mx-auto mt-3 max-w-md text-lead text-muted-foreground max-md:text-ui">
             {composerRunModeNote({
               worktree: worktreeOn,
               hasGit,
@@ -829,7 +848,9 @@ export function NewTaskRoute() {
                   : t('newTask.startTask')
           }
           sendLabel={startChoice ? t('newTask.scheduleTask') : undefined}
-          submitDisabled={!!scheduleRecovery || recovering || (!!startChoice && !scheduleReady)}
+          // The catalog gate (skills/workflows/ui-state) keeps Start honest until the pickers know
+          // what a submit would mean; a pending schedule or recovery holds it too.
+          submitDisabled={!!scheduleRecovery || recovering || !sourcesReady || (!!startChoice && !scheduleReady)}
           disabled={!providersReady || starting}
           disabledReason={
             providers.isPending
@@ -839,11 +860,14 @@ export function NewTaskRoute() {
                 : 'Connect an agent provider before starting a task.'
           }
           autocompleteSkills
+          sendShortcut="↵"
+          sendMenu={
+            <StartTimePicker task={previewTask} value={startChoice} onChange={setStartChoice}
+              disabledReason={schedulingDisabledReason} onBlockedChange={setScheduleBlocked}
+              onLabelChange={setScheduleLabel} open={scheduleOpen} onOpenChange={setScheduleOpen} />
+          }
           footerStart={
             <>
-              <StartTimePicker task={previewTask} value={startChoice} onChange={setStartChoice}
-                disabledReason={schedulingDisabledReason} onBlockedChange={setScheduleBlocked} />
-
               {/* The project pill LEADS the row (mockup new-task-project.html): everything to
                   its right is resolved against it, so it reads left-to-right as "in this
                   project, run this skill, with this model". Rendered only once the workspace
@@ -1017,6 +1041,14 @@ export function NewTaskRoute() {
           }
           footerEnd={
             <>
+              {startChoice && scheduleLabel && !scheduleBlocked ? (
+                <button type="button" data-slot="schedule-summary" title={scheduleLabel.title}
+                  onClick={() => setScheduleOpen(true)}
+                  className="flex max-w-[16rem] items-center gap-1 truncate rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+                  <Clock3Icon aria-hidden="true" className="size-3.5 shrink-0" />
+                  <span className="truncate">{scheduleLabel.text}</span>
+                </button>
+              ) : null}
               {startChoice && scheduleBlocked ? (
                 <span role="status" data-slot="schedule-blocked" title={scheduleBlocked}
                   className="max-w-[16rem] truncate text-xs text-muted-foreground">
@@ -1043,7 +1075,7 @@ export function NewTaskRoute() {
               />
               <kbd
                 aria-hidden="true"
-                className="rounded-[5px] border border-b-2 border-border bg-card px-[5px] py-px font-mono text-[10.5px] font-medium text-muted-foreground"
+                className="rounded-[5px] border border-b-2 border-border bg-card px-[5px] py-px font-mono text-meta font-medium text-muted-foreground"
               >
                 {submitShortcutHint()}
               </kbd>
@@ -1078,6 +1110,16 @@ export function NewTaskRoute() {
             for limits.
           </p>
         ) : null}
+
+        <ComposerTips
+          anchorRoot={tipsRoot}
+          ready={providersReady && sourcesReady && !scheduleRecovery}
+          loaded={workspaceUiState.data !== undefined}
+          seen={workspaceUiState.data?.onboarding?.composerTipsSeen}
+          off={workspaceUiState.data?.onboarding?.composerTipsOff}
+          onSeen={(id) => writeOnboarding((current) => ({ composerTipsSeen: markTipSeen(current?.composerTipsSeen, id) }))}
+          onOff={(off) => writeOnboarding({ composerTipsOff: off })}
+        />
 
         <SuggestedChips onPick={(text) => update({ text })} />
       </div>
@@ -1222,7 +1264,7 @@ function NewBranchToggle({
           value={name}
           placeholder="feat/… (auto)"
           onChange={(event) => onNameChange(event.target.value)}
-          className="h-6 w-36 rounded-md border border-input bg-card px-2 font-mono text-[11px] outline-none focus-visible:border-ring"
+          className="h-6 w-36 rounded-md border border-input bg-card px-2 font-mono text-meta outline-none focus-visible:border-ring"
         />
       ) : null}
     </span>
@@ -1370,7 +1412,7 @@ function ProjectPill({
           data-slot="project-pill"
           aria-label="Project"
           title="Which project this task runs in — its skills, workflows, settings and draft"
-          className={cn(chipClass, 'border-foreground/60 font-semibold text-foreground')}
+          className={cn(chipClass, 'border-foreground/60 text-foreground')}
         >
           <FolderOpenIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
           {/* The registry is authoritative for the display name; the raw id is the fallback
@@ -1410,9 +1452,9 @@ function ProjectPill({
               >
                 <span className="min-w-0 flex-1 truncate text-xs font-medium">{project.name}</span>
                 {project.status === 'missing' ? (
-                  <span className="shrink-0 text-[11px] text-soft-foreground">folder not found</span>
+                  <span className="shrink-0 text-meta text-soft-foreground">folder not found</span>
                 ) : project.branch !== undefined ? (
-                  <span className="shrink-0 font-mono text-[11px] text-soft-foreground">
+                  <span className="shrink-0 font-mono text-meta text-soft-foreground">
                     {project.branch}
                   </span>
                 ) : null}
@@ -1424,7 +1466,7 @@ function ProjectPill({
           </CommandList>
           {/* The mockup's `dd-note`. Worth the two lines: picking here does far more than
               relabel a pill, and nothing else on screen says so. */}
-          <p className="border-t border-border px-3 py-2 text-[11px] leading-snug text-soft-foreground">
+          <p className="border-t border-border px-3 py-2 text-meta leading-snug text-soft-foreground">
             Skills, workflows, settings and the draft re-resolve against the selected project.
           </p>
         </Command>
@@ -1456,7 +1498,7 @@ function BaseBranchPill({ repo }: { repo: RepoResponse }) {
     <PickerPill
       slot="base-pill"
       ariaLabel="Base branch"
-      label={<span className="font-mono text-[11.5px]">base: {current}</span>}
+      label={<span className="text-meta">base: {current}</span>}
       value={repo.baseBranch ?? ''}
       onPick={(value) => mutation.mutate(value === '' ? null : value)}
       searchPlaceholder="Search branches…"
@@ -1543,27 +1585,21 @@ function ModeSegment({
   )
 }
 
-/** Honest static starters (the mockup's ghost chips): they only fill the textarea — the user
+/** Honest static starters, the welcome page's three: they only fill the textarea — the user
  *  still aims and submits. */
 const SUGGESTIONS = [
-  'Fix a failing or flaky test',
-  'Summarize recent commits on this branch',
-  'Update the README for recent changes',
+  { icon: FlaskConicalIcon, label: 'Fix a failing test', task: 'Fix a failing or flaky test' },
+  { icon: GitCommitHorizontalIcon, label: 'Summarize recent commits', task: 'Summarize recent commits on this branch' },
+  { icon: FileTextIcon, label: 'Update the README', task: 'Update the README for recent changes' },
 ]
 
 function SuggestedChips({ onPick }: { onPick: (text: string) => void }) {
   return (
-    <div className="mt-7 flex flex-wrap justify-center gap-2 max-md:justify-start">
-      {SUGGESTIONS.map((suggestion) => (
-        <button
-          key={suggestion}
-          type="button"
-          data-slot="suggested-chip"
-          onClick={() => onPick(suggestion)}
-          className="inline-flex h-[30px] items-center gap-1.5 rounded-full border border-border px-3 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <SparklesIcon aria-hidden="true" className="size-3 shrink-0 text-soft-foreground" />
-          {suggestion}
+    <div className="mt-4 flex flex-wrap justify-center gap-2 max-md:justify-start">
+      {SUGGESTIONS.map(({ icon: Icon, label, task }) => (
+        <button key={label} type="button" data-slot="suggested-chip" onClick={() => onPick(task)} className={ghostChip}>
+          <Icon aria-hidden="true" className="size-3.5" />
+          {label}
         </button>
       ))}
     </div>

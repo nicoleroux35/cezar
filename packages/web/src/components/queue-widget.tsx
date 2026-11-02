@@ -55,7 +55,7 @@ function CompactTaskItem({ task, index, isDragging = false, isOverlay = false }:
       >
         <GripVerticalIcon className="size-3" aria-hidden="true" />
       </div>
-      <div className="flex size-4 shrink-0 items-center justify-center rounded bg-muted text-[10px] font-medium text-muted-foreground">
+      <div className="flex size-4 shrink-0 items-center justify-center rounded bg-muted text-micro font-medium text-muted-foreground">
         {index + 1}
       </div>
       {isOverlay ? (
@@ -176,7 +176,7 @@ export function QueueWidget() {
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <ListOrderedIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
         <h4 className="text-xs font-semibold">Queue</h4>
-        <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
           {queued.length}
         </span>
       </div>

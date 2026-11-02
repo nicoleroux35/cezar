@@ -138,7 +138,7 @@ export function TaskGroupPill({
               </CommandItem>
             ))}
           </CommandList>
-          <p className="border-t border-border px-3 py-2 text-[11px] leading-snug text-soft-foreground">
+          <p className="border-t border-border px-3 py-2 text-meta leading-snug text-soft-foreground">
             Tasks in the same group can be launched together in parallel.
           </p>
         </Command>

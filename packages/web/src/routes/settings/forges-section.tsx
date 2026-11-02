@@ -76,7 +76,7 @@ function ForgeCard({
     <div className="rounded-md border border-border bg-card px-3.5 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-[13px] font-semibold text-foreground">{forge.label}</h3>
+          <h3 className="text-ui font-semibold text-foreground">{forge.label}</h3>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <StatusDot tone={getStatusTone(status)} />
             <span>
@@ -93,7 +93,7 @@ function ForgeCard({
 
           {status?.hint && (
             <div className="mt-2 rounded-sm bg-pending/10 px-2 py-1.5">
-              <p className="text-[13px] text-pending-strong">{status.hint}</p>
+              <p className="text-ui text-pending-strong">{status.hint}</p>
             </div>
           )}
 
@@ -108,7 +108,7 @@ function ForgeCard({
             <div className="mt-2 space-y-1.5">
               <Input
                 placeholder={`https://${forge.kind}.company.com`}
-                className="h-8 text-[13px]"
+                className="h-8 text-ui"
                 value={selfHostedUrl}
                 onChange={(e) => setSelfHostedUrl(e.target.value)}
                 onKeyDown={(e) => {
@@ -205,7 +205,7 @@ export function ForgesSection() {
       <div className="mb-2 flex items-start justify-between">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Forges</h2>
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-ui text-muted-foreground">
             Configure git forge integrations for issues, PRs, and draft PR creation.
           </p>
         </div>
@@ -214,7 +214,7 @@ export function ForgesSection() {
           variant="ghost"
           onClick={handleRefresh}
           disabled={isLoading}
-          className="h-7 px-2 text-[13px]"
+          className="h-7 px-2 text-ui"
         >
           {isLoading ? 'Checking...' : 'Check again'}
         </Button>

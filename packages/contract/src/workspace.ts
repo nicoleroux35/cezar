@@ -41,6 +41,11 @@ export const workspaceConfigResponseSchema = z.object({
   /** Stored override; `null` means inherit `CEZ_SKILLS_AUTO_UPDATE`, then true. */
   skillsAutoUpdate: z.boolean().nullable(),
   effectiveSkillsAutoUpdate: z.boolean(),
+  /** Skills repos added in Global settings; every project loads them as team skills. */
+  orgSkillsRepos: z.array(z.object({ repo: z.string(), ref: z.string() })),
+  /** Global instructions for every task in every project; `null` = none. A project's own system
+   *  prompt is appended after it and wins where they conflict. */
+  systemPrompt: z.string().nullable(),
   composerDefaults: z.object({
     autonomous: z.boolean().nullable(),
     worktree: z.boolean().nullable(),
@@ -99,6 +104,14 @@ export const setWorkspaceConfigInputSchema = z.object({
   browseRoot: z.string().trim().min(1).max(4096).optional(),
   projectsDir: z.string().trim().min(1).max(4096).optional(),
   skillsAutoUpdate: z.boolean().nullable().optional(),
+  /** Replaces the whole list; entries keep unknown keys (a newer cezar's metadata). The server
+   *  rejects an unsafe `repo`/`ref` with a 400. */
+  orgSkillsRepos: z
+    .array(z.object({ repo: z.string().trim().min(1).max(500), ref: z.string().trim().min(1).max(200).default('main') }).passthrough())
+    .max(20)
+    .optional(),
+  /** Clears on `null` or `''`, like the project `systemPrompt`. */
+  systemPrompt: z.string().trim().max(20_000).nullable().optional(),
   composerDefaults: z
     .object({
       autonomous: z.boolean().nullable().optional(),
@@ -329,6 +342,31 @@ export const workspaceUiStateSchema = z.looseObject({
   /** Layouts the user saved by name in a task's Layout menu — offered in every task of every
    *  project. One bad entry drops the list rather than the whole file. */
   savedLayouts: z.array(savedWorkspaceLayoutSchema).catch([]).optional(),
+  /** First-run onboarding (spec 2026-10-26-first-run-onboarding). Workspace-wide — the same
+   *  person sets up every project. */
+  onboarding: z
+    .looseObject({
+      setupDismissed: z.boolean().optional(),
+      /** "Continue anyway" past the sign-in screen: provider detection can miss a working login. */
+      agentCheckSkipped: z.boolean().optional(),
+      /** Feature announcements the user closed, by id — a new announcement shows once. */
+      dismissedAnnouncements: z.array(z.string().max(64)).max(50).optional(),
+      /** Coming back after a while: the first and the latest visit, written at most hourly. */
+      firstVisitAt: z.string().max(40).optional(),
+      lastVisitAt: z.string().max(40).optional(),
+      /** Set when a visit follows a long absence: the visit before it, and when the user came
+       *  back. The tasks page greets them with what they left and what changed since. */
+      returnedFrom: z.string().max(40).optional(),
+      returnedAt: z.string().max(40).optional(),
+      welcomeBackClosedAt: z.string().max(40).optional(),
+      /** The last time the user opened "What's new" — its sidebar dot counts from here. */
+      whatsNewSeenAt: z.string().max(40).optional(),
+      /** Composer tips on `/new` (one or two controls explained per visit): the ones already
+       *  shown, by id, and whether the user turned them off. */
+      composerTipsSeen: z.array(z.string().max(64)).max(50).optional(),
+      composerTipsOff: z.boolean().optional(),
+    })
+    .optional(),
 });
 export type WorkspaceUiState = z.infer<typeof workspaceUiStateSchema>;
 

@@ -76,8 +76,9 @@ export const translations = {
     fr: 'Étroit',
   },
   'settings.appearance.width.wide': {
-    en: 'Wide',
-    fr: 'Large',
+    // "Full", not "Wide": it is the zero-config default and the label upstream ships.
+    en: 'Full',
+    fr: 'Pleine largeur',
   },
   'settings.appearance.language': {
     en: 'Language',
@@ -226,6 +227,10 @@ export const translations = {
   'sidebar.skillsUpdateAvailable': {
     en: 'Skills update available',
     fr: 'Mise à jour des compétences disponible',
+  },
+  'sidebar.newNavMarker': {
+    en: 'New',
+    fr: 'Nouveau',
   },
   'sidebar.unreadFinishedTask': {
     en: 'unread finished task',

@@ -102,7 +102,7 @@ export function PlanReview({
       >
         <DialogHeader className="gap-1 border-b border-border px-5 pt-4 pb-3.5 text-left sm:text-left">
           <div className="flex items-start justify-between gap-3">
-            <DialogTitle className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+            <DialogTitle className="text-meta font-semibold tracking-[0.08em] text-muted-foreground uppercase">
               Proposed chain
             </DialogTitle>
             <DialogClose
@@ -115,7 +115,7 @@ export function PlanReview({
           <DialogDescription
             data-slot="plan-task"
             title={plan.task}
-            className="truncate text-[13.5px] font-medium text-foreground"
+            className="truncate text-ui font-medium text-foreground"
           >
             {planTaskLine(plan.task)}
           </DialogDescription>
@@ -160,19 +160,19 @@ export function PlanReview({
                   aria-hidden="true"
                   className="size-3.5 shrink-0 cursor-grab text-soft-foreground"
                 />
-                <span className="w-5 shrink-0 font-mono text-[11px] text-soft-foreground tabular-nums">
+                <span className="w-5 shrink-0 font-mono text-meta text-soft-foreground tabular-nums">
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate text-[13px] font-semibold">
+                    <span className="truncate text-ui font-semibold">
                       {step.name ?? step.id}
                     </span>
                     {step.skill ? (
                       <span
                         data-slot="plan-badge-skill"
                         title="skill"
-                        className="shrink-0 rounded-full bg-violet/15 px-1.5 py-px font-mono text-[10.5px] font-medium text-violet"
+                        className="shrink-0 rounded-full bg-violet/15 px-1.5 py-px font-mono text-meta font-medium text-violet"
                       >
                         {step.skill}
                       </span>
@@ -180,13 +180,13 @@ export function PlanReview({
                     {step.command ? (
                       <span
                         data-slot="plan-badge-check"
-                        className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10.5px] font-medium text-muted-foreground"
+                        className="shrink-0 rounded-full bg-muted px-1.5 py-px text-meta font-medium text-muted-foreground"
                       >
                         check
                       </span>
                     ) : null}
                   </div>
-                  <p className="truncate font-mono text-[11.5px] text-muted-foreground">
+                  <p className="truncate font-mono text-meta text-muted-foreground">
                     {stepHint(step)}
                   </p>
                 </div>

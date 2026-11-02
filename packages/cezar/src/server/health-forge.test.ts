@@ -29,6 +29,7 @@ interface HealthBody {
     singleProject: boolean;
     automations: boolean;
     tokenMetrics: boolean;
+    webhooks: boolean;
     tokenUsageMetrics: boolean;
     costMetrics: boolean;
   };
@@ -118,6 +119,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
       automations: true,
       dispatch: true,
       tokenMetrics: true,
+      webhooks: false,
       tokenUsageMetrics: true,
       costMetrics: true,
     });
@@ -189,6 +191,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
       automations: true,
       dispatch: true,
       tokenMetrics: true,
+      webhooks: false,
       tokenUsageMetrics: true,
       costMetrics: true,
     });
@@ -220,6 +223,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
       automations: true,
       dispatch: true,
       tokenMetrics: true,
+      webhooks: false,
       tokenUsageMetrics: true,
       costMetrics: true,
     });
@@ -236,6 +240,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
       automations: true,
       dispatch: true,
       tokenMetrics: true,
+      webhooks: false,
       tokenUsageMetrics: true,
       costMetrics: true,
     });
@@ -257,6 +262,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
       automations: true,
       dispatch: true,
       tokenMetrics: true,
+      webhooks: false,
       tokenUsageMetrics: true,
       costMetrics: true,
     });
@@ -284,6 +290,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
       automations: true,
       dispatch: true,
       tokenMetrics: true,
+      webhooks: false,
       tokenUsageMetrics: true,
       costMetrics: true,
     });
@@ -300,6 +307,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
       automations: true,
       dispatch: true,
       tokenMetrics: false,
+      webhooks: false,
       tokenUsageMetrics: false,
       costMetrics: false,
     });
@@ -309,6 +317,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     process.env.CEZ_HIDE_TOKEN_USAGE = '1';
     expect((await health()).capabilities).toMatchObject({
       tokenMetrics: false,
+      webhooks: false,
       tokenUsageMetrics: false,
       costMetrics: true,
     });
@@ -316,6 +325,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     process.env.CEZ_HIDE_COST = '1';
     expect((await health()).capabilities).toMatchObject({
       tokenMetrics: false,
+      webhooks: false,
       tokenUsageMetrics: true,
       costMetrics: false,
     });

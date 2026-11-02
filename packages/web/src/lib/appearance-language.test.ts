@@ -52,6 +52,6 @@ describe('appearance language support', () => {
     expect(result.language).toBe(DEFAULT_LANGUAGE)
     expect(result.accent).toBe('lime')
     expect(result.density).toBe('comfortable')
-    expect(result.width).toBe('narrow')
+    expect(result.width).toBe('wide')
   })
 })

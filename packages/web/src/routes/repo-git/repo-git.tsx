@@ -81,7 +81,7 @@ function RepoView({ repo, info, tab, t }: { repo: RepoResponse; info: RepoInfo; 
           <h1 className="text-lg font-semibold">Git</h1>
           <BranchChip branch={info.branch} />
           {info.remote ? (
-            <span data-slot="repo-remote" className="hidden min-w-0 truncate text-[11px] text-soft-foreground md:inline">
+            <span data-slot="repo-remote" className="hidden min-w-0 truncate text-meta text-soft-foreground md:inline">
               {info.remote}
             </span>
           ) : null}
